@@ -19,10 +19,18 @@ export function LocationPicker({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(
+    value ?? null
+  );
+  const [mapZoom, setMapZoom] = useState<number>(value ? 16 : 13);
+
   usePlacesAutocomplete(KEY, inputRef, open, (lat, lng) => {
+    // pan map to selected place and set zoom
+    setMapCenter({ lat, lng });
+    setMapZoom(16);
     onChange({ lat, lng });
-    // keep UX simple: close modal after selection
-    setOpen(false);
+    // close modal shortly after to show the result
+    setTimeout(() => setOpen(false), 300);
   });
 
   if (!KEY) {
@@ -75,17 +83,18 @@ export function LocationPicker({
                 </div>
               <APIProvider apiKey={KEY}>
                 <Map
+                  key={open ? "map-open" : "map-closed"}
                   mapId={MAP_ID}
-                  defaultCenter={value ?? DEFAULT_CENTER}
-                  defaultZoom={value ? 16 : 13}
+                  center={mapCenter ?? DEFAULT_CENTER}
+                  zoom={mapZoom}
                   gestureHandling="greedy"
                   disableDefaultUI
                   onClick={(e) => {
                     if (!e.detail.latLng) return;
-                    onChange({
-                      lat: e.detail.latLng.lat,
-                      lng: e.detail.latLng.lng,
-                    });
+                    const lat = e.detail.latLng.lat;
+                    const lng = e.detail.latLng.lng;
+                    setMapCenter({ lat, lng });
+                    onChange({ lat, lng });
                   }}
                 >
                   {value && (
