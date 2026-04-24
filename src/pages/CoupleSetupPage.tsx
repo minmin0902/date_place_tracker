@@ -4,7 +4,6 @@ import { Check, Copy, Heart } from "lucide-react";
 import { useCouple, useCreateCouple, useJoinCouple } from "@/hooks/useCouple";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/PageHeader";
-import { LanguageToggle } from "@/components/LanguageToggle";
 
 export default function CoupleSetupPage() {
   const { t } = useTranslation();
@@ -38,10 +37,7 @@ export default function CoupleSetupPage() {
 
   return (
     <div className="min-h-full bg-warm-gradient">
-      <div className="max-w-md mx-auto">
-        <div className="flex justify-end p-4">
-          <LanguageToggle />
-        </div>
+      <div className="max-w-md mx-auto pt-4">
         <PageHeader title={t("couple.setupTitle")} subtitle={t("couple.setupDesc")} />
 
         <div className="px-5 space-y-4">

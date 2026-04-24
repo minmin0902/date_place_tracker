@@ -7,7 +7,6 @@ import {
   Dice5,
   Heart,
   MapPin,
-  Navigation as NavigationIcon,
   Plus,
   RefreshCw,
   Search,
@@ -31,7 +30,7 @@ import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
-type Tab = "timeline" | "revisit" | "wishlist";
+type Tab = "timeline" | "wishlist";
 type RouletteSource = "revisit" | "wishlist" | "both";
 type RouletteEntry = {
   kind: "revisit" | "wishlist";
@@ -77,6 +76,7 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
+  const [revisitOnly, setRevisitOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
 
   const sortedPlaces = useMemo(() => {
@@ -87,16 +87,20 @@ export default function HomePage() {
   }, [places]);
 
   const filteredPlaces = useMemo(() => {
-    if (!query.trim()) return sortedPlaces;
-    const q = query.toLowerCase();
-    return sortedPlaces.filter((p) => {
-      const hay = `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
-      const foodHit = (p.foods ?? []).some((f) =>
-        f.name.toLowerCase().includes(q)
-      );
-      return hay.includes(q) || foodHit;
-    });
-  }, [sortedPlaces, query]);
+    let list = sortedPlaces;
+    if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter((p) => {
+        const hay = `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
+        const foodHit = (p.foods ?? []).some((f) =>
+          f.name.toLowerCase().includes(q)
+        );
+        return hay.includes(q) || foodHit;
+      });
+    }
+    return list;
+  }, [sortedPlaces, query, revisitOnly]);
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -172,13 +176,6 @@ export default function HomePage() {
             label="발자취 · 足迹 👣"
           />
           <TabButton
-            active={tab === "revisit"}
-            accent="rose"
-            onClick={() => setTab("revisit")}
-            label="또 갈래 · 又想去 💖"
-            count={places?.filter((p) => p.want_to_revisit).length}
-          />
-          <TabButton
             active={tab === "wishlist"}
             accent="peach"
             onClick={() => setTab("wishlist")}
@@ -193,15 +190,27 @@ export default function HomePage() {
           <>
             <StatsDashboard stats={stats} />
 
-            <div className="flex items-center justify-between mt-7 mb-4 px-1">
-              <h2 className="font-display font-bold text-base text-ink-900">
-                다녀온 곳 · 去过的地方
-              </h2>
-              {filteredPlaces.length > 0 && (
-                <span className="text-xs text-ink-400">
+            <div className="flex items-center justify-between mt-7 mb-4 px-1 gap-2">
+              <h2 className="font-display font-bold text-base text-ink-900 flex items-center gap-2">
+                <span>다녀온 곳 · 去过的地方</span>
+                <span className="text-rose-500 text-xs font-black bg-rose-50 px-2 py-0.5 rounded-full">
                   {filteredPlaces.length}
                 </span>
-              )}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRevisitOnly((v) => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition border ${
+                  revisitOnly
+                    ? "bg-rose-50 text-rose-500 border-rose-200 shadow-sm"
+                    : "bg-white text-ink-500 border-cream-200"
+                }`}
+              >
+                <Heart
+                  className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
+                />
+                또 갈래만 · 只看想再去
+              </button>
             </div>
 
             {placesLoading && (
@@ -210,7 +219,14 @@ export default function HomePage() {
               </p>
             )}
             {!placesLoading && filteredPlaces.length === 0 && (
-              <EmptyState emoji="🍽️" text={t("common.empty")} />
+              <EmptyState
+                emoji={revisitOnly ? "💖" : "🍽️"}
+                text={
+                  revisitOnly
+                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没有想再去的地方"
+                    : t("common.empty")
+                }
+              />
             )}
 
             <div className="mt-2">
@@ -225,14 +241,6 @@ export default function HomePage() {
               ))}
             </div>
           </>
-        )}
-
-        {tab === "revisit" && (
-          <RevisitCollectionView
-            places={filteredPlaces.filter((p) => p.want_to_revisit)}
-            locale={i18n.language}
-            tKey={t}
-          />
         )}
 
         {tab === "wishlist" && (
@@ -451,134 +459,6 @@ function TimelineItem({
   );
 }
 
-// ---------- revisit collection ----------
-
-function RevisitCollectionView({
-  places,
-  locale,
-  tKey,
-}: {
-  places: PlaceWithFoods[];
-  locale: string;
-  tKey: (k: string) => string;
-}) {
-  if (places.length === 0) {
-    return (
-      <>
-        <RevisitHint count={0} />
-        <EmptyState
-          emoji="💖"
-          text="아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没有想再去的地方"
-        />
-      </>
-    );
-  }
-  return (
-    <>
-      <RevisitHint count={places.length} />
-      <div className="space-y-3">
-        {places.map((p) => (
-          <RevisitCard
-            key={p.id}
-            place={p}
-            locale={locale}
-            tKey={tKey}
-          />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function RevisitHint({ count }: { count: number }) {
-  return (
-    <div className="bg-rose-50 rounded-2xl p-4 mb-5 border border-rose-200 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <h3 className="text-sm font-bold text-rose-500">
-          우리가 인정한 진짜 맛집 · 我俩盖章的店
-        </h3>
-        <p className="text-xs text-rose-500/80 mt-1 leading-relaxed">
-          실패 없는 데이트 코스 짤 때 여기서 골라봐요.
-          <br />
-          想要稳赢的约会，从这里挑就对了。
-        </p>
-      </div>
-      <div className="text-3xl flex-shrink-0">🏆</div>
-      {count > 0 && (
-        <span className="sr-only" aria-label={`${count} places`}></span>
-      )}
-    </div>
-  );
-}
-
-function RevisitCard({
-  place,
-  locale,
-  tKey,
-}: {
-  place: PlaceWithFoods;
-  locale: string;
-  tKey: (k: string) => string;
-}) {
-  const avg = avgTotal(place);
-  const directionsHref =
-    place.latitude != null && place.longitude != null
-      ? `https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`
-      : null;
-  return (
-    <div className="bg-white rounded-2xl p-4 border border-rose-100 shadow-soft relative overflow-hidden">
-      {avg !== null && (
-        <div className="absolute top-0 right-0 bg-rose-100 text-rose-500 text-[11px] font-black px-3 py-1.5 rounded-bl-xl flex items-center gap-1">
-          ⭐ {avg.toFixed(1)}
-        </div>
-      )}
-      <div className="flex items-center gap-3 pr-12">
-        <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-rose-50 border border-rose-100 flex items-center justify-center text-2xl">
-          {place.photo_urls?.[0] ? (
-            <img
-              src={place.photo_urls[0]}
-              alt={place.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            categoryIcon(place.category)
-          )}
-        </div>
-        <Link to={`/places/${place.id}`} className="flex-1 min-w-0 block">
-          <h3 className="font-bold text-ink-900 text-base truncate">
-            {place.name}
-          </h3>
-          {place.address && (
-            <p className="text-[11px] text-ink-500 mt-0.5 flex items-center gap-1 truncate">
-              <MapPin className="w-3 h-3 flex-shrink-0 text-rose-300" />
-              <span className="truncate">{place.address}</span>
-            </p>
-          )}
-          <div className="mt-2 text-[10px] font-semibold text-ink-400">
-            마지막 방문 · 上次去：{formatDate(place.date_visited, locale)}
-            {(place.foods ?? []).length > 0 && (
-              <span className="ml-2">
-                · {tKey("place.foods")} {(place.foods ?? []).length}
-              </span>
-            )}
-          </div>
-        </Link>
-        {directionsHref && (
-          <a
-            href={directionsHref}
-            target="_blank"
-            rel="noreferrer"
-            className="absolute bottom-4 right-4 p-2 bg-rose-50 rounded-full text-rose-500 hover:bg-rose-100 transition"
-            aria-label="open in maps"
-          >
-            <NavigationIcon className="w-4 h-4" />
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ---------- wishlist view + card ----------
 
 function WishlistView({
@@ -639,19 +519,15 @@ function WishlistView({
 
   if (items.length === 0) {
     return (
-      <>
-        <WishlistHint />
-        <EmptyState
-          emoji="📝"
-          text="가고 싶은 곳을 추가해봐요 · 加几个想去的地方吧"
-        />
-      </>
+      <EmptyState
+        emoji="📝"
+        text="가고 싶은 곳을 추가해봐요 · 加几个想去的地方吧"
+      />
     );
   }
 
   return (
     <>
-      <WishlistHint />
       {err && (
         <p className="text-xs text-rose-500 mb-3 bg-rose-50 border border-rose-200 rounded-xl p-3">
           {err}
@@ -669,24 +545,6 @@ function WishlistView({
         ))}
       </div>
     </>
-  );
-}
-
-function WishlistHint() {
-  return (
-    <div className="bg-peach-50 rounded-2xl p-4 mb-5 border border-peach-200 flex items-start gap-3">
-      <span className="text-2xl">💡</span>
-      <div className="min-w-0">
-        <h3 className="text-sm font-bold text-peach-600">
-          가고 싶은 곳 모아두기 · 心愿单
-        </h3>
-        <p className="text-xs text-peach-600/80 mt-1 leading-relaxed">
-          SNS에서 본 맛집을 미리 저장해두면 다음 데이트 짤 때 편해요.
-          <br />
-          把刷到的好店先存着，下次约会就不用愁去哪儿了。
-        </p>
-      </div>
-    </div>
   );
 }
 

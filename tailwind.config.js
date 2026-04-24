@@ -42,15 +42,23 @@ export default {
         },
       },
       fontFamily: {
+        // Pretendard Variable handles Korean + Latin; Noto Sans SC fills in
+        // Chinese glyphs that Pretendard doesn't ship.
         sans: [
+          '"Pretendard Variable"',
           "Pretendard",
           "-apple-system",
           "system-ui",
-          "Noto Sans KR",
-          "Noto Sans SC",
+          '"Noto Sans SC"',
           "sans-serif",
         ],
-        display: ["Gowun Batang", "Noto Serif KR", "Noto Serif SC", "serif"],
+        // Display goes serif: Gowun Batang for Korean, Noto Serif SC for
+        // Chinese characters it doesn't cover.
+        display: [
+          '"Gowun Batang"',
+          '"Noto Serif SC"',
+          "serif",
+        ],
       },
       borderRadius: {
         xl: "1rem",

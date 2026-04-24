@@ -14,11 +14,26 @@ export function generateInviteCode(length = 6) {
   return out;
 }
 
+// All dates in this app are visit-day stamps with no time component, so we
+// pin them to America/New_York (EST/EDT) when formatting. That way the
+// label reads the same regardless of the viewer's timezone — a YYYY-MM-DD
+// stored value won't shift across the date line for non-US users.
+const APP_TIMEZONE = "America/New_York";
+
 export function formatDate(date: string | Date, locale: string) {
-  const d = typeof date === "string" ? new Date(date) : date;
+  let d: Date;
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Anchor a bare YYYY-MM-DD at noon UTC so the EST representation lands
+    // squarely on the same calendar day everywhere.
+    const [y, m, day] = date.split("-").map(Number);
+    d = new Date(Date.UTC(y, m - 1, day, 12));
+  } else {
+    d = typeof date === "string" ? new Date(date) : date;
+  }
   return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: APP_TIMEZONE,
   }).format(d);
 }

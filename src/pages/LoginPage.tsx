@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
-import { LanguageToggle } from "@/components/LanguageToggle";
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -34,10 +33,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-full bg-warm-gradient flex flex-col">
-      <div className="flex justify-end p-4">
-        <LanguageToggle />
-      </div>
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-20">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <div className="text-center mb-10">
             <div className="text-5xl mb-3">🍜</div>
