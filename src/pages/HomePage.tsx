@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   BookmarkPlus,
@@ -13,8 +13,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
-import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import {
+  usePlaces,
+  useUpsertPlace,
+  type PlaceWithFoods,
+} from "@/hooks/usePlaces";
 import {
   useAddWishlist,
   useDeleteWishlist,
@@ -23,6 +28,7 @@ import {
 import type { WishlistPlace } from "@/lib/database.types";
 import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
+import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
 type RouletteSource = "revisit" | "wishlist" | "both";
@@ -427,11 +433,50 @@ function WishlistView({
   couple_id: string | undefined;
 }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const del = useDeleteWishlist();
+  const upsertPlace = useUpsertPlace();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   async function onDelete(id: string) {
     if (!confirm(t("common.confirmDelete"))) return;
     await del.mutateAsync(id);
+  }
+
+  async function onMarkVisited(item: WishlistPlace) {
+    if (!couple_id || !user) return;
+    setBusyId(item.id);
+    setErr(null);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const place = await upsertPlace.mutateAsync({
+        coupleId: couple_id,
+        userId: user.id,
+        values: {
+          name: item.name,
+          date_visited: today,
+          address: item.address,
+          category: item.category,
+          memo: item.memo,
+          want_to_revisit: false,
+          latitude: item.latitude,
+          longitude: item.longitude,
+          photo_urls: null,
+        },
+      });
+      await del.mutateAsync(item.id);
+      // Jump straight to the new place so the user can log foods / photos.
+      if (place && typeof place === "object" && "id" in place) {
+        navigate(`/places/${(place as { id: string }).id}`);
+      }
+    } catch (e: unknown) {
+      console.error("[WishlistView] mark visited failed:", e);
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   if (!couple_id) return null;
@@ -451,12 +496,19 @@ function WishlistView({
   return (
     <>
       <WishlistHint />
+      {err && (
+        <p className="text-xs text-rose-500 mb-3 bg-rose-50 border border-rose-200 rounded-xl p-3">
+          {err}
+        </p>
+      )}
       <div className="space-y-3">
         {items.map((item) => (
           <WishlistCard
             key={item.id}
             item={item}
+            busy={busyId === item.id}
             onDelete={() => void onDelete(item.id)}
+            onMarkVisited={() => void onMarkVisited(item)}
           />
         ))}
       </div>
@@ -484,10 +536,14 @@ function WishlistHint() {
 
 function WishlistCard({
   item,
+  busy,
   onDelete,
+  onMarkVisited,
 }: {
   item: WishlistPlace;
+  busy: boolean;
   onDelete: () => void;
+  onMarkVisited: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -513,19 +569,31 @@ function WishlistCard({
               {t(`category.${item.category}`)}
             </p>
           )}
+          {item.address && (
+            <p className="text-[11px] text-ink-500 mt-1 flex items-center gap-1 truncate">
+              <MapPin className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{item.address}</span>
+            </p>
+          )}
           {item.memo && (
             <p className="text-xs text-ink-500 mt-1 whitespace-pre-wrap">
               {item.memo}
             </p>
           )}
           <div className="mt-3">
-            <Link
-              to={`/places/new?fromWishlist=${item.id}`}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition"
+            <button
+              type="button"
+              onClick={onMarkVisited}
+              disabled={busy}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              다녀왔어요 · 已去过
-            </Link>
+              {busy ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              )}
+              {busy ? "추가 중… · 添加中…" : "다녀왔어요 · 已去过"}
+            </button>
           </div>
         </div>
       </div>
@@ -547,6 +615,9 @@ function WishlistAddSheet({
   const [name, setName] = useState("");
   const [category, setCategory] = useState<PlaceCategory | null>(null);
   const [memo, setMemo] = useState("");
+  const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [address, setAddress] = useState<string>("");
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
@@ -559,6 +630,9 @@ function WishlistAddSheet({
         name: name.trim(),
         category,
         memo: memo.trim() || null,
+        address: address.trim() || null,
+        latitude: coord?.lat ?? null,
+        longitude: coord?.lng ?? null,
       });
       onClose();
     } catch (e: unknown) {
@@ -572,7 +646,7 @@ function WishlistAddSheet({
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl">
+      <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-bold text-lg">
             가고 싶은 곳 추가 · 添加想去
@@ -590,15 +664,45 @@ function WishlistAddSheet({
         <form onSubmit={submit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.location")}
+            </label>
+            <LocationPicker
+              value={coord}
+              label={placeLabel}
+              onChange={(v) => {
+                setCoord(v);
+                if (!v) setPlaceLabel(null);
+              }}
+              onPlaceSelected={(p) => {
+                setPlaceLabel(p.name || null);
+                if (!name) setName(p.name);
+                if (!address) setAddress(p.address);
+              }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
               이름 · 名字 *
             </label>
             <input
-              autoFocus
               className="input-base"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="예) 남산 뷰 카페"
               required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.address")}
+            </label>
+            <input
+              className="input-base"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder={t("place.addressPh")}
             />
           </div>
 

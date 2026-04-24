@@ -226,6 +226,9 @@ export function addWishlist(input: {
   name: string;
   category: string | null;
   memo: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }): WishlistPlace {
   const db = load();
   const item: WishlistPlace = {
@@ -234,6 +237,9 @@ export function addWishlist(input: {
     name: input.name,
     category: input.category,
     memo: input.memo,
+    address: input.address,
+    latitude: input.latitude,
+    longitude: input.longitude,
     created_by: input.userId,
     created_at: new Date().toISOString(),
   };

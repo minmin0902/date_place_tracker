@@ -61,6 +61,11 @@ export default function PlaceFormPage() {
       setName(w.name);
       if (w.category) setCategory(w.category as PlaceCategory);
       if (w.memo) setMemo(w.memo);
+      if (w.address) setAddress(w.address);
+      if (w.latitude != null && w.longitude != null) {
+        setCoord({ lat: w.latitude, lng: w.longitude });
+        setPlaceLabel(w.name);
+      }
     });
     return () => {
       cancelled = true;

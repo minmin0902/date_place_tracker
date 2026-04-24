@@ -81,6 +81,9 @@ export type Database = {
           name: string;
           category: string | null;
           memo: string | null;
+          address: string | null;
+          latitude: number | null;
+          longitude: number | null;
           created_by: string | null;
           created_at: string;
         };
@@ -90,6 +93,9 @@ export type Database = {
           name: string;
           category?: string | null;
           memo?: string | null;
+          address?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
           created_by?: string | null;
         };
         Update: Partial<

@@ -37,6 +37,9 @@ export function useAddWishlist() {
       name: string;
       category: string | null;
       memo: string | null;
+      address: string | null;
+      latitude: number | null;
+      longitude: number | null;
     }) => {
       if (!user) throw new Error("not authenticated");
       if (ALLOW_NO_AUTH) {
@@ -46,6 +49,9 @@ export function useAddWishlist() {
           name: input.name,
           category: input.category,
           memo: input.memo,
+          address: input.address,
+          latitude: input.latitude,
+          longitude: input.longitude,
         });
       }
       const { data, error } = await supabase
@@ -55,6 +61,9 @@ export function useAddWishlist() {
           name: input.name,
           category: input.category,
           memo: input.memo,
+          address: input.address,
+          latitude: input.latitude,
+          longitude: input.longitude,
           created_by: user.id,
         })
         .select()
