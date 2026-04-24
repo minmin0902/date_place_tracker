@@ -21,18 +21,24 @@
   }
   body {
     @apply bg-cream-50 text-ink-900 antialiased;
+    /* Mobile: fall back immediately to system CJK font if web fonts are
+       still loading. -apple-system picks PingFang SC on iOS, Roboto +
+       Noto Sans CJK SC on Android. Keeps text crisp while Pretendard /
+       Quicksand / Noto web fonts arrive. */
+    font-family: "Pretendard Variable", "Pretendard", -apple-system,
+      BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Noto Sans KR",
+      "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
     font-feature-settings: "ss01", "ss02";
     overscroll-behavior-y: none;
     ::selection {
       background: #fde2e4;
     }
   }
+  /* Explicit CJK-heavy passages (not a whole page, but per-element) can
+     still opt into the system CJK face first. */
   :lang(zh) {
     font-family: "PingFang SC", "Noto Sans SC", "Pretendard Variable",
       "Pretendard", sans-serif;
-  }
-  :lang(zh) .font-display {
-    font-family: "Noto Serif SC", serif;
   }
   button {
     @apply select-none;

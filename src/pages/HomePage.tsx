@@ -29,6 +29,7 @@ import type { WishlistPlace } from "@/lib/database.types";
 import {
   PLACE_CATEGORIES,
   categoryEmojiOf,
+  isKnownPlaceCategory,
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
 import { formatDate } from "@/lib/utils";
@@ -177,10 +178,10 @@ export default function HomePage() {
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <h1 className="text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
+            <h1 className="text-[22px] sm:text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
               우리의 식탁 · 我们的餐桌
             </h1>
-            <p className="text-[10px] text-ink-400 font-bold tracking-[0.2em] uppercase font-number">
+            <p className="text-[10px] text-ink-400 font-bold tracking-[0.18em] uppercase font-number truncate">
               Couple Food Diary
             </p>
           </div>
@@ -239,7 +240,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setRevisitOnly((v) => !v)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold transition-all border ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
                   revisitOnly
                     ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -248,7 +249,7 @@ export default function HomePage() {
                 <Heart
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
-                또 갈래! 맛집 · 必须二刷
+                또 갈래 · 必须二刷
               </button>
             </div>
 
@@ -335,8 +336,13 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* Floating action cluster */}
-      <div className="fixed bottom-24 left-0 right-0 z-30 pointer-events-none px-5">
+      {/* Floating action cluster — sits above bottom nav + device safe area */}
+      <div
+        className="fixed left-0 right-0 z-30 pointer-events-none px-5"
+        style={{
+          bottom: "calc(env(safe-area-inset-bottom, 0px) + 6rem)",
+        }}
+      >
         <div className="max-w-md mx-auto flex justify-between items-end">
           <button
             type="button"
@@ -399,7 +405,7 @@ function ViewChip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition border whitespace-nowrap ${
+      className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap ${
         active
           ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
           : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
@@ -439,13 +445,15 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative pb-3 text-[13px] font-semibold transition whitespace-nowrap text-center flex-1 ${
+      className={`relative pb-3 text-[12px] sm:text-[13px] font-semibold transition whitespace-nowrap text-center flex-1 min-w-0 truncate ${
         active ? activeText : "text-ink-400 hover:text-ink-700"
       }`}
     >
-      {label}
+      <span className="inline-block max-w-full truncate align-middle">
+        {label}
+      </span>
       {count != null && count > 0 && (
-        <span className="ml-1 text-[10px] text-ink-400 font-medium">
+        <span className="ml-1 text-[10px] text-ink-400 font-medium font-number">
           {count}
         </span>
       )}
@@ -467,10 +475,10 @@ function StatsDashboard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[2rem] p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
+    <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[1.75rem] p-5 sm:p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
       <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-[11px] font-bold text-rose-500 tracking-widest uppercase">
-          우리의 맛집 기록 · 干饭成就
+        <span className="text-[10px] sm:text-[11px] font-bold text-rose-500 tracking-[0.15em] uppercase truncate">
+          기록 · 干饭成就
         </span>
         <div className="mt-1">
           <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
@@ -483,16 +491,20 @@ function StatsDashboard({
       </div>
       <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
       <div className="flex flex-col gap-1 items-end min-w-0">
-        <span className="text-[11px] font-bold text-peach-500 tracking-widest uppercase">
-          자주 찾은 메뉴 · 最常翻牌
+        <span className="text-[10px] sm:text-[11px] font-bold text-peach-500 tracking-[0.15em] uppercase truncate">
+          자주 찾은 · 最常吃
         </span>
         {stats.topCategory ? (
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="text-xl">{categoryIcon(stats.topCategory)}</span>
-            <span className="text-base font-bold text-ink-900">
-              {t(`category.${stats.topCategory}`)}
+          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+            <span className="text-lg sm:text-xl flex-shrink-0">
+              {categoryIcon(stats.topCategory)}
             </span>
-            <span className="text-sm font-number font-bold text-ink-400 ml-1">
+            <span className="text-sm sm:text-base font-bold text-ink-900 truncate">
+              {isKnownPlaceCategory(stats.topCategory)
+                ? t(`category.${stats.topCategory}`)
+                : stats.topCategory}
+            </span>
+            <span className="text-xs sm:text-sm font-number font-bold text-ink-400 ml-1 flex-shrink-0">
               ({stats.topCount})
             </span>
           </div>
@@ -560,9 +572,9 @@ function TimelineItem({
                 <span className="truncate">{place.address}</span>
               </p>
             )}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center flex-wrap gap-1.5 mt-2">
               {avg !== null ? (
-                <span className="inline-flex items-center bg-peach-50 text-peach-500 px-2.5 py-1 rounded-lg text-xs font-bold border border-peach-100">
+                <span className="inline-flex items-center bg-peach-50 text-peach-500 px-2 py-0.5 rounded-lg text-xs font-bold border border-peach-100">
                   <span className="mr-1">⭐</span>
                   <span className="font-number">{avg.toFixed(1)}</span>
                 </span>
@@ -571,8 +583,8 @@ function TimelineItem({
                   아직 평가 전 · 等待打分
                 </span>
               )}
-              <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2.5 py-1 rounded-lg">
-                메뉴 <span className="font-number font-bold">{(place.foods ?? []).length}</span>개 · 菜品 <span className="font-number font-bold">{(place.foods ?? []).length}</span>
+              <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2 py-0.5 rounded-lg">
+                🍽️ <span className="font-number font-bold">{(place.foods ?? []).length}</span> <span className="opacity-70">개 · 道</span>
               </span>
             </div>
           </div>

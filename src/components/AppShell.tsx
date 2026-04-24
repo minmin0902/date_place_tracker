@@ -33,7 +33,15 @@ export function AppShell() {
   const { t } = useTranslation();
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
-      <main className="flex-1 pb-24">
+      {/* pb reserves room for the fixed bottom nav (~64px) PLUS the device
+          safe-area inset (~34px on iPhone X+), otherwise the last row gets
+          hidden behind the nav. */}
+      <main
+        className="flex-1"
+        style={{
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)",
+        }}
+      >
         <Outlet />
       </main>
       <nav className="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-md border-t border-cream-200/60 safe-bottom shadow-[0_-4px_20px_rgb(0,0,0,0.03)]">
