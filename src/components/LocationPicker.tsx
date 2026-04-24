@@ -1,85 +1,151 @@
 import { useEffect, useRef, useState } from "react";
-import { APIProvider, Map, AdvancedMarker } from "@vis.gl/react-google-maps";
 import { useTranslation } from "react-i18next";
-import { MapPin, X } from "lucide-react";
-import { Loader } from "@googlemaps/js-api-loader";
+import { MapPin, X, Search } from "lucide-react";
+import { setOptions, importLibrary } from "@googlemaps/js-api-loader";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-const MAP_ID = "date-place-map";
 
-const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
+export type PickedPlace = {
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+};
+
+// js-api-loader v2 uses a functional API: call setOptions() once, then
+// importLibrary() per library. The SDK memoizes loads internally, so we just
+// need to guard our setOptions() call and surface any rejection so retries work.
+let optionsSet = false;
+let placesPromise: Promise<any> | null = null;
+function ensurePlacesLoaded(key: string): Promise<any> {
+  if (!optionsSet) {
+    setOptions({ key });
+    optionsSet = true;
+  }
+  if (!placesPromise) {
+    placesPromise = (importLibrary("places") as Promise<any>).catch((e) => {
+      placesPromise = null;
+      throw e;
+    });
+  }
+  return placesPromise;
+}
 
 export function LocationPicker({
   value,
+  label,
   onChange,
   onPlaceSelected,
 }: {
-  value: { lat: number; lng: number } | null;
+  value: { lat: number; lng: number; name?: string; address?: string } | null;
+  label?: string | null;
   onChange: (v: { lat: number; lng: number } | null) => void;
-  onPlaceSelected?: (p: { name?: string; address?: string; lat: number; lng: number }) => void;
+  onPlaceSelected?: (p: PickedPlace) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(
-    value ?? null
-  );
-  const [mapZoom, setMapZoom] = useState<number>(value ? 16 : 13);
   const [query, setQuery] = useState("");
   const [predictions, setPredictions] = useState<any[]>([]);
-  // loading indicator kept for future UX improvements
-  const [, setLoadingPred] = useState(false);
-  const predRef = useRef<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
-  
-  async function fetchPredictions(q: string) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // close dropdown on outside click
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  // A single AutocompleteSessionToken groups all keystrokes until the user
+  // commits a selection — Google bills the autocomplete+details pair as one
+  // request as long as the same token is used.
+  const sessionTokenRef = useRef<any>(null);
+
+  async function runSearch(q: string) {
     if (!KEY) return;
-    if (!q) {
+    if (!q.trim()) {
       setPredictions([]);
+      setError(null);
       return;
     }
-    setLoadingPred(true);
-    const preds = await fetchPredictionsWithLoader(KEY, q);
-    predRef.current = preds || [];
-    setPredictions(predRef.current as any[]);
-    setLoadingPred(false);
-  }
-
-  async function selectPrediction(pred: any) {
-    // get details
+    setLoading(true);
+    setError(null);
     try {
-      const details = await getPlaceDetails(KEY!, pred.place_id);
-      const loc = details.geometry?.location;
-      if (loc) {
-        const lat = loc.lat();
-        const lng = loc.lng();
-        setMapCenter({ lat, lng });
-        setMapZoom(16);
-        setQuery(details.name || details.formatted_address || "");
-        setPredictions([]);
-        onChange({ lat, lng });
-        if (onPlaceSelected) {
-          onPlaceSelected({
-            name: details.name,
-            address: details.formatted_address,
-            lat,
-            lng,
-          });
-        }
+      const lib: any = await ensurePlacesLoaded(KEY);
+      if (!lib?.AutocompleteSuggestion) {
+        throw new Error("google.maps.places unavailable after load");
       }
+      if (!sessionTokenRef.current) {
+        sessionTokenRef.current = new lib.AutocompleteSessionToken();
+      }
+      const { suggestions } =
+        await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: q,
+          sessionToken: sessionTokenRef.current,
+        });
+      setPredictions(suggestions ?? []);
+      setOpen(true);
     } catch (e) {
-      // ignore
+      console.error("[LocationPicker] search failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
+      setPredictions([]);
+    } finally {
+      setLoading(false);
     }
   }
 
-  usePlacesAutocomplete(KEY, inputRef, open, (lat, lng) => {
-    // pan map to selected place and set zoom
-    setMapCenter({ lat, lng });
-    setMapZoom(16);
-    onChange({ lat, lng });
-    // close modal shortly after to show the result
-    setTimeout(() => setOpen(false), 300);
-  });
+  async function pick(suggestion: any) {
+    if (!KEY) return;
+    try {
+      await ensurePlacesLoaded(KEY);
+      const place = suggestion.placePrediction.toPlace();
+      await place.fetchFields({
+        fields: ["displayName", "formattedAddress", "location"],
+      });
+      const loc = place.location;
+      if (!loc) return;
+      const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+      const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+      onChange({ lat, lng });
+      onPlaceSelected?.({
+        name: place.displayName || "",
+        address: place.formattedAddress || "",
+        lat,
+        lng,
+      });
+      // Session token is consumed on a committed selection — reset so the next
+      // search starts a fresh billing session.
+      sessionTokenRef.current = null;
+      setQuery("");
+      setPredictions([]);
+      setOpen(false);
+    } catch (e) {
+      console.error("[LocationPicker] pick failed:", e);
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function suggestionText(s: any): { main: string; secondary: string } {
+    const sf = s?.placePrediction?.structuredFormat;
+    return {
+      main:
+        sf?.mainText?.text ??
+        s?.placePrediction?.text?.text ??
+        "",
+      secondary: sf?.secondaryText?.text ?? "",
+    };
+  }
+
+  function clearSelection() {
+    onChange(null);
+    setQuery("");
+    setPredictions([]);
+  }
 
   if (!KEY) {
     return (
@@ -91,183 +157,79 @@ export function LocationPicker({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="card p-4 flex items-center gap-3 w-full text-left"
-      >
-        <MapPin className="w-5 h-5 text-peach-400" />
-        <div className="flex-1">
-          {value ? (
-            <div>
+    <div ref={containerRef} className="relative">
+      {value ? (
+        <div className="card p-4 flex items-start gap-3">
+          <MapPin className="w-5 h-5 text-peach-400 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            {label ? (
+              <p className="text-sm font-medium truncate">{label}</p>
+            ) : (
               <p className="text-sm font-medium">
                 {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
               </p>
-              <p className="text-xs text-ink-500">{t("place.pickOnMap")}</p>
-            </div>
-          ) : (
-            <p className="text-sm text-ink-500">{t("place.pickOnMap")}</p>
-          )}
-        </div>
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full max-w-md h-[75vh] sm:rounded-2xl rounded-t-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-cream-200">
-              <span className="font-medium">{t("place.pickOnMap")}</span>
-              <button onClick={() => setOpen(false)} className="btn-ghost !p-2">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 relative">
-                <div className="p-3 relative">
-                  <input
-                    ref={inputRef}
-                    className="input-base w-full"
-                    placeholder={t("place.searchPlaceholder")}
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      // debounce predictions
-                      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-                      debounceRef.current = window.setTimeout(() => {
-                        fetchPredictions(e.target.value);
-                      }, 250);
-                    }}
-                  />
-                  {predictions.length > 0 && (
-                    <div className="pac-container absolute left-3 right-3 mt-2">
-                      {predictions.map((p, i) => (
-                        <div
-                          key={p.place_id || i}
-                          className="pac-item cursor-pointer"
-                          onClick={() => selectPrediction(p)}
-                        >
-                          <div className="font-semibold">{p.structured_formatting?.main_text || p.description}</div>
-                          <div className="text-xs text-ink-500">{p.structured_formatting?.secondary_text || ""}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              <APIProvider apiKey={KEY}>
-                <Map
-                  key={open ? "map-open" : "map-closed"}
-                  className="h-full w-full"
-                  mapId={MAP_ID}
-                  center={mapCenter ?? DEFAULT_CENTER}
-                  zoom={mapZoom}
-                  gestureHandling="greedy"
-                  disableDefaultUI
-                  onClick={(e) => {
-                    if (!e.detail.latLng) return;
-                    const lat = e.detail.latLng.lat;
-                    const lng = e.detail.latLng.lng;
-                    setMapCenter({ lat, lng });
-                    onChange({ lat, lng });
-                  }}
-                >
-                  {mapCenter && (
-                    <AdvancedMarker position={mapCenter}>
-                      <div className={`text-3xl animate-bounce`}>📍</div>
-                    </AdvancedMarker>
-                  )}
-                </Map>
-              </APIProvider>
-            </div>
-            <div className="p-3 border-t border-cream-200 flex gap-2">
-              {value && (
-                <button
-                  type="button"
-                  className="btn-ghost flex-1"
-                  onClick={() => onChange(null)}
-                >
-                  {t("common.delete")}
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn-primary flex-1"
-                onClick={() => setOpen(false)}
-              >
-                {t("common.confirm")}
-              </button>
-            </div>
+            )}
+            <p className="text-xs text-ink-500">
+              {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="btn-ghost !p-2"
+            aria-label="clear"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      ) : (
+        <>
+          <div className="relative">
+            <Search className="w-4 h-4 text-ink-300 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              className="input-base pl-10"
+              value={query}
+              placeholder={t("place.searchPlaceholder")}
+              onFocus={() => predictions.length > 0 && setOpen(true)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setQuery(v);
+                if (debounceRef.current) window.clearTimeout(debounceRef.current);
+                debounceRef.current = window.setTimeout(() => runSearch(v), 250);
+              }}
+            />
+          </div>
+          {(open && (predictions.length > 0 || loading)) || error ? (
+            <div className="absolute left-0 right-0 mt-2 z-40 bg-white rounded-xl border border-cream-200 shadow-lg overflow-hidden">
+              {error && (
+                <div className="p-3 text-sm text-rose-500 break-words">
+                  {error}
+                </div>
+              )}
+              {loading && predictions.length === 0 && !error && (
+                <div className="p-3 text-sm text-ink-500">{t("common.loading")}</div>
+              )}
+              {predictions.map((s, i) => {
+                const { main, secondary } = suggestionText(s);
+                const key = s?.placePrediction?.placeId ?? i;
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => pick(s)}
+                    className="w-full text-left px-4 py-3 hover:bg-cream-50 border-b border-cream-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-sm truncate">{main}</div>
+                    <div className="text-xs text-ink-500 truncate">
+                      {secondary}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </>
       )}
-    </>
+    </div>
   );
 }
-
-// load Places Autocomplete when modal opens
-function usePlacesAutocomplete(
-  key: string | undefined,
-  inputRef: React.RefObject<HTMLInputElement | null>,
-  enabled: boolean,
-  onSelect: (lat: number, lng: number) => void
-) {
-  useEffect(() => {
-    if (!enabled) return;
-    if (!key) return;
-    if (!inputRef.current) return;
-    const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
-    let ac: any = null;
-    let mounted = true;
-    (loader as any).load().then(() => {
-      if (!mounted || !inputRef.current) return;
-      ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
-        fields: ["geometry", "name", "formatted_address", "place_id"],
-      });
-      ac.addListener("place_changed", () => {
-        const place = ac?.getPlace();
-        const loc = place?.geometry?.location;
-        if (loc) onSelect(loc.lat(), loc.lng());
-      });
-    }).catch(() => {
-      // loader failed; do nothing
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [key, inputRef, enabled, onSelect]);
-}
-
-// fetch predictions (custom UI) and place details
-async function fetchPredictionsWithLoader(key: string, input: string) {
-  if (!input) return [];
-  const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
-  try {
-    await (loader as any).load();
-    const service = new (window as any).google.maps.places.AutocompleteService();
-    return new Promise<any[]>((resolve) => {
-      service.getPlacePredictions({ input }, (preds: any[], status: any) => {
-        if (status !== (window as any).google.maps.places.PlacesServiceStatus.OK) {
-          resolve([]);
-        } else {
-          resolve(preds || []);
-        }
-      });
-    });
-  } catch (e) {
-    return [];
-  }
-}
-
-async function getPlaceDetails(key: string, placeId: string) {
-  const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
-  await (loader as any).load();
-  const dummy = document.createElement("div");
-  const svc = new (window as any).google.maps.places.PlacesService(dummy);
-  return new Promise<any>((resolve, reject) => {
-    svc.getDetails({ placeId, fields: ["geometry", "name", "formatted_address"] }, (res: any, status: any) => {
-      if (status === (window as any).google.maps.places.PlacesServiceStatus.OK) resolve(res);
-      else reject(res);
-    });
-  });
-}
-
-// expose small helper functions into module scope for use in component
-// to avoid changing hook signatures

@@ -3,10 +3,9 @@ import { LogOut } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
-import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const { data: couple } = useCouple();
 
@@ -14,29 +13,6 @@ export default function SettingsPage() {
     <div>
       <PageHeader title={t("settings.title")} />
       <div className="px-5 space-y-4">
-        <div className="card p-4 space-y-3">
-          <p className="text-sm font-medium">{t("settings.language")}</p>
-          <div className="flex gap-2">
-            {(["ko", "zh"] as const).map((lng) => {
-              const active = i18n.resolvedLanguage === lng;
-              return (
-                <button
-                  key={lng}
-                  onClick={() => void i18n.changeLanguage(lng)}
-                  className={cn(
-                    "flex-1 py-3 rounded-xl border transition",
-                    active
-                      ? "bg-peach-200 border-peach-300 text-ink-900 font-medium"
-                      : "bg-white border-cream-200 text-ink-500"
-                  )}
-                >
-                  {t(`settings.${lng}`)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="card p-4">
           <p className="text-sm text-ink-500">{t("auth.email")}</p>
           <p className="font-medium">{user?.email}</p>

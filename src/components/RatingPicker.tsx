@@ -28,29 +28,34 @@ export function RatingPicker({
 
   const stars = useMemo(() => [1, 2, 3, 4, 5], []);
 
+  const display = value == null ? "-" : value.toFixed(1);
+
   return (
     <div>
-      <div className="flex gap-1 mb-2">
-        {stars.map((n) => {
-          const partial = starFillFor(value, n);
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onChange(n)}
-              className="relative p-1 active:scale-95 transition"
-              aria-label={`rate-${n}`}
-            >
-              <Star className="w-8 h-8 text-ink-300" strokeWidth={1.5} />
-              <div
-                style={{ width: `${partial * 100}%` }}
-                className={`absolute left-0 top-0 overflow-hidden pointer-events-none ${fillClass}`}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex gap-1">
+          {stars.map((n) => {
+            const partial = starFillFor(value, n);
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onChange(n)}
+                className="relative p-1 active:scale-95 transition"
+                aria-label={`rate-${n}`}
               >
-                <Star className="w-8 h-8" strokeWidth={1.5} />
-              </div>
-            </button>
-          );
-        })}
+                <Star className="w-7 h-7 text-ink-300" strokeWidth={1.5} />
+                <div
+                  style={{ width: `${partial * 100}%` }}
+                  className={`absolute left-0 top-0 overflow-hidden pointer-events-none ${fillClass}`}
+                >
+                  <Star className="w-7 h-7" strokeWidth={1.5} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <span className={`text-sm font-semibold ${fillClass}`}>{display}</span>
       </div>
 
       <input
@@ -58,7 +63,7 @@ export function RatingPicker({
         type="range"
         min={0}
         max={5}
-        step={0.5}
+        step={0.1}
         value={value ?? 0}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full"

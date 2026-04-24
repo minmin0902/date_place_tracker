@@ -31,6 +31,7 @@ export default function PlaceFormPage() {
   const [wantRevisit, setWantRevisit] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!existing) return;
@@ -43,6 +44,7 @@ export default function PlaceFormPage() {
     setPhotos(existing.photo_urls ?? []);
     if (existing.latitude != null && existing.longitude != null) {
       setCoord({ lat: existing.latitude, lng: existing.longitude });
+      setPlaceLabel(existing.name);
     }
   }, [existing]);
 
@@ -75,6 +77,25 @@ export default function PlaceFormPage() {
         back
       />
       <form onSubmit={onSubmit} className="px-5 space-y-5 pb-6">
+        <div>
+          <label className="block text-sm font-medium mb-1.5">
+            {t("place.location")}
+          </label>
+          <LocationPicker
+            value={coord}
+            label={placeLabel}
+            onChange={(v) => {
+              setCoord(v);
+              if (!v) setPlaceLabel(null);
+            }}
+            onPlaceSelected={(p) => {
+              setPlaceLabel(p.name || null);
+              if (!name) setName(p.name);
+              if (!address) setAddress(p.address);
+            }}
+          />
+        </div>
+
         <div>
           <label className="block text-sm font-medium mb-1.5">
             {t("place.name")} *
@@ -123,13 +144,6 @@ export default function PlaceFormPage() {
             onChange={(e) => setAddress(e.target.value)}
             placeholder={t("place.addressPh")}
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.location")}
-          </label>
-          <LocationPicker value={coord} onChange={setCoord} />
         </div>
 
         <div>

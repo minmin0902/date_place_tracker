@@ -1,23 +1,24 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import { Swords, HeartHandshake, Frown } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { PageHeader } from "@/components/PageHeader";
-import { RatingReadonly } from "@/components/RatingPicker";
 
 type Row = {
   foodId: string;
   placeId: string;
   placeName: string;
   foodName: string;
-  mine: number | null;
-  partner: number | null;
-  diff: number;
+  mine: number;
+  partner: number;
 };
 
+const HIGH = 4; // both ≥ 4  → 천생연분 / 灵魂伴侣
+const LOW = 2; // both ≤ 2  → 다신 안 가 / 再也不去
+const WAR = 2; // diff ≥ 2  → 입맛 전쟁 / 口味之争
+
 export default function ComparePage() {
-  const { t } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
 
@@ -25,8 +26,8 @@ export default function ComparePage() {
     if (!places) return [];
     const out: Row[] = [];
     for (const p of places) {
-      for (const f of p.foods) {
-        if (f.my_rating == null && f.partner_rating == null) continue;
+      for (const f of p.foods ?? []) {
+        if (f.my_rating == null || f.partner_rating == null) continue;
         out.push({
           foodId: f.id,
           placeId: p.id,
@@ -34,94 +35,270 @@ export default function ComparePage() {
           foodName: f.name,
           mine: f.my_rating,
           partner: f.partner_rating,
-          diff: Math.abs((f.my_rating ?? 0) - (f.partner_rating ?? 0)),
         });
       }
     }
     return out;
   }, [places]);
 
-  const agree = [...rows]
-    .filter((r) => r.mine != null && r.partner != null)
-    .sort(
-      (a, b) =>
-        a.diff - b.diff ||
-        ((b.mine ?? 0) + (b.partner ?? 0)) - ((a.mine ?? 0) + (a.partner ?? 0))
+  const soulmates = [...rows]
+    .filter((r) => r.mine >= HIGH && r.partner >= HIGH)
+    .sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+
+  const neverAgain = [...rows]
+    .filter((r) => r.mine <= LOW && r.partner <= LOW)
+    .sort((a, b) => a.mine + a.partner - (b.mine + b.partner));
+
+  const tasteWar = [...rows]
+    .filter(
+      (r) =>
+        Math.abs(r.mine - r.partner) >= WAR &&
+        // exclude rows that are already in the extreme-agreement buckets
+        !(r.mine >= HIGH && r.partner >= HIGH) &&
+        !(r.mine <= LOW && r.partner <= LOW)
     )
-    .slice(0, 5);
-
-  const disagree = [...rows]
-    .filter((r) => r.mine != null && r.partner != null)
-    .sort((a, b) => b.diff - a.diff)
-    .slice(0, 5);
-
-  const topTotal = [...rows]
-    .map((r) => ({ ...r, total: (r.mine ?? 0) + (r.partner ?? 0) }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+    .sort(
+      (a, b) => Math.abs(b.mine - b.partner) - Math.abs(a.mine - a.partner)
+    );
 
   return (
     <div>
-      <PageHeader title={t("nav.compare")} />
-      <div className="px-5 space-y-6 pb-6">
-        <Section title={`🏆 Top ${topTotal.length}`}>
-          {topTotal.map((r) => (
-            <RowCard key={r.foodId} r={r} />
+      <PageHeader
+        title="우리의 입맛 지도 · 我们的口味地图"
+        subtitle="서로의 취향을 분석해봤어요 · 看看彼此的喜好"
+      />
+      <div className="px-5 space-y-8 pt-2 pb-8">
+        <Section
+          icon={<HeartHandshake className="w-5 h-5" />}
+          iconBg="bg-rose-100"
+          iconColor="text-rose-500"
+          titleKo="💕 천생연분"
+          titleZh="灵魂伴侣"
+          descKo="우리 둘 다 극찬한 최고의 맛!"
+          descZh="两人都赞不绝口的最佳美味！"
+          empty={soulmates.length === 0}
+          emptyText="아직 없어요 · 还没有"
+        >
+          {soulmates.map((r) => (
+            <FoodCard key={r.foodId} r={r} showTotal />
           ))}
         </Section>
 
-        <Section title="💕 취향 일치 / 口味一致">
-          {agree.map((r) => (
-            <RowCard key={r.foodId} r={r} />
-          ))}
+        <Section
+          icon={<Swords className="w-5 h-5" />}
+          iconBg="bg-indigo-100"
+          iconColor="text-indigo-500"
+          titleKo="🥊 입맛 전쟁"
+          titleZh="口味之争"
+          descKo="호불호가 확실하게 갈린 메뉴들"
+          descZh="意见明显分歧的菜品"
+          empty={tasteWar.length === 0}
+          emptyText="아직 없어요 · 还没有"
+        >
+          {tasteWar.map((r) => {
+            const myFav = r.mine > r.partner;
+            const badge = myFav
+              ? "🙋‍♂️ 나의 최애 · 我最爱"
+              : "🙋‍♀️ 상대의 최애 · Ta 最爱";
+            return <FoodCard key={r.foodId} r={r} badge={badge} showBalance />;
+          })}
         </Section>
 
-        <Section title="🤔 의견 달라요 / 意见不同">
-          {disagree.map((r) => (
-            <RowCard key={r.foodId} r={r} />
-          ))}
-        </Section>
+        {neverAgain.length > 0 && (
+          <Section
+            icon={<Frown className="w-5 h-5" />}
+            iconBg="bg-cream-200"
+            iconColor="text-ink-500"
+            titleKo="🙅 다신 안 가"
+            titleZh="再也不去"
+            descKo="우리의 미간을 찌푸리게 한 범인"
+            descZh="让我们皱眉头的菜品"
+          >
+            {neverAgain.map((r) => (
+              <FoodCard key={r.foodId} r={r} />
+            ))}
+          </Section>
+        )}
       </div>
     </div>
   );
 }
 
 function Section({
-  title,
+  icon,
+  iconBg,
+  iconColor,
+  titleKo,
+  titleZh,
+  descKo,
+  descZh,
+  empty,
+  emptyText,
   children,
 }: {
-  title: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  titleKo: string;
+  titleZh: string;
+  descKo: string;
+  descZh: string;
+  empty?: boolean;
+  emptyText?: string;
   children: React.ReactNode;
 }) {
   return (
     <section>
-      <h2 className="font-display font-bold text-lg mb-3">{title}</h2>
-      <div className="space-y-2">{children}</div>
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`p-2 rounded-full ${iconBg} ${iconColor}`}>{icon}</div>
+        <div>
+          <h2 className="font-display font-bold text-lg leading-tight">
+            {titleKo}
+            <span className="ml-2 text-ink-400 text-base font-medium">
+              · {titleZh}
+            </span>
+          </h2>
+          <p className="text-xs text-ink-500">
+            {descKo} · {descZh}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {empty ? (
+          <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-cream-200 text-sm text-ink-400">
+            {emptyText}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </section>
   );
 }
 
-function RowCard({ r }: { r: Row }) {
-  const total = (r.mine ?? 0) + (r.partner ?? 0);
+function FoodCard({
+  r,
+  showTotal,
+  showBalance,
+  badge,
+}: {
+  r: Row;
+  showTotal?: boolean;
+  showBalance?: boolean;
+  badge?: string;
+}) {
+  const total = r.mine + r.partner;
   return (
-    <Link to={`/places/${r.placeId}`} className="card p-3 block">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold truncate">{r.foodName}</p>
-          <p className="text-xs text-ink-500 truncate">@ {r.placeName}</p>
+    <Link
+      to={`/places/${r.placeId}`}
+      className="block bg-white rounded-2xl p-4 border border-cream-200 shadow-soft relative overflow-hidden"
+    >
+      {badge && (
+        <div className="absolute top-0 right-0 bg-ink-900 text-white text-[10px] font-semibold px-3 py-1 rounded-bl-xl">
+          {badge}
         </div>
-        <span className="text-lg font-display font-bold text-peach-500 flex-shrink-0">
-          {total}
+      )}
+      <div className="flex items-start justify-between gap-3 pr-1">
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-ink-900 text-base truncate">
+            {r.foodName}
+          </p>
+          <p className="text-xs text-ink-500 truncate mt-0.5">
+            @ {r.placeName}
+          </p>
+        </div>
+        {showTotal && (
+          <div className="flex-shrink-0 text-right">
+            <span className="block text-2xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
+              {total.toFixed(1)}
+            </span>
+            <span className="text-[10px] text-ink-400">/ 10</span>
+          </div>
+        )}
+      </div>
+
+      {showBalance ? (
+        <BalanceBar mine={r.mine} partner={r.partner} />
+      ) : (
+        <div className="flex gap-3 mt-3">
+          <RatingTile
+            label="나 · 我"
+            value={r.mine}
+            tone="peach"
+            leading={r.mine >= r.partner}
+          />
+          <RatingTile
+            label="상대 · Ta"
+            value={r.partner}
+            tone="rose"
+            leading={r.partner >= r.mine}
+          />
+        </div>
+      )}
+    </Link>
+  );
+}
+
+function RatingTile({
+  label,
+  value,
+  tone,
+  leading,
+}: {
+  label: string;
+  value: number;
+  tone: "peach" | "rose";
+  leading: boolean;
+}) {
+  const bg = tone === "peach" ? "bg-peach-100" : "bg-rose-100";
+  const border =
+    tone === "peach" ? "border-peach-200" : "border-rose-200";
+  const text = tone === "peach" ? "text-peach-500" : "text-rose-500";
+  return (
+    <div
+      className={`flex-1 rounded-xl p-2 text-center border ${bg} ${border} ${
+        leading ? "" : "opacity-70"
+      }`}
+    >
+      <span className={`text-[10px] font-semibold block mb-1 ${text}`}>
+        {label}
+      </span>
+      <span className={`text-lg font-display font-black ${text}`}>
+        {value.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
+  const total = mine + partner;
+  const myPct = total === 0 ? 50 : (mine / total) * 100;
+  const partnerPct = total === 0 ? 50 : (partner / total) * 100;
+  return (
+    <div className="mt-3">
+      <div className="flex justify-between text-xs font-medium mb-1.5 px-1">
+        <span
+          className={mine > partner ? "text-peach-500" : "text-ink-400"}
+        >
+          나 · 我 ({mine.toFixed(1)})
+        </span>
+        <span
+          className={partner > mine ? "text-rose-500" : "text-ink-400"}
+        >
+          상대 · Ta ({partner.toFixed(1)})
         </span>
       </div>
-      <div className="mt-2 flex gap-4">
-        <div className="flex-1">
-          <RatingReadonly value={r.mine} color="peach" />
-        </div>
-        <div className="flex-1">
-          <RatingReadonly value={r.partner} color="rose" />
-        </div>
+      <div className="w-full h-4 bg-cream-100 rounded-full flex overflow-hidden border border-cream-200">
+        <div
+          className="h-full bg-peach-400 transition-all duration-700"
+          style={{ width: `${myPct}%` }}
+        />
+        <div className="w-1 h-full bg-white z-10" />
+        <div
+          className="h-full bg-rose-400 transition-all duration-700"
+          style={{ width: `${partnerPct}%` }}
+        />
       </div>
-    </Link>
+    </div>
   );
 }

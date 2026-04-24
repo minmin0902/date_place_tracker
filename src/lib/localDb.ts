@@ -7,7 +7,18 @@ type LocalDB = {
   photos: Record<string, string>; // path -> dataURL
 };
 
-const KEY = "local_db_v1";
+// Pre-seeded couple for local no-auth dev: both partners are pinned so the app
+// skips LoginPage and CoupleSetupPage on first load.
+export const LOCAL_USER_1_EMAIL = "mjjy0902@gmail.com";
+export const LOCAL_USER_2_EMAIL = "yuhanluo2025@gmail.com";
+
+// Bump the storage key whenever the seed shape changes so stale dev data from
+// an earlier version gets discarded automatically.
+const KEY = "local_db_v4";
+
+// Fixed ids so the seed is idempotent across reloads.
+const SEED_COUPLE_ID = "seed-couple-1";
+const SEED_PLACE_ID = "seed-place-daves-coffee";
 
 function load(): LocalDB {
   try {
@@ -15,10 +26,63 @@ function load(): LocalDB {
     if (!raw) throw new Error("no db");
     return JSON.parse(raw) as LocalDB;
   } catch {
-    const db: LocalDB = { couples: [], places: [], foods: [], photos: {} };
+    const db = makeSeedDb();
     save(db);
     return db;
   }
+}
+
+function makeSeedDb(): LocalDB {
+  const now = new Date().toISOString();
+  const couple: Couple = {
+    id: SEED_COUPLE_ID,
+    user1_id: LOCAL_USER_1_EMAIL,
+    user2_id: LOCAL_USER_2_EMAIL,
+    invite_code: "LOCAL1",
+    created_at: now,
+  } as Couple;
+
+  const place: Place = {
+    id: SEED_PLACE_ID,
+    name: "Dave's Coffee",
+    date_visited: "2026-04-24",
+    address: "341 Wayland Ave, Providence, RI 02906, USA",
+    category: "cafe",
+    memo: null,
+    want_to_revisit: true,
+    photo_urls: null,
+    latitude: 41.8236,
+    longitude: -71.4002,
+    created_by: LOCAL_USER_1_EMAIL,
+    couple_id: SEED_COUPLE_ID,
+    created_at: now,
+    updated_at: now,
+  } as Place;
+
+  const mkFood = (name: string, my: number, partner: number): Food =>
+    ({
+      id: crypto.randomUUID(),
+      place_id: SEED_PLACE_ID,
+      name,
+      my_rating: my,
+      partner_rating: partner,
+      category: null,
+      memo: null,
+      photo_url: null,
+      created_at: now,
+    }) as Food;
+
+  return {
+    couples: [couple],
+    places: [place],
+    foods: [
+      mkFood("avocado toast", 3.8, 4),
+      mkFood("Prosciutto & ham & cheese", 3.6, 4),
+      mkFood("Pistachio & ube latte", 3.8, 4.5),
+      mkFood("iced americano", 3.6, 1),
+    ],
+    photos: {},
+  };
 }
 
 function save(db: LocalDB) {
@@ -62,14 +126,17 @@ export function getPlaces(coupleId: string) {
   const places = db.places
     .filter((p) => p.couple_id === coupleId)
     .sort((a, b) => (a.date_visited < b.date_visited ? 1 : -1));
-  // attach foods
-  return places.map((p) => ({ ...p }));
+  return places.map((p) => ({
+    ...p,
+    foods: db.foods.filter((f) => f.place_id === p.id),
+  }));
 }
 
 export function getPlace(id: string) {
   const db = load();
-  const p = db.places.find((x) => x.id === id) ?? null;
-  return p;
+  const p = db.places.find((x) => x.id === id);
+  if (!p) return null;
+  return { ...p, foods: db.foods.filter((f) => f.place_id === p.id) };
 }
 
 export function upsertPlace(input: any) {
