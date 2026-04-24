@@ -61,11 +61,11 @@ export function LocationPicker({
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  // A single AutocompleteSessionToken groups all keystrokes until the user
-  // commits a selection — Google bills the autocomplete+details pair as one
-  // request as long as the same token is used.
-  const sessionTokenRef = useRef<any>(null);
-
+  // Using the legacy AutocompleteService + PlacesService. The new v1 Places
+  // API (AutocompleteSuggestion.fetchAutocompleteSuggestions) requires the
+  // separately-enabled "Places API (New)" product in Cloud Console, which
+  // most existing keys don't have. The legacy calls still work and Google has
+  // promised ≥12 months notice before discontinuing them.
   async function runSearch(q: string) {
     if (!KEY) return;
     if (!q.trim()) {
@@ -76,20 +76,31 @@ export function LocationPicker({
     setLoading(true);
     setError(null);
     try {
-      const lib: any = await ensurePlacesLoaded(KEY);
-      if (!lib?.AutocompleteSuggestion) {
+      await ensurePlacesLoaded(KEY);
+      const g = (window as any).google;
+      if (!g?.maps?.places?.AutocompleteService) {
         throw new Error("google.maps.places unavailable after load");
       }
-      if (!sessionTokenRef.current) {
-        sessionTokenRef.current = new lib.AutocompleteSessionToken();
+      const service = new g.maps.places.AutocompleteService();
+      const { preds, status } = await new Promise<{
+        preds: any[];
+        status: string;
+      }>((resolve) => {
+        service.getPlacePredictions(
+          { input: q },
+          (r: any[], s: string) => resolve({ preds: r || [], status: s })
+        );
+      });
+      const OK = g.maps.places.PlacesServiceStatus.OK;
+      const ZERO = g.maps.places.PlacesServiceStatus.ZERO_RESULTS;
+      if (status !== OK && status !== ZERO) {
+        console.error("[LocationPicker] autocomplete status:", status);
+        setError(`Places API: ${status}`);
+        setPredictions([]);
+      } else {
+        setPredictions(preds);
+        setOpen(true);
       }
-      const { suggestions } =
-        await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: q,
-          sessionToken: sessionTokenRef.current,
-        });
-      setPredictions(suggestions ?? []);
-      setOpen(true);
     } catch (e) {
       console.error("[LocationPicker] search failed:", e);
       setError(e instanceof Error ? e.message : String(e));
@@ -99,46 +110,43 @@ export function LocationPicker({
     }
   }
 
-  async function pick(suggestion: any) {
+  async function pick(pred: any) {
     if (!KEY) return;
     try {
       await ensurePlacesLoaded(KEY);
-      const place = suggestion.placePrediction.toPlace();
-      await place.fetchFields({
-        fields: ["displayName", "formattedAddress", "location"],
-      });
-      const loc = place.location;
-      if (!loc) return;
-      const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
-      const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
-      onChange({ lat, lng });
-      onPlaceSelected?.({
-        name: place.displayName || "",
-        address: place.formattedAddress || "",
-        lat,
-        lng,
-      });
-      // Session token is consumed on a committed selection — reset so the next
-      // search starts a fresh billing session.
-      sessionTokenRef.current = null;
-      setQuery("");
-      setPredictions([]);
-      setOpen(false);
+      const g = (window as any).google;
+      const dummy = document.createElement("div");
+      const svc = new g.maps.places.PlacesService(dummy);
+      svc.getDetails(
+        {
+          placeId: pred.place_id,
+          fields: ["geometry", "name", "formatted_address"],
+        },
+        (res: any, status: any) => {
+          const OK = g.maps.places.PlacesServiceStatus.OK;
+          if (status !== OK || !res?.geometry?.location) {
+            console.error("[LocationPicker] details status:", status);
+            setError(`Places API: ${status}`);
+            return;
+          }
+          const lat = res.geometry.location.lat();
+          const lng = res.geometry.location.lng();
+          onChange({ lat, lng });
+          onPlaceSelected?.({
+            name: res.name || "",
+            address: res.formatted_address || "",
+            lat,
+            lng,
+          });
+          setQuery("");
+          setPredictions([]);
+          setOpen(false);
+        }
+      );
     } catch (e) {
       console.error("[LocationPicker] pick failed:", e);
       setError(e instanceof Error ? e.message : String(e));
     }
-  }
-
-  function suggestionText(s: any): { main: string; secondary: string } {
-    const sf = s?.placePrediction?.structuredFormat;
-    return {
-      main:
-        sf?.mainText?.text ??
-        s?.placePrediction?.text?.text ??
-        "",
-      secondary: sf?.secondaryText?.text ?? "",
-    };
   }
 
   function clearSelection() {
@@ -209,23 +217,21 @@ export function LocationPicker({
               {loading && predictions.length === 0 && !error && (
                 <div className="p-3 text-sm text-ink-500">{t("common.loading")}</div>
               )}
-              {predictions.map((s, i) => {
-                const { main, secondary } = suggestionText(s);
-                const key = s?.placePrediction?.placeId ?? i;
-                return (
-                  <button
-                    type="button"
-                    key={key}
-                    onClick={() => pick(s)}
-                    className="w-full text-left px-4 py-3 hover:bg-cream-50 border-b border-cream-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-sm truncate">{main}</div>
-                    <div className="text-xs text-ink-500 truncate">
-                      {secondary}
-                    </div>
-                  </button>
-                );
-              })}
+              {predictions.map((p, i) => (
+                <button
+                  type="button"
+                  key={p.place_id ?? i}
+                  onClick={() => pick(p)}
+                  className="w-full text-left px-4 py-3 hover:bg-cream-50 border-b border-cream-100 last:border-b-0"
+                >
+                  <div className="font-medium text-sm truncate">
+                    {p.structured_formatting?.main_text || p.description}
+                  </div>
+                  <div className="text-xs text-ink-500 truncate">
+                    {p.structured_formatting?.secondary_text || ""}
+                  </div>
+                </button>
+              ))}
             </div>
           ) : null}
         </>
