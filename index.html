@@ -2,12 +2,24 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" content="#FFF5E8" />
+
+    <!-- PWA / home-screen (iOS + Android). Adding to home screen launches
+         this as a standalone app with no browser chrome. -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="우리의 식탁" />
+
+    <!-- Icons: favicon for the browser tab, app-icon.png for the home screen. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/app-icon.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
@@ -23,7 +35,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300..900&family=Noto+Serif+SC:wght@400..900&family=Gowun+Batang:wght@400;700&family=Quicksand:wght@500;600;700&display=swap"
     />
-    <title>우리 맛집 · 我们的美食地图</title>
+    <title>우리의 식탁 · 我们的餐桌</title>
   </head>
   <body>
     <div id="root"></div>

@@ -42,13 +42,16 @@ export default {
         },
       },
       fontFamily: {
-        // Pretendard Variable handles Korean + Latin; Noto Sans SC fills in
-        // Chinese glyphs that Pretendard doesn't ship.
+        // Pretendard Variable handles Korean + Latin. For Chinese glyphs,
+        // prefer Apple's bundled PingFang SC (installed on iPhone/Mac)
+        // before falling back to Noto Sans SC. This avoids the default
+        // SimSun look on Windows/Android while reading beautifully on iOS.
         sans: [
           '"Pretendard Variable"',
           "Pretendard",
           "-apple-system",
           "system-ui",
+          '"PingFang SC"',
           '"Noto Sans SC"',
           "sans-serif",
         ],

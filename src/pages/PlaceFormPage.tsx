@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Heart } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { useAuth } from "@/hooks/useAuth";
 import { usePlace, useUpsertPlace } from "@/hooks/usePlaces";
 import { fetchWishlistItem, useDeleteWishlist } from "@/hooks/useWishlist";
+import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { PhotoUploader } from "@/components/PhotoUploader";
@@ -49,6 +50,58 @@ export default function PlaceFormPage() {
       setPlaceLabel(existing.name);
     }
   }, [existing]);
+
+  // Auto-save draft so form entries survive navigation / tab switches.
+  // Editing existing places uses server data as source of truth, so we
+  // only save drafts for new entries.
+  const draftKey = fromWishlistId
+    ? `draft:place:wishlist:${fromWishlistId}`
+    : "draft:place:new";
+  const draftSnapshot = useMemo(
+    () => ({
+      name,
+      dateVisited,
+      address,
+      category,
+      memo,
+      wantRevisit,
+      photos,
+      coord,
+      placeLabel,
+    }),
+    [
+      name,
+      dateVisited,
+      address,
+      category,
+      memo,
+      wantRevisit,
+      photos,
+      coord,
+      placeLabel,
+    ]
+  );
+  const draft = useFormDraft({
+    key: draftKey,
+    enabled: !isEdit,
+    snapshot: draftSnapshot,
+    restore: (saved) => {
+      if (saved.name != null) setName(saved.name as string);
+      if (saved.dateVisited != null)
+        setDateVisited(saved.dateVisited as string);
+      if (saved.address != null) setAddress(saved.address as string);
+      if (saved.category != null)
+        setCategory(saved.category as PlaceCategory | null);
+      if (saved.memo != null) setMemo(saved.memo as string);
+      if (saved.wantRevisit != null)
+        setWantRevisit(saved.wantRevisit as boolean);
+      if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
+      if (saved.coord != null)
+        setCoord(saved.coord as { lat: number; lng: number } | null);
+      if (saved.placeLabel != null)
+        setPlaceLabel(saved.placeLabel as string | null);
+    },
+  });
 
   // Prefill from a wishlist item when user clicked "다녀왔어요".
   useEffect(() => {
@@ -98,6 +151,9 @@ export default function PlaceFormPage() {
         console.error("[PlaceFormPage] failed to remove wishlist item:", err);
       }
     }
+    // Draft succeeded → drop the saved snapshot so the next "new" form
+    // doesn't rehydrate stale data.
+    draft.clear();
     navigate(isEdit ? `/places/${id}` : "/", { replace: true });
   }
 

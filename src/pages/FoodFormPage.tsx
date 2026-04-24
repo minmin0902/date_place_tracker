@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCouple } from "@/hooks/useCouple";
 import {
@@ -6,6 +6,7 @@ import {
   usePlace,
   useUpsertFood,
 } from "@/hooks/usePlaces";
+import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { RatingPicker } from "@/components/RatingPicker";
@@ -41,6 +42,31 @@ export default function FoodFormPage() {
     setPhotoUrl(existing.photo_url);
   }, [existing]);
 
+  // Draft: so if the user taps off mid-entry their typed rating / name
+  // is still there when they come back.
+  const draftKey = placeId ? `draft:food:new:${placeId}` : "draft:food:new";
+  const draftSnapshot = useMemo(
+    () => ({ name, myRating, partnerRating, category, memo, photoUrl }),
+    [name, myRating, partnerRating, category, memo, photoUrl]
+  );
+  const draft = useFormDraft({
+    key: draftKey,
+    enabled: !isEdit,
+    snapshot: draftSnapshot,
+    restore: (saved) => {
+      if (saved.name != null) setName(saved.name as string);
+      if (saved.myRating !== undefined)
+        setMyRating(saved.myRating as number | null);
+      if (saved.partnerRating !== undefined)
+        setPartnerRating(saved.partnerRating as number | null);
+      if (saved.category !== undefined)
+        setCategory(saved.category as FoodCategory | null);
+      if (saved.memo != null) setMemo(saved.memo as string);
+      if (saved.photoUrl !== undefined)
+        setPhotoUrl(saved.photoUrl as string | null);
+    },
+  });
+
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f || !couple) return;
@@ -73,6 +99,7 @@ export default function FoodFormPage() {
         photo_url: photoUrl,
       },
     });
+    draft.clear();
     navigate(`/places/${placeId}`, { replace: true });
   }
 

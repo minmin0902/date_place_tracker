@@ -1,0 +1,32 @@
+{
+  "name": "우리의 식탁 · 我们的餐桌",
+  "short_name": "우리의 식탁",
+  "description": "둘이 함께 채우는 맛집 일기 · 咱俩的干饭日记",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF9F5",
+  "theme_color": "#F89570",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

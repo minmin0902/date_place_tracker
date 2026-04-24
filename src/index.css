@@ -3,35 +3,40 @@
 @tailwind utilities;
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    /* Kill the blue/gray flash iOS and Android paint on tap. */
+    -webkit-tap-highlight-color: transparent;
+  }
   html,
   body,
   #root {
     height: 100%;
   }
   html {
-    /* iOS address-bar area; respected by the min-h-full root. */
     -webkit-text-size-adjust: 100%;
+    /* Stop the iOS rubber-band bounce on scroll and on the web page shell. */
+    overscroll-behavior-y: none;
   }
   body {
     @apply bg-cream-50 text-ink-900 antialiased;
     font-feature-settings: "ss01", "ss02";
-    /* System selection color should match the peach/rose palette. */
+    overscroll-behavior-y: none;
     ::selection {
       background: #fde2e4;
     }
   }
   :lang(zh) {
-    font-family: "Noto Sans SC", "Pretendard Variable", "Pretendard", sans-serif;
+    font-family: "PingFang SC", "Noto Sans SC", "Pretendard Variable",
+      "Pretendard", sans-serif;
   }
   :lang(zh) .font-display {
     font-family: "Noto Serif SC", serif;
   }
   button {
     @apply select-none;
-    /* Stops the gray iOS tap flash. */
-    -webkit-tap-highlight-color: transparent;
   }
-  /* Guarantee a 44×44 hit target on mobile — below that is tough to tap. */
   button,
   a[role="button"],
   [type="submit"] {
