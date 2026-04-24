@@ -17,6 +17,30 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
+// Supabase throws PostgrestError (plain object with message/details/hint/code)
+// which is not an Error instance, so default stringification yields
+// "[object Object]". Walk the common shapes and produce something readable.
+function formatError(err: unknown): string {
+  if (err == null) return "unknown error";
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof e.message === "string") parts.push(e.message);
+    if (typeof e.details === "string" && e.details) parts.push(`details: ${e.details}`);
+    if (typeof e.hint === "string" && e.hint) parts.push(`hint: ${e.hint}`);
+    if (typeof e.code === "string" && e.code) parts.push(`code: ${e.code}`);
+    if (parts.length) return parts.join(" · ");
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
 function LoadingScreen({ note, error }: { note: string; error?: string }) {
   return (
     <div className="min-h-full flex items-center justify-center p-6">
@@ -48,14 +72,11 @@ function Gate() {
   }
 
   if (coupleQuery.isError) {
-    const msg =
-      coupleQuery.error instanceof Error
-        ? coupleQuery.error.message
-        : String(coupleQuery.error);
+    console.error("[Gate] couple query error:", coupleQuery.error);
     return (
       <LoadingScreen
         note="커플 정보 불러오기 실패 · 加载情侣信息失败"
-        error={msg}
+        error={formatError(coupleQuery.error)}
       />
     );
   }

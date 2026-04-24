@@ -27,13 +27,17 @@ export function useCouple() {
     queryKey: ["couple", user?.id],
     enabled: !!user,
     queryFn: async (): Promise<Couple | null> => {
+      // Use limit(1) + first-of-array rather than maybeSingle(), because
+      // duplicated couple rows (e.g. if the seed SQL was run twice) would
+      // make maybeSingle() throw with "multiple rows returned".
       const { data, error } = await supabase
         .from("couples")
         .select("*")
         .or(`user1_id.eq.${user!.id},user2_id.eq.${user!.id}`)
-        .maybeSingle();
+        .order("created_at", { ascending: true })
+        .limit(1);
       if (error) throw error;
-      return data;
+      return (data && data[0]) ?? null;
     },
   });
 }
