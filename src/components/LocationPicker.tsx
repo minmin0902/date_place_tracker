@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { APIProvider, Map, AdvancedMarker } from "@vis.gl/react-google-maps";
 import { useTranslation } from "react-i18next";
 import { MapPin, X } from "lucide-react";
+import { Loader } from "@googlemaps/js-api-loader";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 const MAP_ID = "date-place-map";
@@ -17,6 +18,12 @@ export function LocationPicker({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  usePlacesAutocomplete(KEY, inputRef, open, (lat, lng) => {
+    onChange({ lat, lng });
+    // keep UX simple: close modal after selection
+    setOpen(false);
+  });
 
   if (!KEY) {
     return (
@@ -59,6 +66,13 @@ export function LocationPicker({
               </button>
             </div>
             <div className="flex-1 relative">
+                <div className="p-3">
+                  <input
+                    ref={inputRef}
+                    className="input-base w-full"
+                    placeholder={t("place.searchPlaceholder")}
+                  />
+                </div>
               <APIProvider apiKey={KEY}>
                 <Map
                   mapId={MAP_ID}
@@ -105,4 +119,37 @@ export function LocationPicker({
       )}
     </>
   );
+}
+
+// load Places Autocomplete when modal opens
+function usePlacesAutocomplete(
+  key: string | undefined,
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  enabled: boolean,
+  onSelect: (lat: number, lng: number) => void
+) {
+  useEffect(() => {
+    if (!enabled) return;
+    if (!key) return;
+    if (!inputRef.current) return;
+    const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
+    let ac: any = null;
+    let mounted = true;
+    (loader as any).load().then(() => {
+      if (!mounted || !inputRef.current) return;
+      ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
+        fields: ["geometry", "name", "formatted_address", "place_id"],
+      });
+      ac.addListener("place_changed", () => {
+        const place = ac?.getPlace();
+        const loc = place?.geometry?.location;
+        if (loc) onSelect(loc.lat(), loc.lng());
+      });
+    }).catch(() => {
+      // loader failed; do nothing
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [key, inputRef, enabled, onSelect]);
 }

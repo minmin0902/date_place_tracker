@@ -166,6 +166,7 @@ export function useDeleteFood() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (ALLOW_NO_AUTH) return deleteLocalFood(id);
       const { error } = await supabase.from("foods").delete().eq("id", id);
       if (error) throw error;
     },
