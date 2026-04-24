@@ -38,26 +38,56 @@ import { LocationPicker } from "@/components/LocationPicker";
 type Tab = "timeline" | "wishlist";
 type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
 
-// Guess a city label from a freeform address string. Good enough for the
-// usual patterns (Korean "서울 성동구 …", US "…, Providence, RI, USA",
-// Chinese "北京市朝阳区…") — falls back to "기타" when nothing matches.
+// Extract a clean city label from a freeform address. Strips country,
+// state+zip, and street-address-looking tails so we get "Providence"
+// rather than "214 Wickenden St" or "RI 02906".
+const COUNTRY_TOKENS =
+  /^(USA|U\.S\.A\.?|US|United States|UK|United Kingdom|Korea|Republic of Korea|South Korea|Canada|Japan|China|Taiwan|Hong Kong|HK)$/i;
+// "NY 11377", "CA 94103-1234", or a lone zip/postcode.
+const STATE_ZIP =
+  /^(?:[A-Z]{2}\s+)?\d{4,6}(?:-\d{3,4})?$|^[A-Z]{2}\s+\d{4,5}(?:-\d{4})?$/;
+// Common road-type suffix tokens — if a segment contains one of these,
+// it's a street address, not a city.
+const STREET_WORDS =
+  /\b(Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Place|Pl\.?|Square|Sq\.?|Highway|Hwy\.?|Parkway|Pkwy\.?)\b/i;
+
 function inferCity(addr: string | null | undefined): string | null {
   if (!addr) return null;
-  const trimmed = addr.trim();
-  // Korean: first token (usually 시/도/특별시/광역시).
-  const ko = trimmed.match(/^([가-힣]{1,6}(?:특별시|광역시|특별자치시|특별자치도|시|도)?)/);
-  if (ko && /[가-힣]/.test(ko[1])) {
-    return ko[1].replace(/(특별시|광역시|특별자치시|특별자치도)$/, "");
+  const s = addr.trim();
+  if (!s) return null;
+
+  // Korean: 시/도 suffix ("서울특별시", "제주도", "서울시", …).
+  const ko = s.match(
+    /([가-힣]{1,6}(?:특별시|광역시|특별자치시|특별자치도|시|도))/
+  );
+  if (ko) {
+    return ko[1].replace(
+      /(특별시|광역시|특별자치시|특별자치도)$/,
+      ""
+    );
   }
+
   // Chinese: first X市 chunk.
-  const zh = trimmed.match(/^([一-鿿]{2,4}市)/);
+  const zh = s.match(/([一-鿿]{2,6}市)/);
   if (zh) return zh[1];
-  // English / comma-separated: second-to-last meaningful segment is
-  // usually the city ("street, city, state zip, country").
-  const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
-  if (parts.length >= 3) return parts[parts.length - 3] || null;
-  if (parts.length >= 2) return parts[parts.length - 2] || null;
-  return null;
+
+  // English: peel off country, then state+zip, then check the tail for
+  // street keywords. Skip when the remaining candidate still looks like
+  // a street address ("214 Wickenden St").
+  let parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length && COUNTRY_TOKENS.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1);
+  }
+  if (parts.length && STATE_ZIP.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1);
+  }
+  if (!parts.length) return null;
+
+  const candidate = parts[parts.length - 1];
+  if (/^\d/.test(candidate)) return null; // begins with a number → street
+  if (STREET_WORDS.test(candidate)) return null; // obvious street segment
+  if (candidate.length > 40) return null; // almost always a full-address blob
+  return candidate;
 }
 type RouletteSource = "revisit" | "wishlist" | "both";
 type RouletteEntry = {
@@ -93,6 +123,9 @@ export default function HomePage() {
   const [revisitOnly, setRevisitOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("date");
+  const [selectedCities, setSelectedCities] = useState<Set<string>>(
+    () => new Set()
+  );
 
   // Base list: filter first, then sort per viewMode below.
   const baseList = useMemo(() => {
@@ -126,21 +159,60 @@ export default function HomePage() {
     return list;
   }, [baseList, viewMode]);
 
-  // Group by inferred city for the city view.
+  // All cities present in the current (filtered) timeline — feeds the
+  // multi-select chip row when "도시별" is active.
+  const allCities = useMemo(() => {
+    if (viewMode !== "city") return [] as string[];
+    const byCount = new Map<string, number>();
+    for (const p of filteredPlaces) {
+      const city = inferCity(p.address) ?? "기타 · 其他";
+      byCount.set(city, (byCount.get(city) ?? 0) + 1);
+    }
+    return [...byCount.entries()]
+      .sort((a, b) =>
+        b[1] - a[1] !== 0 ? b[1] - a[1] : a[0].localeCompare(b[0])
+      )
+      .map(([c]) => c);
+  }, [filteredPlaces, viewMode]);
+
+  // Drop selected cities that no longer exist in the current filter set.
+  useEffect(() => {
+    if (viewMode !== "city" || selectedCities.size === 0) return;
+    const present = new Set(allCities);
+    let changed = false;
+    const next = new Set<string>();
+    for (const c of selectedCities) {
+      if (present.has(c)) next.add(c);
+      else changed = true;
+    }
+    if (changed) setSelectedCities(next);
+  }, [allCities, viewMode, selectedCities]);
+
+  // Group by inferred city for the city view. Respects any active
+  // multi-select filter — empty set means "show all".
   const cityGroups = useMemo(() => {
     if (viewMode !== "city") return null;
     const bucket = new Map<string, PlaceWithFoods[]>();
     for (const p of filteredPlaces) {
       const city = inferCity(p.address) ?? "기타 · 其他";
+      if (selectedCities.size > 0 && !selectedCities.has(city)) continue;
       if (!bucket.has(city)) bucket.set(city, []);
       bucket.get(city)!.push(p);
     }
-    // Sort cities by their place count desc, then alpha.
     return [...bucket.entries()].sort((a, b) => {
       const byCount = b[1].length - a[1].length;
       return byCount !== 0 ? byCount : a[0].localeCompare(b[0]);
     });
-  }, [filteredPlaces, viewMode]);
+  }, [filteredPlaces, viewMode, selectedCities]);
+
+  function toggleCity(city: string) {
+    setSelectedCities((prev) => {
+      const next = new Set(prev);
+      if (next.has(city)) next.delete(city);
+      else next.add(city);
+      return next;
+    });
+  }
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -277,6 +349,42 @@ export default function HomePage() {
               />
             </div>
 
+            {/* City multi-select — only when 도시별 view is active. Empty
+                selection means "show all"; otherwise the groups render
+                are filtered to the picked cities. */}
+            {viewMode === "city" && allCities.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-5 px-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCities(new Set())}
+                  className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap ${
+                    selectedCities.size === 0
+                      ? "bg-ink-900 text-white border-ink-900"
+                      : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
+                  }`}
+                >
+                  전체 · 全部
+                </button>
+                {allCities.map((c) => {
+                  const active = selectedCities.has(c);
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => toggleCity(c)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap flex items-center gap-1 ${
+                        active
+                          ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
+                          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
+                      }`}
+                    >
+                      📍 {c}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {placesLoading && (
               <p className="text-ink-500 py-8 text-center text-sm">
                 로딩 중... · 加载中...
@@ -295,10 +403,16 @@ export default function HomePage() {
 
             {viewMode === "city" && cityGroups ? (
               <div className="mt-2 space-y-6">
+                {cityGroups.length === 0 && selectedCities.size > 0 && (
+                  <EmptyState
+                    emoji="📍"
+                    text="선택한 도시에 기록이 없어요 · 这个城市还没有记录"
+                  />
+                )}
                 {cityGroups.map(([city, list]) => (
                   <div key={city}>
                     <h3 className="font-sans font-bold text-sm text-ink-700 mb-2 px-1 flex items-center gap-2">
-                      <span>📍 {city}</span>
+                      <span>{city}</span>
                       <span className="text-ink-400 text-xs font-number font-bold">
                         {list.length}
                       </span>
@@ -1015,68 +1129,79 @@ function RouletteModal({
 
   if (!open) return null;
 
-  const sourceButton = (key: RouletteSource, label: string, icon: React.ReactNode) => (
+  const sourceButton = (
+    key: RouletteSource,
+    label: string,
+    icon: React.ReactNode
+  ) => (
     <button
       type="button"
       key={key}
       onClick={() => setSource(key)}
-      className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 ${
+      className={`flex-1 min-w-0 py-2 text-[11px] sm:text-xs font-bold rounded-lg transition flex items-center justify-center gap-1 whitespace-nowrap ${
         source === key
           ? "bg-white shadow-sm text-ink-900"
           : "text-ink-400 hover:text-ink-700"
       }`}
     >
       {icon}
-      {label}
+      <span className="truncate">{label}</span>
     </button>
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+      <div
+        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-5 sm:p-6 shadow-2xl overflow-y-auto"
+        style={{
+          maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 1rem)",
+          paddingBottom:
+            "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
+        }}
+      >
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 bg-cream-100 rounded-full text-ink-500 hover:bg-cream-200 transition"
+          className="absolute top-3 right-3 p-2 bg-cream-100 rounded-full text-ink-500 hover:bg-cream-200 transition"
           aria-label="close"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="text-center mb-4 mt-2">
-          <div className="text-4xl mb-2">🤔</div>
-          <h2 className="text-xl font-sans font-bold text-ink-900">
+        <div className="text-center mb-3 mt-1">
+          <div className="text-3xl sm:text-4xl mb-1.5">🤔</div>
+          <h2 className="text-lg sm:text-xl font-sans font-bold text-ink-900 tracking-tight">
             오늘 뭐 먹지? · 今天吃啥？
           </h2>
         </div>
 
         {/* source tabs */}
-        <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
+        <div className="flex bg-cream-100 p-1 rounded-xl mb-2.5">
           {sourceButton(
             "revisit",
-            "또 갈래 · 必须二刷",
+            "또 갈래 · 二刷",
             <Heart
               className={`w-3.5 h-3.5 ${source === "revisit" ? "fill-rose-400 text-rose-400" : ""}`}
             />
           )}
           {sourceButton(
             "wishlist",
-            "위시리스트 · 种草清单",
+            "가볼래 · 种草",
             <BookmarkPlus className="w-3.5 h-3.5" />
           )}
-          {sourceButton("both", "다 돌려! · 全都要", <Dice5 className="w-3.5 h-3.5" />)}
+          {sourceButton("both", "다 · 全部", <Dice5 className="w-3.5 h-3.5" />)}
         </div>
 
         {/* category chips */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        <div className="flex flex-wrap gap-1 mb-3">
           <button
             type="button"
             onClick={() => setCategoryFilter(null)}
-            className={`chip ${categoryFilter === null ? "chip-active" : ""}`}
+            className={`chip text-[11px] px-2.5 py-0.5 ${categoryFilter === null ? "chip-active" : ""}`}
           >
             전부 · 全部
           </button>
@@ -1087,7 +1212,7 @@ function RouletteModal({
               onClick={() =>
                 setCategoryFilter(categoryFilter === c ? null : c)
               }
-              className={`chip gap-1 ${categoryFilter === c ? "chip-active" : ""}`}
+              className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${categoryFilter === c ? "chip-active" : ""}`}
             >
               <span>{categoryIcon(c)}</span>
               {t(`category.${c}`)}
@@ -1096,7 +1221,7 @@ function RouletteModal({
         </div>
 
         {/* display */}
-        <div className="rounded-2xl h-40 flex items-center justify-center border-2 border-dashed border-rose-200 bg-rose-50 mb-5 relative overflow-hidden">
+        <div className="rounded-2xl h-36 sm:h-40 flex items-center justify-center border-2 border-dashed border-rose-200 bg-rose-50 mb-4 relative overflow-hidden">
           {spinning && (
             <div className="absolute inset-0 flex items-center justify-center text-5xl animate-bounce">
               🎲
@@ -1146,7 +1271,7 @@ function RouletteModal({
             <Link
               to={picked.linkTo}
               onClick={onClose}
-              className="flex-1 text-center font-semibold py-3 rounded-xl border border-cream-200 text-ink-700 hover:bg-cream-50 transition"
+              className="flex-1 min-w-0 text-center font-semibold text-[13px] sm:text-sm py-2.5 rounded-xl border border-cream-200 text-ink-700 hover:bg-cream-50 transition truncate"
             >
               보러가기 · 去看看
             </Link>
@@ -1155,14 +1280,16 @@ function RouletteModal({
             type="button"
             onClick={spin}
             disabled={spinning || pool.length === 0}
-            className="flex-[2] text-white font-bold text-base py-3 rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-peach-400 to-rose-400 shadow-md"
+            className="flex-[2] min-w-0 text-white font-bold text-[14px] sm:text-base py-2.5 rounded-xl flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-peach-400 to-rose-400 shadow-md"
           >
             {spinning ? (
-              <RefreshCw className="w-5 h-5 animate-spin" />
+              <RefreshCw className="w-5 h-5 animate-spin flex-shrink-0" />
             ) : (
-              <Dice5 className="w-5 h-5" />
+              <Dice5 className="w-5 h-5 flex-shrink-0" />
             )}
-            {spinning ? "고르는 중… · 抽取中…" : "운명의 룰렛 · 听天由命"}
+            <span className="truncate">
+              {spinning ? "고르는 중… · 抽取中…" : "운명의 룰렛 · 听天由命"}
+            </span>
           </button>
         </div>
       </div>
