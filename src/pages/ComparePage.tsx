@@ -65,7 +65,7 @@ export default function ComparePage() {
     <div>
       <PageHeader
         title="우리의 입맛 지도 · 我们的口味地图"
-        subtitle="서로의 취향을 분석해봤어요 · 看看彼此的喜好"
+        subtitle="둘이 뭘 좋아하는지 한눈에 · 看看我们俩各自的口味"
       />
       <div className="px-5 space-y-8 pt-2 pb-8">
         <Section
@@ -74,8 +74,8 @@ export default function ComparePage() {
           iconColor="text-rose-500"
           titleKo="💕 천생연분"
           titleZh="灵魂伴侣"
-          descKo="우리 둘 다 극찬한 최고의 맛!"
-          descZh="两人都赞不绝口的最佳美味！"
+          descKo="둘 다 인정한 진짜 맛집"
+          descZh="俩人都赞不绝口的"
           empty={soulmates.length === 0}
           emptyText="아직 없어요 · 还没有"
         >
@@ -89,17 +89,17 @@ export default function ComparePage() {
           iconBg="bg-indigo-100"
           iconColor="text-indigo-500"
           titleKo="🥊 입맛 전쟁"
-          titleZh="口味之争"
-          descKo="호불호가 확실하게 갈린 메뉴들"
-          descZh="意见明显分歧的菜品"
+          titleZh="口味大战"
+          descKo="호불호가 확 갈린 메뉴"
+          descZh="俩人评价差超多的"
           empty={tasteWar.length === 0}
           emptyText="아직 없어요 · 还没有"
         >
           {tasteWar.map((r) => {
             const myFav = r.mine > r.partner;
             const badge = myFav
-              ? "🙋‍♂️ 나의 최애 · 我最爱"
-              : "🙋‍♀️ 상대의 최애 · Ta 最爱";
+              ? "🙋‍♂️ 나의 최애 · 我更爱"
+              : "🙋‍♀️ 상대의 최애 · Ta 更爱";
             return <FoodCard key={r.foodId} r={r} badge={badge} showBalance />;
           })}
         </Section>
@@ -110,9 +110,9 @@ export default function ComparePage() {
             iconBg="bg-cream-200"
             iconColor="text-ink-500"
             titleKo="🙅 다신 안 가"
-            titleZh="再也不去"
-            descKo="우리의 미간을 찌푸리게 한 범인"
-            descZh="让我们皱眉头的菜品"
+            titleZh="不去了"
+            descKo="둘 다 별로였던 곳"
+            descZh="俩人都不喜欢的"
           >
             {neverAgain.map((r) => (
               <FoodCard key={r.foodId} r={r} />
