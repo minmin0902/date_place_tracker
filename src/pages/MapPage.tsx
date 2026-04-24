@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import {
   APIProvider,
   Map,
@@ -51,7 +50,6 @@ function RevisitPin() {
 }
 
 export default function MapPage() {
-  const { t } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,7 +97,7 @@ export default function MapPage() {
   if (!KEY) {
     return (
       <div>
-        <PageHeader title={t("nav.map")} />
+        <PageHeader title="우리의 맛집 지도 · 咱俩的美食地图" />
         <div className="px-5">
           <div className="card p-4 text-sm text-ink-500">
             Google Maps API key가 설정되지 않았어요. <code>.env.local</code>의{" "}
@@ -112,17 +110,17 @@ export default function MapPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] flex flex-col">
-      <PageHeader title={t("nav.map")} />
+      <PageHeader title="우리의 맛집 지도 · 咱俩的美食地图" />
       <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
         {/* Legend overlay — lives on top of the map */}
-        <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] text-ink-700 flex flex-col gap-1">
+        <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] font-bold text-ink-700 flex flex-col gap-1">
           <span className="flex items-center gap-2">
             <span className="inline-block text-base leading-none">📍</span>
             다녀온 곳 · 去过
           </span>
           <span className="flex items-center gap-2">
             <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-peach-400 to-rose-400" />
-            또 갈래 · 想再去
+            또 갈래 · 必须二刷
           </span>
         </div>
         {initialCenter ? (
@@ -187,7 +185,7 @@ export default function MapPage() {
           </APIProvider>
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-ink-500">
-            {t("common.loading")}
+            로딩 중... · 加载中...
           </div>
         )}
       </div>

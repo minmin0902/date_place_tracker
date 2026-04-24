@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import { useCouple } from "@/hooks/useCouple";
 import {
   uploadPhoto,
@@ -14,7 +13,6 @@ import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/constants";
 import { X } from "lucide-react";
 
 export default function FoodFormPage() {
-  const { t } = useTranslation();
   const { id: placeId, foodId } = useParams();
   const isEdit = !!foodId;
   const navigate = useNavigate();
@@ -83,26 +81,26 @@ export default function FoodFormPage() {
   return (
     <div>
       <PageHeader
-        title={isEdit ? t("food.editTitle") : t("food.newTitle")}
+        title={isEdit ? "메뉴 수정 · 修改记录" : "새로운 메뉴 · 记下新菜品"}
         back
       />
       <form onSubmit={onSubmit} className="px-5 space-y-5 pb-6">
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("food.name")} *
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            메뉴 이름 · 菜名 *
           </label>
           <input
             className="input-base"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t("food.namePh")}
+            placeholder="예) 봉골레 파스타 · 例：蛤蜊意面"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("food.category")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            카테고리 · 种类
           </label>
           <CategoryChips
             options={FOOD_CATEGORIES}
@@ -115,8 +113,12 @@ export default function FoodFormPage() {
         <div className="card p-4 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">{t("food.myRating")}</span>
-              <span className="text-xs text-ink-500">{myRating ?? "-"} / 5</span>
+              <span className="text-sm font-bold text-ink-700">
+                나의 별점 · 我的评分
+              </span>
+              <span className="text-xs font-bold text-ink-400 font-number">
+                {myRating ?? "-"} / 5
+              </span>
             </div>
             <RatingPicker
               value={myRating}
@@ -126,10 +128,10 @@ export default function FoodFormPage() {
           </div>
           <div className="border-t border-cream-100 pt-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">
-                {t("food.partnerRating")}
+              <span className="text-sm font-bold text-ink-700">
+                짝꿍 별점 · 宝宝的评分
               </span>
-              <span className="text-xs text-ink-500">
+              <span className="text-xs font-bold text-ink-400 font-number">
                 {partnerRating ?? "-"} / 5
               </span>
             </div>
@@ -141,8 +143,10 @@ export default function FoodFormPage() {
           </div>
           {total > 0 && (
             <div className="pt-3 border-t border-cream-100 flex items-center justify-between">
-              <span className="text-sm font-medium">{t("food.totalScore")}</span>
-              <span className="text-xl font-display font-bold text-peach-500">
+              <span className="text-sm font-bold text-ink-700">
+                합계 · 总分
+              </span>
+              <span className="text-xl font-number font-bold text-peach-500">
                 {total} / 10
               </span>
             </div>
@@ -150,8 +154,8 @@ export default function FoodFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("food.photo")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            사진 · 美照
           </label>
           {photoUrl ? (
             <div className="relative w-32 h-32">
@@ -176,7 +180,7 @@ export default function FoodFormPage() {
                 hidden
                 onChange={(e) => void onFile(e)}
               />
-              {busy ? t("common.loading") : "+"}
+              {busy ? "로딩 중... · 上传中..." : "+"}
             </label>
           )}
           {photoError && (
@@ -187,8 +191,8 @@ export default function FoodFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("food.memo")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            메모 · 备注
           </label>
           <textarea
             className="input-base min-h-[80px]"
@@ -202,7 +206,7 @@ export default function FoodFormPage() {
           className="btn-primary w-full"
           disabled={upsert.isPending || !name.trim()}
         >
-          {t("common.save")}
+          저장 · 保存
         </button>
       </form>
     </div>

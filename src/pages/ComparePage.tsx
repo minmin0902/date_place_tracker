@@ -99,7 +99,7 @@ export default function ComparePage() {
             const myFav = r.mine > r.partner;
             const badge = myFav
               ? "🙋‍♂️ 나의 최애 · 我更爱"
-              : "🙋‍♀️ 상대의 최애 · Ta 更爱";
+              : "🙋‍♀️ 짝꿍의 최애 · 宝宝更爱";
             return <FoodCard key={r.foodId} r={r} badge={badge} showBalance />;
           })}
         </Section>
@@ -228,7 +228,7 @@ function FoodCard({
             leading={r.mine >= r.partner}
           />
           <RatingTile
-            label="상대 · Ta"
+            label="짝꿍 · 宝宝"
             value={r.partner}
             tone="rose"
             leading={r.partner >= r.mine}
@@ -285,7 +285,7 @@ function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
         <span
           className={partner > mine ? "text-rose-500" : "text-ink-400"}
         >
-          상대 · Ta (<span className="font-number font-bold">{partner.toFixed(1)}</span>)
+          짝꿍 · 宝宝 (<span className="font-number font-bold">{partner.toFixed(1)}</span>)
         </span>
       </div>
       <div className="w-full h-4 bg-cream-100 rounded-full flex overflow-hidden border border-cream-200">

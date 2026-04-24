@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import { Heart } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,7 +12,6 @@ import { LocationPicker } from "@/components/LocationPicker";
 import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
 
 export default function PlaceFormPage() {
-  const { t } = useTranslation();
   const { id } = useParams();
   const isEdit = !!id;
   const navigate = useNavigate();
@@ -106,13 +104,13 @@ export default function PlaceFormPage() {
   return (
     <div>
       <PageHeader
-        title={isEdit ? t("place.editTitle") : t("place.newTitle")}
+        title={isEdit ? "기록 수정 · 修改记录" : "새로운 맛집 · 记下新地方"}
         back
       />
       <form onSubmit={onSubmit} className="px-5 space-y-5 pb-6">
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.location")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            위치 · 定位
           </label>
           <LocationPicker
             value={coord}
@@ -130,21 +128,21 @@ export default function PlaceFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.name")} *
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            상호명 · 店名 *
           </label>
           <input
             className="input-base"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t("place.namePh")}
+            placeholder="예) 블루보틀 · 例：蓝瓶咖啡"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.dateVisited")} *
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            방문 날짜 · 打卡日期 *
           </label>
           <input
             type="date"
@@ -156,8 +154,8 @@ export default function PlaceFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.category")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            카테고리 · 种类
           </label>
           <CategoryChips
             options={PLACE_CATEGORIES}
@@ -168,20 +166,20 @@ export default function PlaceFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.address")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            주소 · 地址
           </label>
           <input
             className="input-base"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder={t("place.addressPh")}
+            placeholder="예) 서울시 성동구... · 例：首尔市城东区..."
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.photos")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            사진 · 美照
           </label>
           {couple && (
             <PhotoUploader
@@ -193,14 +191,14 @@ export default function PlaceFormPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1.5">
-            {t("place.memo")}
+          <label className="block text-sm font-bold mb-1.5 text-ink-700">
+            메모 · 备注
           </label>
           <textarea
             className="input-base min-h-[100px]"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            placeholder={t("place.memoPh")}
+            placeholder="기념일에 다녀옴! · 纪念日打卡！"
           />
         </div>
 
@@ -211,11 +209,11 @@ export default function PlaceFormPage() {
             wantRevisit ? "!bg-rose-100 !border-rose-200" : ""
           }`}
         >
-          <span className="flex items-center gap-2 font-medium">
+          <span className="flex items-center gap-2 font-bold text-ink-700">
             <Heart
               className={`w-5 h-5 ${wantRevisit ? "fill-rose-400 text-rose-400" : "text-ink-500"}`}
             />
-            {t("place.wantRevisit")}
+            또 올래! 맛집으로 찜하기 · 标记为“必须二刷”
           </span>
           <span
             className={`w-11 h-6 rounded-full transition relative ${wantRevisit ? "bg-rose-400" : "bg-cream-200"}`}
@@ -227,7 +225,7 @@ export default function PlaceFormPage() {
         </button>
 
         <button type="submit" className="btn-primary w-full" disabled={upsert.isPending}>
-          {t("common.save")}
+          저장 · 保存
         </button>
       </form>
     </div>

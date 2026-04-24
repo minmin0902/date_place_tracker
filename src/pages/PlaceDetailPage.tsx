@@ -296,7 +296,6 @@ function FoodCard({
   placeId: string;
   onDelete: (id: string) => void;
 }) {
-  const { t } = useTranslation();
   const my = food.my_rating ?? 0;
   const partner = food.partner_rating ?? 0;
   const total = my + partner;
@@ -337,13 +336,13 @@ function FoodCard({
           <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-peach-400" />
-              {t("food.myRating")}{" "}
+              나 · 我{" "}
               <span className="font-number font-bold">
                 {food.my_rating != null ? my.toFixed(1) : "-"}
               </span>
             </span>
             <span className="flex items-center gap-1">
-              {t("food.partnerRating")}{" "}
+              짝꿍 · 宝宝{" "}
               <span className="font-number font-bold">
                 {food.partner_rating != null ? partner.toFixed(1) : "-"}
               </span>

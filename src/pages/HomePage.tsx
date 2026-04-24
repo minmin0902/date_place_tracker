@@ -67,7 +67,7 @@ function avgTotal(p: PlaceWithFoods): number | null {
 }
 
 export default function HomePage() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
@@ -139,7 +139,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h1 className="text-[26px] font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
-              {t("app.title")}
+              우리의 식탁 · 我们的餐桌
             </h1>
             <p className="text-[10px] text-ink-400 font-bold tracking-[0.2em] uppercase font-number">
               Couple Food Diary
@@ -160,7 +160,7 @@ export default function HomePage() {
             <input
               autoFocus
               className="input-base"
-              placeholder={t("common.search")}
+              placeholder="이름이나 메모로 검색 · 搜索店名或备注"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -173,13 +173,13 @@ export default function HomePage() {
             active={tab === "timeline"}
             accent="ink"
             onClick={() => setTab("timeline")}
-            label="발자취 · 足迹 👣"
+            label="발자취 · 我们的足迹 👣"
           />
           <TabButton
             active={tab === "wishlist"}
             accent="peach"
             onClick={() => setTab("wishlist")}
-            label="위시리스트 · 心愿单 📝"
+            label="위시리스트 · 种草清单 📝"
             count={wishlist?.length}
           />
         </div>
@@ -192,7 +192,7 @@ export default function HomePage() {
 
             <div className="flex items-center justify-between mt-8 mb-5 px-1 gap-2">
               <h2 className="font-display font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
-                <span>다녀온 곳 · 去过</span>
+                <span>다녀온 곳 · 干饭足迹</span>
                 <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
                   {filteredPlaces.length}
                 </span>
@@ -209,13 +209,13 @@ export default function HomePage() {
                 <Heart
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
-                또 갈래! 맛집 · 只看想再去
+                또 갈래! 맛집 · 必须二刷
               </button>
             </div>
 
             {placesLoading && (
               <p className="text-ink-500 py-8 text-center text-sm">
-                {t("common.loading")}
+                로딩 중... · 加载中...
               </p>
             )}
             {!placesLoading && filteredPlaces.length === 0 && (
@@ -223,8 +223,8 @@ export default function HomePage() {
                 emoji={revisitOnly ? "💖" : "🍽️"}
                 text={
                   revisitOnly
-                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没有想再去的地方"
-                    : t("common.empty")
+                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的地方"
+                    : "아직 다녀온 곳이 없어요 · 还没有记录"
                 }
               />
             )}
@@ -358,7 +358,7 @@ function StatsDashboard({
     <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[2rem] p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
       <div className="flex flex-col gap-1 min-w-0">
         <span className="text-[11px] font-bold text-rose-500 tracking-widest uppercase">
-          우리의 기록 · 我们的记录
+          우리의 맛집 기록 · 干饭成就
         </span>
         <div className="mt-1">
           <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
@@ -372,7 +372,7 @@ function StatsDashboard({
       <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
       <div className="flex flex-col gap-1 items-end min-w-0">
         <span className="text-[11px] font-bold text-peach-500 tracking-widest uppercase">
-          자주 찾은 · 最常吃
+          자주 찾은 메뉴 · 最常翻牌
         </span>
         {stats.topCategory ? (
           <div className="mt-1 flex items-center gap-1.5">
@@ -456,7 +456,7 @@ function TimelineItem({
                 </span>
               ) : (
                 <span className="text-[11px] text-ink-400">
-                  아직 평가 전 · 还没评分
+                  아직 평가 전 · 等待打分
                 </span>
               )}
               <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2.5 py-1 rounded-lg">
@@ -532,7 +532,7 @@ function WishlistView({
     return (
       <EmptyState
         emoji="📝"
-        text="가고 싶은 곳을 추가해봐요 · 加几个想去的地方吧"
+        text="위시리스트를 채워봐요 · 赶紧种种草吧"
       />
     );
   }
@@ -617,7 +617,7 @@ function WishlistCard({
               ) : (
                 <CheckCircle2 className="w-3.5 h-3.5" />
               )}
-              {busy ? "옮기는 중… · 收藏中…" : "다녀왔어요 · 我们去过了"}
+              {busy ? "옮기는 중… · 记录中…" : "다녀왔어요! · 拔草成功"}
             </button>
           </div>
         </div>
@@ -674,7 +674,7 @@ function WishlistAddSheet({
       <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-bold text-lg">
-            가고 싶은 곳 · 加进心愿单
+            위시리스트 · 种草清单
           </h2>
           <button
             type="button"
@@ -942,17 +942,17 @@ function RouletteModal({
         <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
           {sourceButton(
             "revisit",
-            "또 갈래 · 又想去",
+            "또 갈래 · 必须二刷",
             <Heart
               className={`w-3.5 h-3.5 ${source === "revisit" ? "fill-rose-400 text-rose-400" : ""}`}
             />
           )}
           {sourceButton(
             "wishlist",
-            "가볼래 · 想去",
+            "위시리스트 · 种草清单",
             <BookmarkPlus className="w-3.5 h-3.5" />
           )}
-          {sourceButton("both", "다 · 都来", <Dice5 className="w-3.5 h-3.5" />)}
+          {sourceButton("both", "다 돌려! · 全都要", <Dice5 className="w-3.5 h-3.5" />)}
         </div>
 
         {/* category chips */}
@@ -1005,8 +1005,8 @@ function RouletteModal({
               ) : (
                 <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
                   {picked.kind === "revisit"
-                    ? "또 갈래 · 又想去"
-                    : "가볼래 · 想去看看"}
+                    ? "또 갈래 · 必须二刷"
+                    : "위시리스트 · 种草清单"}
                 </p>
               )}
               {picked.memo && (
@@ -1020,7 +1020,7 @@ function RouletteModal({
             <p className="text-sm text-ink-400 text-center px-4">
               조건에 맞는 곳이 없어요
               <br />
-              这个条件下没东西可挑
+              没找到符合条件的
             </p>
           )}
         </div>
@@ -1046,7 +1046,7 @@ function RouletteModal({
             ) : (
               <Dice5 className="w-5 h-5" />
             )}
-            {spinning ? "고르는 중… · 转一下…" : "랜덤 뽑기 · 随便来一个"}
+            {spinning ? "고르는 중… · 抽取中…" : "운명의 룰렛 · 听天由命"}
           </button>
         </div>
       </div>
