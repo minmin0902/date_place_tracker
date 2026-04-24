@@ -10,11 +10,11 @@ type LocalDB = {
 // Pre-seeded couple for local no-auth dev: both partners are pinned so the app
 // skips LoginPage and CoupleSetupPage on first load.
 export const LOCAL_USER_1_EMAIL = "mjjy0902@gmail.com";
-export const LOCAL_USER_2_EMAIL = "yuhanluo2025@gmail.com";
+export const LOCAL_USER_2_EMAIL = "luoyuhan2025@gmail.com";
 
 // Bump the storage key whenever the seed shape changes so stale dev data from
 // an earlier version gets discarded automatically.
-const KEY = "local_db_v4";
+const KEY = "local_db_v5";
 
 // Fixed ids so the seed is idempotent across reloads.
 const SEED_COUPLE_ID = "seed-couple-1";
