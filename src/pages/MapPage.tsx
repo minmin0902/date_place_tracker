@@ -7,7 +7,6 @@ import {
   AdvancedMarker,
   InfoWindow,
 } from "@vis.gl/react-google-maps";
-import { Heart } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
@@ -17,6 +16,39 @@ const MAP_ID = "date-place-map";
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // Seoul fallback
 
 type LatLng = { lat: number; lng: number };
+
+// Teardrop-shaped pin with a heart, rendered as SVG so the tail points at
+// the exact lat/lng (no emoji-font quirks across platforms).
+function RevisitPin() {
+  return (
+    <div className="relative -translate-y-1 drop-shadow-md">
+      <svg
+        width="34"
+        height="44"
+        viewBox="0 0 34 44"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="revisit pin"
+      >
+        <defs>
+          <linearGradient id="revisitPinFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#F89570" />
+            <stop offset="1" stopColor="#E47C88" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M17 0 C8 0 1 7 1 16 C1 26 12 35 16 42 C16.4 42.7 17.6 42.7 18 42 C22 35 33 26 33 16 C33 7 26 0 17 0 Z"
+          fill="url(#revisitPinFill)"
+          stroke="white"
+          strokeWidth="2"
+        />
+        <path
+          d="M17 24 C14.5 21.5 10 19 10 14.5 C10 12 12 10 14.3 10 C15.6 10 16.5 10.6 17 11.4 C17.5 10.6 18.4 10 19.7 10 C22 10 24 12 24 14.5 C24 19 19.5 21.5 17 24 Z"
+          fill="white"
+        />
+      </svg>
+    </div>
+  );
+}
 
 export default function MapPage() {
   const { t } = useTranslation();
@@ -82,6 +114,17 @@ export default function MapPage() {
     <div className="h-[calc(100vh-5rem)] flex flex-col">
       <PageHeader title={t("nav.map")} />
       <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
+        {/* Legend overlay — lives on top of the map */}
+        <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] text-ink-700 flex flex-col gap-1">
+          <span className="flex items-center gap-2">
+            <span className="inline-block text-base leading-none">📍</span>
+            다녀온 곳 · 去过
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-peach-400 to-rose-400" />
+            또 갈래 · 想再去
+          </span>
+        </div>
         {initialCenter ? (
           <APIProvider apiKey={KEY}>
             <Map
@@ -104,11 +147,14 @@ export default function MapPage() {
                   key={p.id}
                   position={{ lat: p.latitude!, lng: p.longitude! }}
                   onClick={() => setSelectedId(p.id)}
+                  title={
+                    p.want_to_revisit
+                      ? `${p.name} · 또 갈래 · 想再去`
+                      : p.name
+                  }
                 >
                   {p.want_to_revisit ? (
-                    <div className="relative flex items-center justify-center w-10 h-10 rounded-full bg-rose-400 border-2 border-white shadow-lg text-white">
-                      <Heart className="w-5 h-5 fill-current" />
-                    </div>
+                    <RevisitPin />
                   ) : (
                     <div className="text-3xl drop-shadow">📍</div>
                   )}
