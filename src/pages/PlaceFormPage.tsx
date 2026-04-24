@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Heart } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { useAuth } from "@/hooks/useAuth";
 import { usePlace, useUpsertPlace } from "@/hooks/usePlaces";
+import { fetchWishlistItem, useDeleteWishlist } from "@/hooks/useWishlist";
 import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { PhotoUploader } from "@/components/PhotoUploader";
@@ -16,10 +17,13 @@ export default function PlaceFormPage() {
   const { id } = useParams();
   const isEdit = !!id;
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const fromWishlistId = searchParams.get("fromWishlist");
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: existing } = usePlace(id);
   const upsert = useUpsertPlace();
+  const deleteWishlist = useDeleteWishlist();
 
   const [name, setName] = useState("");
   const [dateVisited, setDateVisited] = useState(() =>
@@ -48,6 +52,21 @@ export default function PlaceFormPage() {
     }
   }, [existing]);
 
+  // Prefill from a wishlist item when user clicked "다녀왔어요".
+  useEffect(() => {
+    if (isEdit || !fromWishlistId) return;
+    let cancelled = false;
+    void fetchWishlistItem(fromWishlistId).then((w) => {
+      if (cancelled || !w) return;
+      setName(w.name);
+      if (w.category) setCategory(w.category as PlaceCategory);
+      if (w.memo) setMemo(w.memo);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromWishlistId, isEdit]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!couple || !user) return;
@@ -67,6 +86,15 @@ export default function PlaceFormPage() {
         photo_urls: photos.length ? photos : null,
       },
     });
+    // If this place was promoted from a wishlist item, drop the wishlist
+    // entry so it doesn't stay in "가고 싶은 곳" after we've been.
+    if (!isEdit && fromWishlistId) {
+      try {
+        await deleteWishlist.mutateAsync(fromWishlistId);
+      } catch (err) {
+        console.error("[PlaceFormPage] failed to remove wishlist item:", err);
+      }
+    }
     navigate(isEdit ? `/places/${id}` : "/", { replace: true });
   }
 

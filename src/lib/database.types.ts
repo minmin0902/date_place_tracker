@@ -74,6 +74,28 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["couples"]["Insert"]>;
       };
+      wishlist_places: {
+        Row: {
+          id: string;
+          couple_id: string;
+          name: string;
+          category: string | null;
+          memo: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          couple_id: string;
+          name: string;
+          category?: string | null;
+          memo?: string | null;
+          created_by?: string | null;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["wishlist_places"]["Insert"]
+        >;
+      };
     };
   };
 };
@@ -81,3 +103,5 @@ export type Database = {
 export type Place = Database["public"]["Tables"]["places"]["Row"];
 export type Food = Database["public"]["Tables"]["foods"]["Row"];
 export type Couple = Database["public"]["Tables"]["couples"]["Row"];
+export type WishlistPlace =
+  Database["public"]["Tables"]["wishlist_places"]["Row"];

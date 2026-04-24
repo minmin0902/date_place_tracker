@@ -1,9 +1,10 @@
-import type { Couple, Place, Food } from "./database.types";
+import type { Couple, Place, Food, WishlistPlace } from "./database.types";
 
 type LocalDB = {
   couples: Couple[];
   places: Place[];
   foods: Food[];
+  wishlist: WishlistPlace[];
   photos: Record<string, string>; // path -> dataURL
 };
 
@@ -14,7 +15,7 @@ export const LOCAL_USER_2_EMAIL = "luoyuhan2025@gmail.com";
 
 // Bump the storage key whenever the seed shape changes so stale dev data from
 // an earlier version gets discarded automatically.
-const KEY = "local_db_v5";
+const KEY = "local_db_v6";
 
 // Fixed ids so the seed is idempotent across reloads.
 const SEED_COUPLE_ID = "seed-couple-1";
@@ -81,6 +82,7 @@ function makeSeedDb(): LocalDB {
       mkFood("Pistachio & ube latte", 3.8, 4.5),
       mkFood("iced americano", 3.6, 1),
     ],
+    wishlist: [],
     photos: {},
   };
 }
@@ -209,6 +211,46 @@ export function deleteFood(id: string) {
   const db = load();
   db.foods = db.foods.filter((f) => f.id !== id);
   save(db);
+}
+
+export function getWishlist(coupleId: string): WishlistPlace[] {
+  const db = load();
+  return (db.wishlist ?? [])
+    .filter((w) => w.couple_id === coupleId)
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+}
+
+export function addWishlist(input: {
+  coupleId: string;
+  userId: string;
+  name: string;
+  category: string | null;
+  memo: string | null;
+}): WishlistPlace {
+  const db = load();
+  const item: WishlistPlace = {
+    id: crypto.randomUUID(),
+    couple_id: input.coupleId,
+    name: input.name,
+    category: input.category,
+    memo: input.memo,
+    created_by: input.userId,
+    created_at: new Date().toISOString(),
+  };
+  db.wishlist = [...(db.wishlist ?? []), item];
+  save(db);
+  return item;
+}
+
+export function deleteWishlist(id: string) {
+  const db = load();
+  db.wishlist = (db.wishlist ?? []).filter((w) => w.id !== id);
+  save(db);
+}
+
+export function getWishlistItem(id: string): WishlistPlace | null {
+  const db = load();
+  return (db.wishlist ?? []).find((w) => w.id === id) ?? null;
 }
 
 export async function uploadPhoto(file: File, coupleId: string): Promise<string> {

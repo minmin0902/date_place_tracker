@@ -2,25 +2,39 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  BookmarkPlus,
+  CheckCircle2,
   Dice5,
   Heart,
   MapPin,
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import {
+  useAddWishlist,
+  useDeleteWishlist,
+  useWishlist,
+} from "@/hooks/useWishlist";
+import type { WishlistPlace } from "@/lib/database.types";
+import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 
-function avgTotal(p: PlaceWithFoods): number | null {
-  const scores = (p.foods ?? [])
-    .map((f) => (f.my_rating ?? 0) + (f.partner_rating ?? 0))
-    .filter((n) => n > 0);
-  if (!scores.length) return null;
-  return scores.reduce((a, b) => a + b, 0) / scores.length;
-}
+type Tab = "timeline" | "wishlist";
+type RouletteSource = "revisit" | "wishlist" | "both";
+type RouletteEntry = {
+  kind: "revisit" | "wishlist";
+  id: string;
+  name: string;
+  category: string | null;
+  avgScore: number | null;
+  memo: string | null;
+  linkTo: string;
+};
 
 const CATEGORY_ICONS: Record<string, string> = {
   korean: "🍚",
@@ -33,36 +47,60 @@ const CATEGORY_ICONS: Record<string, string> = {
   bar: "🍷",
   other: "🍽️",
 };
+
 function categoryIcon(cat: string | null | undefined) {
   return (cat && CATEGORY_ICONS[cat]) || "🍽️";
+}
+
+function avgTotal(p: PlaceWithFoods): number | null {
+  const scores = (p.foods ?? [])
+    .map((f) => (f.my_rating ?? 0) + (f.partner_rating ?? 0))
+    .filter((n) => n > 0);
+  if (!scores.length) return null;
+  return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
 export default function HomePage() {
   const { t, i18n } = useTranslation();
   const { data: couple } = useCouple();
-  const { data: places, isLoading } = usePlaces(couple?.id);
+  const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
+  const { data: wishlist } = useWishlist(couple?.id);
+
+  const [tab, setTab] = useState<Tab>("timeline");
   const [query, setQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
+  const [addWishlistOpen, setAddWishlistOpen] = useState(false);
 
-  const sorted = useMemo(() => {
+  const sortedPlaces = useMemo(() => {
     if (!places) return [];
     return [...places].sort((a, b) =>
       a.date_visited < b.date_visited ? 1 : -1
     );
   }, [places]);
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return sorted;
+  const filteredPlaces = useMemo(() => {
+    if (!query.trim()) return sortedPlaces;
     const q = query.toLowerCase();
-    return sorted.filter((p) => {
+    return sortedPlaces.filter((p) => {
       const hay = `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
       const foodHit = (p.foods ?? []).some((f) =>
         f.name.toLowerCase().includes(q)
       );
       return hay.includes(q) || foodHit;
     });
-  }, [sorted, query]);
+  }, [sortedPlaces, query]);
+
+  const filteredWishlist = useMemo(() => {
+    if (!wishlist) return [];
+    if (!query.trim()) return wishlist;
+    const q = query.toLowerCase();
+    return wishlist.filter(
+      (w) =>
+        w.name.toLowerCase().includes(q) ||
+        (w.memo ?? "").toLowerCase().includes(q)
+    );
+  }, [wishlist, query]);
 
   const stats = useMemo(() => {
     if (!places || places.length === 0) {
@@ -84,15 +122,10 @@ export default function HomePage() {
     return { total: places.length, topCategory, topCount };
   }, [places]);
 
-  const revisitList = useMemo(
-    () => (places ?? []).filter((p) => p.want_to_revisit),
-    [places]
-  );
-
   return (
     <div className="relative">
-      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-cream-200 px-5 pt-5 pb-4">
-        <div className="flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-cream-200 px-5 pt-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate">
               {t("app.title")}
@@ -110,8 +143,9 @@ export default function HomePage() {
             <Search className="w-5 h-5" />
           </button>
         </div>
+
         {showSearch && (
-          <div className="mt-3">
+          <div className="mb-3">
             <input
               autoFocus
               className="input-base"
@@ -121,47 +155,71 @@ export default function HomePage() {
             />
           </div>
         )}
+
+        {/* Main tabs */}
+        <div className="flex gap-5">
+          <TabButton
+            active={tab === "timeline"}
+            accent="rose"
+            onClick={() => setTab("timeline")}
+            label="우리의 발자취 · 我们的足迹 👣"
+          />
+          <TabButton
+            active={tab === "wishlist"}
+            accent="peach"
+            onClick={() => setTab("wishlist")}
+            label="가고 싶은 곳 · 想去 📝"
+            count={wishlist?.length}
+          />
+        </div>
       </header>
 
       <main className="px-5 py-5">
-        <StatsDashboard stats={stats} />
+        {tab === "timeline" ? (
+          <>
+            <StatsDashboard stats={stats} />
 
-        <div className="flex items-center justify-between mt-8 mb-4 px-1">
-          <h2 className="font-display font-bold text-base text-ink-900">
-            우리의 발자취 · 我们的足迹 👣
-          </h2>
-          {filtered.length > 0 && (
-            <span className="text-xs text-ink-400">{filtered.length}</span>
-          )}
-        </div>
+            <div className="flex items-center justify-between mt-7 mb-4 px-1">
+              <h2 className="font-display font-bold text-base text-ink-900">
+                방문 기록 · 访问记录
+              </h2>
+              {filteredPlaces.length > 0 && (
+                <span className="text-xs text-ink-400">
+                  {filteredPlaces.length}
+                </span>
+              )}
+            </div>
 
-        {isLoading && (
-          <p className="text-ink-500 py-8 text-center text-sm">
-            {t("common.loading")}
-          </p>
+            {placesLoading && (
+              <p className="text-ink-500 py-8 text-center text-sm">
+                {t("common.loading")}
+              </p>
+            )}
+            {!placesLoading && filteredPlaces.length === 0 && (
+              <EmptyState emoji="🍽️" text={t("common.empty")} />
+            )}
+
+            <div className="mt-2">
+              {filteredPlaces.map((p, idx) => (
+                <TimelineItem
+                  key={p.id}
+                  place={p}
+                  locale={i18n.language}
+                  isLast={idx === filteredPlaces.length - 1}
+                  tKey={t}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <WishlistView
+            items={filteredWishlist}
+            couple_id={couple?.id}
+          />
         )}
-
-        {!isLoading && filtered.length === 0 && (
-          <div className="py-14 text-center bg-white rounded-3xl border border-dashed border-cream-200">
-            <div className="text-5xl mb-3">🍽️</div>
-            <p className="text-ink-500 text-sm">{t("common.empty")}</p>
-          </div>
-        )}
-
-        <div className="mt-2">
-          {filtered.map((p, idx) => (
-            <TimelineItem
-              key={p.id}
-              place={p}
-              locale={i18n.language}
-              isLast={idx === filtered.length - 1}
-              tKey={t}
-            />
-          ))}
-        </div>
       </main>
 
-      {/* Floating action cluster — sits above the bottom nav (pb-20). */}
+      {/* Floating action cluster */}
       <div className="fixed bottom-24 left-0 right-0 z-30 pointer-events-none px-5">
         <div className="max-w-md mx-auto flex justify-between items-end">
           <button
@@ -172,24 +230,84 @@ export default function HomePage() {
           >
             <Dice5 className="w-7 h-7" />
           </button>
-          <Link
-            to="/places/new"
-            className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-br from-peach-400 to-rose-400 text-white shadow-[0_8px_30px_rgba(249,168,212,0.5)] flex items-center justify-center active:scale-90 transition"
-            aria-label="add place"
-          >
-            <Plus className="w-7 h-7" />
-          </Link>
+          {tab === "timeline" ? (
+            <Link
+              to="/places/new"
+              className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-br from-peach-400 to-rose-400 text-white shadow-[0_8px_30px_rgba(249,168,212,0.5)] flex items-center justify-center active:scale-90 transition"
+              aria-label="add place"
+            >
+              <Plus className="w-7 h-7" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddWishlistOpen(true)}
+              className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-peach-400 text-white shadow-[0_8px_30px_rgba(249,168,212,0.5)] flex items-center justify-center active:scale-90 transition"
+              aria-label="add wishlist"
+            >
+              <BookmarkPlus className="w-7 h-7" />
+            </button>
+          )}
         </div>
       </div>
 
       <RouletteModal
         open={rouletteOpen}
         onClose={() => setRouletteOpen(false)}
-        revisitList={revisitList}
+        places={places ?? []}
+        wishlist={wishlist ?? []}
       />
+
+      {addWishlistOpen && couple && (
+        <WishlistAddSheet
+          coupleId={couple.id}
+          onClose={() => setAddWishlistOpen(false)}
+        />
+      )}
     </div>
   );
 }
+
+// ---------- tab button ----------
+
+function TabButton({
+  active,
+  accent,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  accent: "rose" | "peach";
+  onClick: () => void;
+  label: string;
+  count?: number;
+}) {
+  const underline = accent === "rose" ? "bg-rose-400" : "bg-peach-400";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative pb-3 text-sm font-semibold transition whitespace-nowrap ${
+        active ? "text-ink-900" : "text-ink-400 hover:text-ink-700"
+      }`}
+    >
+      {label}
+      {count != null && count > 0 && (
+        <span className="ml-1 text-[10px] text-ink-400 font-medium">
+          {count}
+        </span>
+      )}
+      {active && (
+        <span
+          className={`absolute left-0 right-0 bottom-0 h-0.5 ${underline} rounded-t-full`}
+        />
+      )}
+    </button>
+  );
+}
+
+// ---------- stats ----------
 
 function StatsDashboard({
   stats,
@@ -222,6 +340,8 @@ function StatsDashboard({
   );
 }
 
+// ---------- timeline card ----------
+
 function TimelineItem({
   place,
   locale,
@@ -236,11 +356,9 @@ function TimelineItem({
   const avg = avgTotal(place);
   return (
     <div className="relative pl-6 pb-6">
-      {/* vertical connector line */}
       {!isLast && (
         <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-rose-200" />
       )}
-      {/* dot */}
       <div className="absolute left-0 top-2 w-6 h-6 rounded-full bg-white border-[3px] border-rose-400 z-[1]" />
 
       <div className="mb-1.5 pl-2">
@@ -299,52 +417,374 @@ function TimelineItem({
   );
 }
 
+// ---------- wishlist view + card ----------
+
+function WishlistView({
+  items,
+  couple_id,
+}: {
+  items: WishlistPlace[];
+  couple_id: string | undefined;
+}) {
+  const { t } = useTranslation();
+  const del = useDeleteWishlist();
+
+  async function onDelete(id: string) {
+    if (!confirm(t("common.confirmDelete"))) return;
+    await del.mutateAsync(id);
+  }
+
+  if (!couple_id) return null;
+
+  if (items.length === 0) {
+    return (
+      <>
+        <WishlistHint />
+        <EmptyState
+          emoji="📝"
+          text="가고 싶은 곳을 추가해보세요 · 添加想去的地方"
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <WishlistHint />
+      <div className="space-y-3">
+        {items.map((item) => (
+          <WishlistCard
+            key={item.id}
+            item={item}
+            onDelete={() => void onDelete(item.id)}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function WishlistHint() {
+  return (
+    <div className="bg-peach-50 rounded-2xl p-4 mb-5 border border-peach-200 flex items-start gap-3">
+      <span className="text-2xl">💡</span>
+      <div className="min-w-0">
+        <h3 className="text-sm font-bold text-peach-600">
+          위시리스트를 채워보세요 · 来填满心愿单吧
+        </h3>
+        <p className="text-xs text-peach-600/80 mt-1 leading-relaxed">
+          인스타·틱톡에서 본 맛집들을 모아두면 데이트 코스 짤 때 편해요.
+          <br />
+          把 Instagram、小红书上看到的美食存起来，约会挑地点时超方便。
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function WishlistCard({
+  item,
+  onDelete,
+}: {
+  item: WishlistPlace;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-peach-100 shadow-soft relative overflow-hidden">
+      <button
+        type="button"
+        onClick={onDelete}
+        className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-rose-50 text-rose-400"
+        aria-label="delete"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+      <div className="flex items-start gap-3 pr-8">
+        <div className="w-12 h-12 rounded-xl bg-peach-50 flex items-center justify-center text-2xl flex-shrink-0">
+          {categoryIcon(item.category)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-ink-900 text-base truncate">
+            {item.name}
+          </h3>
+          {item.category && (
+            <p className="text-[11px] text-peach-500 mt-0.5 font-medium">
+              {t(`category.${item.category}`)}
+            </p>
+          )}
+          {item.memo && (
+            <p className="text-xs text-ink-500 mt-1 whitespace-pre-wrap">
+              {item.memo}
+            </p>
+          )}
+          <div className="mt-3">
+            <Link
+              to={`/places/new?fromWishlist=${item.id}`}
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              다녀왔어요 · 已去过
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- wishlist add sheet ----------
+
+function WishlistAddSheet({
+  coupleId,
+  onClose,
+}: {
+  coupleId: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const add = useAddWishlist();
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<PlaceCategory | null>(null);
+  const [memo, setMemo] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setErr(null);
+    try {
+      await add.mutateAsync({
+        coupleId,
+        name: name.trim(),
+        category,
+        memo: memo.trim() || null,
+      });
+      onClose();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div
+        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display font-bold text-lg">
+            가고 싶은 곳 추가 · 添加想去
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 bg-cream-100 rounded-full text-ink-500"
+            aria-label="close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              이름 · 名字 *
+            </label>
+            <input
+              autoFocus
+              className="input-base"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예) 남산 뷰 카페"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.category")}
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {PLACE_CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() =>
+                    setCategory(category === c ? null : (c as PlaceCategory))
+                  }
+                  className={`chip gap-1 ${category === c ? "chip-active" : ""}`}
+                >
+                  <span>{categoryIcon(c)}</span>
+                  {t(`category.${c}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              메모 · 备注
+            </label>
+            <textarea
+              className="input-base min-h-[70px]"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="인스타에서 봤음! / 在小红书上看到的"
+            />
+          </div>
+
+          {err && <p className="text-xs text-rose-500">{err}</p>}
+
+          <button
+            type="submit"
+            disabled={!name.trim() || add.isPending}
+            className="btn-primary w-full"
+          >
+            <BookmarkPlus className="w-5 h-5" />
+            저장 · 保存
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------- generic empty ----------
+
+function EmptyState({ emoji, text }: { emoji: string; text: string }) {
+  return (
+    <div className="py-14 text-center bg-white rounded-3xl border border-dashed border-cream-200">
+      <div className="text-5xl mb-3">{emoji}</div>
+      <p className="text-ink-500 text-sm">{text}</p>
+    </div>
+  );
+}
+
+// ---------- roulette ----------
+
 function RouletteModal({
   open,
   onClose,
-  revisitList,
+  places,
+  wishlist,
 }: {
   open: boolean;
   onClose: () => void;
-  revisitList: PlaceWithFoods[];
+  places: PlaceWithFoods[];
+  wishlist: WishlistPlace[];
 }) {
-  const [picked, setPicked] = useState<PlaceWithFoods | null>(null);
+  const { t } = useTranslation();
+  const [source, setSource] = useState<RouletteSource>("both");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [picked, setPicked] = useState<RouletteEntry | null>(null);
   const [spinning, setSpinning] = useState(false);
 
-  // Reset state when opened / closed.
+  const revisitEntries: RouletteEntry[] = useMemo(
+    () =>
+      places
+        .filter((p) => p.want_to_revisit)
+        .map((p) => ({
+          kind: "revisit" as const,
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          avgScore: avgTotal(p),
+          memo: null,
+          linkTo: `/places/${p.id}`,
+        })),
+    [places]
+  );
+
+  const wishlistEntries: RouletteEntry[] = useMemo(
+    () =>
+      wishlist.map((w) => ({
+        kind: "wishlist" as const,
+        id: w.id,
+        name: w.name,
+        category: w.category,
+        avgScore: null,
+        memo: w.memo,
+        linkTo: `/places/new?fromWishlist=${w.id}`,
+      })),
+    [wishlist]
+  );
+
+  // Union of categories present in whichever source(s) are active.
+  const availableCategories = useMemo(() => {
+    const pool: RouletteEntry[] = [];
+    if (source === "revisit" || source === "both") pool.push(...revisitEntries);
+    if (source === "wishlist" || source === "both") pool.push(...wishlistEntries);
+    const cats = new Set<string>();
+    for (const e of pool) {
+      if (e.category) cats.add(e.category);
+    }
+    return Array.from(cats);
+  }, [source, revisitEntries, wishlistEntries]);
+
+  const pool = useMemo(() => {
+    const out: RouletteEntry[] = [];
+    if (source === "revisit" || source === "both") out.push(...revisitEntries);
+    if (source === "wishlist" || source === "both") out.push(...wishlistEntries);
+    if (categoryFilter) return out.filter((e) => e.category === categoryFilter);
+    return out;
+  }, [source, revisitEntries, wishlistEntries, categoryFilter]);
+
+  // If the selected category is no longer in the active source, drop the filter.
+  useEffect(() => {
+    if (categoryFilter && !availableCategories.includes(categoryFilter)) {
+      setCategoryFilter(null);
+    }
+  }, [categoryFilter, availableCategories]);
+
+  // Reset on open/close, and seed a teaser pick when the pool changes.
   useEffect(() => {
     if (!open) {
       setPicked(null);
       setSpinning(false);
       return;
     }
-    if (revisitList.length > 0) {
-      setPicked(revisitList[Math.floor(Math.random() * revisitList.length)]);
+    if (pool.length > 0) {
+      setPicked(pool[Math.floor(Math.random() * pool.length)]);
     } else {
       setPicked(null);
     }
-  }, [open, revisitList]);
+  }, [open, source, categoryFilter, pool.length]);
 
   function spin() {
-    if (revisitList.length === 0 || spinning) return;
+    if (pool.length === 0 || spinning) return;
     setSpinning(true);
     setPicked(null);
     let count = 0;
     const interval = window.setInterval(() => {
-      setPicked(revisitList[count % revisitList.length]);
+      setPicked(pool[count % pool.length]);
       count++;
       if (count > 15) {
         window.clearInterval(interval);
-        const winner =
-          revisitList[Math.floor(Math.random() * revisitList.length)];
-        setPicked(winner);
+        setPicked(pool[Math.floor(Math.random() * pool.length)]);
         setSpinning(false);
       }
     }, 100);
   }
 
   if (!open) return null;
-  const avg = picked ? avgTotal(picked) : null;
+
+  const sourceButton = (key: RouletteSource, label: string, icon: React.ReactNode) => (
+    <button
+      type="button"
+      key={key}
+      onClick={() => setSource(key)}
+      className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 ${
+        source === key
+          ? "bg-white shadow-sm text-ink-900"
+          : "text-ink-400 hover:text-ink-700"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -362,17 +802,56 @@ function RouletteModal({
           <X className="w-5 h-5" />
         </button>
 
-        <div className="text-center mb-5 mt-2">
+        <div className="text-center mb-4 mt-2">
           <div className="text-4xl mb-2">🤔</div>
           <h2 className="text-xl font-display font-bold text-ink-900">
             오늘 뭐 먹지? · 今天吃什么？
           </h2>
-          <p className="text-[11px] text-ink-400 mt-1">
-            재방문 하트 찍은 곳 중 랜덤 · 从“想再去”里随机选一个
-          </p>
         </div>
 
-        <div className="rounded-2xl h-44 flex items-center justify-center border-2 border-dashed border-rose-200 bg-rose-50 mb-6 relative overflow-hidden">
+        {/* source tabs */}
+        <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
+          {sourceButton(
+            "revisit",
+            "또 갈래 · 再去",
+            <Heart
+              className={`w-3.5 h-3.5 ${source === "revisit" ? "fill-rose-400 text-rose-400" : ""}`}
+            />
+          )}
+          {sourceButton(
+            "wishlist",
+            "가볼래 · 想去",
+            <BookmarkPlus className="w-3.5 h-3.5" />
+          )}
+          {sourceButton("both", "둘 다 · 全部", <Dice5 className="w-3.5 h-3.5" />)}
+        </div>
+
+        {/* category chips */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <button
+            type="button"
+            onClick={() => setCategoryFilter(null)}
+            className={`chip ${categoryFilter === null ? "chip-active" : ""}`}
+          >
+            전체 · 全部
+          </button>
+          {availableCategories.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() =>
+                setCategoryFilter(categoryFilter === c ? null : c)
+              }
+              className={`chip gap-1 ${categoryFilter === c ? "chip-active" : ""}`}
+            >
+              <span>{categoryIcon(c)}</span>
+              {t(`category.${c}`)}
+            </button>
+          ))}
+        </div>
+
+        {/* display */}
+        <div className="rounded-2xl h-40 flex items-center justify-center border-2 border-dashed border-rose-200 bg-rose-50 mb-5 relative overflow-hidden">
           {spinning && (
             <div className="absolute inset-0 flex items-center justify-center text-5xl animate-bounce">
               🎲
@@ -386,26 +865,33 @@ function RouletteModal({
               <h3 className="font-display font-bold text-lg text-ink-900 px-2 truncate">
                 {picked.name}
               </h3>
-              {avg !== null && (
-                <p className="text-xs text-rose-500 mt-1 font-medium">
-                  ⭐ {avg.toFixed(1)} / 10
+              <p className="text-[11px] text-rose-500 mt-1 font-medium">
+                {picked.kind === "revisit"
+                  ? picked.avgScore !== null
+                    ? `⭐ ${picked.avgScore.toFixed(1)} / 10 · 또 갈래`
+                    : "또 갈래 · 再去"
+                  : "가볼래 · 想去"}
+              </p>
+              {picked.memo && (
+                <p className="text-[11px] text-ink-500 mt-1 truncate max-w-[220px] mx-auto">
+                  {picked.memo}
                 </p>
               )}
             </div>
           )}
-          {!spinning && revisitList.length === 0 && (
+          {!spinning && pool.length === 0 && (
             <p className="text-sm text-ink-400 text-center px-4">
-              아직 재방문 체크한 곳이 없어요
+              해당 조건의 장소가 없어요
               <br />
-              还没有“想再去”的地方
+              没有符合条件的地方
             </p>
           )}
         </div>
 
         <div className="flex gap-2">
-          {picked && !spinning && revisitList.length > 0 && (
+          {picked && !spinning && pool.length > 0 && (
             <Link
-              to={`/places/${picked.id}`}
+              to={picked.linkTo}
               onClick={onClose}
               className="flex-1 text-center font-semibold py-3 rounded-xl border border-cream-200 text-ink-700 hover:bg-cream-50 transition"
             >
@@ -415,7 +901,7 @@ function RouletteModal({
           <button
             type="button"
             onClick={spin}
-            disabled={spinning || revisitList.length === 0}
+            disabled={spinning || pool.length === 0}
             className="flex-[2] text-white font-bold text-base py-3 rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-60 disabled:cursor-not-allowed bg-gradient-to-r from-peach-400 to-rose-400 shadow-md"
           >
             {spinning ? (
@@ -423,9 +909,7 @@ function RouletteModal({
             ) : (
               <Dice5 className="w-5 h-5" />
             )}
-            {spinning
-              ? "고르는 중… · 选择中…"
-              : "랜덤 뽑기 · 随机选"}
+            {spinning ? "고르는 중… · 选择中…" : "랜덤 뽑기 · 随机选"}
           </button>
         </div>
       </div>
