@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-cream-50 text-ink-900 antialiased;
+    font-feature-settings: "ss01", "ss02";
+  }
+  :lang(zh) {
+    font-family: "Noto Sans SC", "Pretendard", sans-serif;
+  }
+  :lang(zh) .font-display {
+    font-family: "Noto Serif SC", serif;
+  }
+  button {
+    @apply select-none;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl shadow-card border border-cream-200;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+           bg-peach-400 text-white font-medium shadow-soft
+           active:scale-95 transition disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl
+           text-ink-700 hover:bg-cream-100 active:scale-95 transition;
+  }
+  .input-base {
+    @apply w-full px-4 py-3 rounded-xl bg-white border border-cream-200
+           text-ink-900 placeholder:text-ink-300
+           focus:outline-none focus:border-peach-300 focus:ring-2 focus:ring-peach-100 transition;
+  }
+  .chip {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium
+           bg-cream-100 text-ink-700 border border-cream-200;
+  }
+  .chip-active {
+    @apply bg-peach-200 text-ink-900 border-peach-300;
+  }
+  .safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 1rem);
+  }
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
