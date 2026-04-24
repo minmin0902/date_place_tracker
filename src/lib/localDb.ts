@@ -221,6 +221,20 @@ export async function uploadPhoto(file: File, coupleId: string): Promise<string>
   const path = `${coupleId}/${crypto.randomUUID()}`;
   const db = load();
   db.photos[path] = dataUrl;
-  save(db);
+  try {
+    save(db);
+  } catch (e: unknown) {
+    // localStorage is typically ~5-10MB — a single phone photo can exceed
+    // that. Surface a clear message so the UI can show the user why.
+    const isQuota =
+      e instanceof DOMException &&
+      (e.name === "QuotaExceededError" || e.code === 22);
+    if (isQuota) {
+      throw new Error(
+        "사진이 너무 커서 브라우저 저장소에 안 들어가요. 더 작은 사진으로 시도하거나, Supabase 모드로 배포된 사이트에서 올려주세요."
+      );
+    }
+    throw e;
+  }
   return dataUrl;
 }

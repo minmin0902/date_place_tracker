@@ -31,6 +31,7 @@ export default function FoodFormPage() {
   const [memo, setMemo] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!existing) return;
@@ -46,9 +47,13 @@ export default function FoodFormPage() {
     const f = e.target.files?.[0];
     if (!f || !couple) return;
     setBusy(true);
+    setPhotoError(null);
     try {
       const url = await uploadPhoto(f, couple.id);
       setPhotoUrl(url);
+    } catch (err) {
+      console.error("[FoodFormPage] photo upload failed:", err);
+      setPhotoError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
       e.target.value = "";
@@ -173,6 +178,11 @@ export default function FoodFormPage() {
               />
               {busy ? t("common.loading") : "+"}
             </label>
+          )}
+          {photoError && (
+            <p className="text-xs text-rose-500 mt-2 break-words">
+              {photoError}
+            </p>
           )}
         </div>
 
