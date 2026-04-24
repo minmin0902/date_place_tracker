@@ -17,28 +17,50 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
+function LoadingScreen({ note, error }: { note: string; error?: string }) {
+  return (
+    <div className="min-h-full flex items-center justify-center p-6">
+      <div className="max-w-md w-full text-center space-y-3">
+        <div className="text-3xl animate-pulse">🍜</div>
+        <p className="text-sm text-ink-500">{note}</p>
+        {error && (
+          <div className="text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-xl p-3 text-left break-words">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Gate() {
   const { user, loading } = useAuth();
-  const { data: couple, isLoading: coupleLoading } = useCouple();
+  const coupleQuery = useCouple();
 
   if (loading) {
-    return (
-      <div className="min-h-full flex items-center justify-center text-ink-500">
-        …
-      </div>
-    );
+    return <LoadingScreen note="인증 확인 중… · 检查登录状态…" />;
   }
 
   if (!user) return <LoginPage />;
 
-  if (coupleLoading) {
+  if (coupleQuery.isLoading || coupleQuery.isFetching) {
+    return <LoadingScreen note="커플 정보 불러오는 중… · 加载情侣信息…" />;
+  }
+
+  if (coupleQuery.isError) {
+    const msg =
+      coupleQuery.error instanceof Error
+        ? coupleQuery.error.message
+        : String(coupleQuery.error);
     return (
-      <div className="min-h-full flex items-center justify-center text-ink-500">
-        …
-      </div>
+      <LoadingScreen
+        note="커플 정보 불러오기 실패 · 加载情侣信息失败"
+        error={msg}
+      />
     );
   }
 
+  const couple = coupleQuery.data;
   const hasPartner = couple?.user2_id && couple.user1_id !== couple.user2_id;
   if (!couple || !hasPartner) {
     return <CoupleSetupPage />;
