@@ -152,7 +152,7 @@ function Section({
       <div className="flex items-center gap-3 mb-3">
         <div className={`p-2 rounded-full ${iconBg} ${iconColor}`}>{icon}</div>
         <div>
-          <h2 className="font-display font-bold text-lg leading-tight">
+          <h2 className="font-sans font-bold text-lg leading-tight">
             {titleKo}
             <span className="ml-2 text-ink-400 text-base font-medium">
               · {titleZh}

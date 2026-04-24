@@ -39,7 +39,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <div className="text-center mb-10">
             <div className="text-5xl mb-3">🍜</div>
-            <h1 className="text-3xl font-display font-black tracking-tight">
+            <h1 className="text-3xl font-sans font-black tracking-tight">
               우리의 식탁 · 我们的餐桌
             </h1>
             <p className="text-ink-500 mt-2 font-medium">

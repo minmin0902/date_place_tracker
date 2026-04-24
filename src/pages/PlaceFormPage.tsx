@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { LocationPicker } from "@/components/LocationPicker";
-import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
+import { PLACE_CATEGORIES } from "@/lib/constants";
 
 export default function PlaceFormPage() {
   const { id } = useParams();
@@ -29,7 +29,7 @@ export default function PlaceFormPage() {
     new Date().toISOString().slice(0, 10)
   );
   const [address, setAddress] = useState("");
-  const [category, setCategory] = useState<PlaceCategory | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [wantRevisit, setWantRevisit] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -41,7 +41,7 @@ export default function PlaceFormPage() {
     setName(existing.name);
     setDateVisited(existing.date_visited);
     setAddress(existing.address ?? "");
-    setCategory((existing.category as PlaceCategory) ?? null);
+    setCategory(existing.category ?? null);
     setMemo(existing.memo ?? "");
     setWantRevisit(existing.want_to_revisit);
     setPhotos(existing.photo_urls ?? []);
@@ -91,7 +91,7 @@ export default function PlaceFormPage() {
         setDateVisited(saved.dateVisited as string);
       if (saved.address != null) setAddress(saved.address as string);
       if (saved.category != null)
-        setCategory(saved.category as PlaceCategory | null);
+        setCategory(saved.category as string | null);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (saved.wantRevisit != null)
         setWantRevisit(saved.wantRevisit as boolean);
@@ -110,7 +110,7 @@ export default function PlaceFormPage() {
     void fetchWishlistItem(fromWishlistId).then((w) => {
       if (cancelled || !w) return;
       setName(w.name);
-      if (w.category) setCategory(w.category as PlaceCategory);
+      if (w.category) setCategory(w.category);
       if (w.memo) setMemo(w.memo);
       if (w.address) setAddress(w.address);
       if (w.latitude != null && w.longitude != null) {
@@ -218,6 +218,7 @@ export default function PlaceFormPage() {
             value={category}
             onChange={setCategory}
             scope="category"
+            customKey="other"
           />
         </div>
 

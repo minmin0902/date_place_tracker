@@ -26,11 +26,38 @@ import {
   useWishlist,
 } from "@/hooks/useWishlist";
 import type { WishlistPlace } from "@/lib/database.types";
-import { PLACE_CATEGORIES, type PlaceCategory } from "@/lib/constants";
+import {
+  PLACE_CATEGORIES,
+  categoryEmojiOf,
+} from "@/lib/constants";
+import { CategoryChips } from "@/components/CategoryChips";
 import { formatDate } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
+type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
+
+// Guess a city label from a freeform address string. Good enough for the
+// usual patterns (Korean "서울 성동구 …", US "…, Providence, RI, USA",
+// Chinese "北京市朝阳区…") — falls back to "기타" when nothing matches.
+function inferCity(addr: string | null | undefined): string | null {
+  if (!addr) return null;
+  const trimmed = addr.trim();
+  // Korean: first token (usually 시/도/특별시/광역시).
+  const ko = trimmed.match(/^([가-힣]{1,6}(?:특별시|광역시|특별자치시|특별자치도|시|도)?)/);
+  if (ko && /[가-힣]/.test(ko[1])) {
+    return ko[1].replace(/(특별시|광역시|특별자치시|특별자치도)$/, "");
+  }
+  // Chinese: first X市 chunk.
+  const zh = trimmed.match(/^([一-鿿]{2,4}市)/);
+  if (zh) return zh[1];
+  // English / comma-separated: second-to-last meaningful segment is
+  // usually the city ("street, city, state zip, country").
+  const parts = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 3) return parts[parts.length - 3] || null;
+  if (parts.length >= 2) return parts[parts.length - 2] || null;
+  return null;
+}
 type RouletteSource = "revisit" | "wishlist" | "both";
 type RouletteEntry = {
   kind: "revisit" | "wishlist";
@@ -42,21 +69,7 @@ type RouletteEntry = {
   linkTo: string;
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  korean: "🍚",
-  japanese: "🍣",
-  chinese: "🥟",
-  italian: "🍝",
-  western: "🍔",
-  cafe: "☕",
-  dessert: "🍰",
-  bar: "🍷",
-  other: "🍽️",
-};
-
-function categoryIcon(cat: string | null | undefined) {
-  return (cat && CATEGORY_ICONS[cat]) || "🍽️";
-}
+const categoryIcon = categoryEmojiOf;
 
 function avgTotal(p: PlaceWithFoods): number | null {
   const scores = (p.foods ?? [])
@@ -78,16 +91,12 @@ export default function HomePage() {
   const [rouletteOpen, setRouletteOpen] = useState(false);
   const [revisitOnly, setRevisitOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("date");
 
-  const sortedPlaces = useMemo(() => {
+  // Base list: filter first, then sort per viewMode below.
+  const baseList = useMemo(() => {
     if (!places) return [];
-    return [...places].sort((a, b) =>
-      a.date_visited < b.date_visited ? 1 : -1
-    );
-  }, [places]);
-
-  const filteredPlaces = useMemo(() => {
-    let list = sortedPlaces;
+    let list = places;
     if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -100,7 +109,37 @@ export default function HomePage() {
       });
     }
     return list;
-  }, [sortedPlaces, query, revisitOnly]);
+  }, [places, query, revisitOnly]);
+
+  const filteredPlaces = useMemo(() => {
+    const list = [...baseList];
+    if (viewMode === "scoreDesc") {
+      list.sort((a, b) => (avgTotal(b) ?? -1) - (avgTotal(a) ?? -1));
+    } else if (viewMode === "scoreAsc") {
+      list.sort((a, b) => (avgTotal(a) ?? Infinity) - (avgTotal(b) ?? Infinity));
+    } else {
+      // Default "date" and "city" both sort by date first; "city" also
+      // groups downstream so order inside a group is date-desc.
+      list.sort((a, b) => (a.date_visited < b.date_visited ? 1 : -1));
+    }
+    return list;
+  }, [baseList, viewMode]);
+
+  // Group by inferred city for the city view.
+  const cityGroups = useMemo(() => {
+    if (viewMode !== "city") return null;
+    const bucket = new Map<string, PlaceWithFoods[]>();
+    for (const p of filteredPlaces) {
+      const city = inferCity(p.address) ?? "기타 · 其他";
+      if (!bucket.has(city)) bucket.set(city, []);
+      bucket.get(city)!.push(p);
+    }
+    // Sort cities by their place count desc, then alpha.
+    return [...bucket.entries()].sort((a, b) => {
+      const byCount = b[1].length - a[1].length;
+      return byCount !== 0 ? byCount : a[0].localeCompare(b[0]);
+    });
+  }, [filteredPlaces, viewMode]);
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -138,7 +177,7 @@ export default function HomePage() {
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <h1 className="text-[26px] font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
+            <h1 className="text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
               우리의 식탁 · 我们的餐桌
             </h1>
             <p className="text-[10px] text-ink-400 font-bold tracking-[0.2em] uppercase font-number">
@@ -190,8 +229,8 @@ export default function HomePage() {
           <>
             <StatsDashboard stats={stats} />
 
-            <div className="flex items-center justify-between mt-8 mb-5 px-1 gap-2">
-              <h2 className="font-display font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
+            <div className="flex items-center justify-between mt-8 mb-3 px-1 gap-2">
+              <h2 className="font-sans font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
                 <span>다녀온 곳 · 干饭足迹</span>
                 <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
                   {filteredPlaces.length}
@@ -213,6 +252,30 @@ export default function HomePage() {
               </button>
             </div>
 
+            {/* View mode selector: date / score / city */}
+            <div className="flex flex-wrap gap-1.5 mb-5 px-1">
+              <ViewChip
+                active={viewMode === "date"}
+                onClick={() => setViewMode("date")}
+                label="최근순 · 时间顺"
+              />
+              <ViewChip
+                active={viewMode === "scoreDesc"}
+                onClick={() => setViewMode("scoreDesc")}
+                label="별점 높은순 · 评分高到低"
+              />
+              <ViewChip
+                active={viewMode === "scoreAsc"}
+                onClick={() => setViewMode("scoreAsc")}
+                label="별점 낮은순 · 评分低到高"
+              />
+              <ViewChip
+                active={viewMode === "city"}
+                onClick={() => setViewMode("city")}
+                label="도시별 · 按城市"
+              />
+            </div>
+
             {placesLoading && (
               <p className="text-ink-500 py-8 text-center text-sm">
                 로딩 중... · 加载中...
@@ -229,16 +292,41 @@ export default function HomePage() {
               />
             )}
 
-            <div className="mt-2">
-              {filteredPlaces.map((p, idx) => (
-                <TimelineItem
-                  key={p.id}
-                  place={p}
-                  locale={i18n.language}
-                  isLast={idx === filteredPlaces.length - 1}
-                />
-              ))}
-            </div>
+            {viewMode === "city" && cityGroups ? (
+              <div className="mt-2 space-y-6">
+                {cityGroups.map(([city, list]) => (
+                  <div key={city}>
+                    <h3 className="font-sans font-bold text-sm text-ink-700 mb-2 px-1 flex items-center gap-2">
+                      <span>📍 {city}</span>
+                      <span className="text-ink-400 text-xs font-number font-bold">
+                        {list.length}
+                      </span>
+                    </h3>
+                    <div>
+                      {list.map((p, idx) => (
+                        <TimelineItem
+                          key={p.id}
+                          place={p}
+                          locale={i18n.language}
+                          isLast={idx === list.length - 1}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2">
+                {filteredPlaces.map((p, idx) => (
+                  <TimelineItem
+                    key={p.id}
+                    place={p}
+                    locale={i18n.language}
+                    isLast={idx === filteredPlaces.length - 1}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -297,6 +385,30 @@ export default function HomePage() {
 }
 
 // ---------- tab button ----------
+
+function ViewChip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-[12px] font-semibold transition border whitespace-nowrap ${
+        active
+          ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
+          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 function TabButton({
   active,
@@ -638,7 +750,7 @@ function WishlistAddSheet({
   const { t } = useTranslation();
   const add = useAddWishlist();
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<PlaceCategory | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [address, setAddress] = useState<string>("");
@@ -673,7 +785,7 @@ function WishlistAddSheet({
       />
       <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display font-bold text-lg">
+          <h2 className="font-sans font-bold text-lg">
             위시리스트 · 种草清单
           </h2>
           <button
@@ -735,21 +847,13 @@ function WishlistAddSheet({
             <label className="block text-xs font-semibold mb-1.5 text-ink-700">
               {t("place.category")}
             </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PLACE_CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() =>
-                    setCategory(category === c ? null : (c as PlaceCategory))
-                  }
-                  className={`chip gap-1 ${category === c ? "chip-active" : ""}`}
-                >
-                  <span>{categoryIcon(c)}</span>
-                  {t(`category.${c}`)}
-                </button>
-              ))}
-            </div>
+            <CategoryChips
+              options={PLACE_CATEGORIES}
+              value={category}
+              onChange={setCategory}
+              scope="category"
+              customKey="other"
+            />
           </div>
 
           <div>
@@ -933,7 +1037,7 @@ function RouletteModal({
 
         <div className="text-center mb-4 mt-2">
           <div className="text-4xl mb-2">🤔</div>
-          <h2 className="text-xl font-display font-bold text-ink-900">
+          <h2 className="text-xl font-sans font-bold text-ink-900">
             오늘 뭐 먹지? · 今天吃啥？
           </h2>
         </div>
@@ -991,7 +1095,7 @@ function RouletteModal({
               <span className="text-3xl block mb-2">
                 {categoryIcon(picked.category)}
               </span>
-              <h3 className="font-display font-bold text-lg text-ink-900 px-2 truncate">
+              <h3 className="font-sans font-bold text-lg text-ink-900 px-2 truncate">
                 {picked.name}
               </h3>
               {picked.kind === "revisit" && picked.avgScore !== null ? (

@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate } from "@/lib/utils";
+import { categoryEmojiOf, isKnownPlaceCategory } from "@/lib/constants";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -149,9 +150,11 @@ export default function PlaceDetailPage() {
 
           {place.category && (
             <div className="p-4 rounded-3xl bg-white border border-cream-200 flex flex-col items-center justify-center gap-2 shadow-soft">
-              <span className="text-3xl">{categoryEmoji(place.category)}</span>
+              <span className="text-3xl">{categoryEmojiOf(place.category)}</span>
               <span className="text-sm font-medium text-ink-700">
-                {t(`category.${place.category}`)}
+                {isKnownPlaceCategory(place.category)
+                  ? t(`category.${place.category}`)
+                  : place.category}
               </span>
             </div>
           )}
@@ -196,7 +199,7 @@ export default function PlaceDetailPage() {
         {/* Foods */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-bold text-lg flex items-baseline gap-2">
+            <h2 className="font-sans font-bold text-lg flex items-baseline gap-2">
               {t("place.foods")}
               <span className="text-peach-400 text-sm">{foods.length}</span>
             </h2>
@@ -407,17 +410,3 @@ function CoupleBar({ mine, partner }: { mine: number; partner: number }) {
   );
 }
 
-function categoryEmoji(cat: string): string {
-  const map: Record<string, string> = {
-    korean: "🍚",
-    japanese: "🍣",
-    chinese: "🥟",
-    italian: "🍝",
-    western: "🍔",
-    cafe: "☕",
-    dessert: "🍰",
-    bar: "🍷",
-    other: "🍽️",
-  };
-  return map[cat] ?? "🍽️";
-}

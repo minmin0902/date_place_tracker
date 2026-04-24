@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
-import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/constants";
+import { FOOD_CATEGORIES } from "@/lib/constants";
 
 export default function FoodFormPage() {
   const { id: placeId, foodId } = useParams();
@@ -22,7 +22,7 @@ export default function FoodFormPage() {
   const [name, setName] = useState("");
   const [myRating, setMyRating] = useState<number | null>(null);
   const [partnerRating, setPartnerRating] = useState<number | null>(null);
-  const [category, setCategory] = useState<FoodCategory | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
 
@@ -31,7 +31,7 @@ export default function FoodFormPage() {
     setName(existing.name);
     setMyRating(existing.my_rating);
     setPartnerRating(existing.partner_rating);
-    setCategory((existing.category as FoodCategory) ?? null);
+    setCategory(existing.category ?? null);
     setMemo(existing.memo ?? "");
     // Prefer the new photo_urls array, fall back to the legacy single-photo
     // column for foods saved before the migration.
@@ -60,7 +60,7 @@ export default function FoodFormPage() {
       if (saved.partnerRating !== undefined)
         setPartnerRating(saved.partnerRating as number | null);
       if (saved.category !== undefined)
-        setCategory(saved.category as FoodCategory | null);
+        setCategory(saved.category as string | null);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
     },
@@ -119,6 +119,7 @@ export default function FoodFormPage() {
             value={category}
             onChange={setCategory}
             scope="category"
+            customKey="other"
           />
         </div>
 

@@ -25,11 +25,11 @@ export function PageHeader({
         </button>
       )}
       <div className="flex-1 min-w-0">
-        <h1 className="text-2xl font-display font-bold text-ink-900 truncate">
+        <h1 className="text-2xl font-sans font-black text-ink-900 truncate tracking-tight">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-ink-500 mt-0.5">{subtitle}</p>
+          <p className="text-sm text-ink-500 mt-0.5 font-medium">{subtitle}</p>
         )}
       </div>
       {right}
