@@ -301,6 +301,14 @@ function FoodCard({
   const total = my + partner;
   const diff = Math.abs(my - partner);
 
+  // Normalize: prefer photo_urls, fall back to the legacy single column.
+  const photos: string[] =
+    food.photo_urls && food.photo_urls.length > 0
+      ? food.photo_urls
+      : food.photo_url
+        ? [food.photo_url]
+        : [];
+
   return (
     <div className="card p-4 relative">
       <div className="absolute top-3 right-3 flex gap-1">
@@ -330,6 +338,19 @@ function FoodCard({
           </div>
         )}
       </div>
+
+      {photos.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 mb-3 pb-1">
+          {photos.map((url) => (
+            <img
+              key={url}
+              src={url}
+              alt=""
+              className="h-24 w-24 object-cover rounded-xl flex-shrink-0 border border-cream-100"
+            />
+          ))}
+        </div>
+      )}
 
       {(food.my_rating != null || food.partner_rating != null) && (
         <>

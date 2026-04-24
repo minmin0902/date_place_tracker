@@ -460,7 +460,7 @@ function TimelineItem({
                 </span>
               )}
               <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2.5 py-1 rounded-lg">
-                메뉴 <span className="font-number font-bold">{(place.foods ?? []).length}</span>개
+                메뉴 <span className="font-number font-bold">{(place.foods ?? []).length}</span>개 · 菜品 <span className="font-number font-bold">{(place.foods ?? []).length}</span>
               </span>
             </div>
           </div>

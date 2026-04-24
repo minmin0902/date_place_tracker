@@ -43,7 +43,10 @@ export type Database = {
           partner_rating: number | null;
           category: string | null;
           memo: string | null;
+          // Legacy single-photo column, kept for back-compat. Prefer
+          // photo_urls for reads/writes.
           photo_url: string | null;
+          photo_urls: string[] | null;
           created_at: string;
         };
         Insert: {
@@ -55,6 +58,7 @@ export type Database = {
           category?: string | null;
           memo?: string | null;
           photo_url?: string | null;
+          photo_urls?: string[] | null;
         };
         Update: Partial<Database["public"]["Tables"]["foods"]["Insert"]>;
       };

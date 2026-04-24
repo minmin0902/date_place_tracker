@@ -70,6 +70,7 @@ function makeSeedDb(): LocalDB {
       category: null,
       memo: null,
       photo_url: null,
+      photo_urls: null,
       created_at: now,
     }) as Food;
 
@@ -200,6 +201,7 @@ export function upsertFood(input: any) {
     category: input.values.category ?? null,
     memo: input.values.memo ?? null,
     photo_url: input.values.photo_url ?? null,
+    photo_urls: input.values.photo_urls ?? null,
     created_at: now,
   } as Food;
   db.foods.push(food);

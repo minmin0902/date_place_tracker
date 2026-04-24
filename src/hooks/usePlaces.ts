@@ -134,6 +134,7 @@ export function useUpsertFood() {
         category: string | null;
         memo: string | null;
         photo_url: string | null;
+        photo_urls: string[] | null;
       };
     }) => {
       if (ALLOW_NO_AUTH) return upsertLocalFood(input);

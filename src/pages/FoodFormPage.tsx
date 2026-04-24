@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useCouple } from "@/hooks/useCouple";
-import {
-  uploadPhoto,
-  usePlace,
-  useUpsertFood,
-} from "@/hooks/usePlaces";
+import { usePlace, useUpsertFood } from "@/hooks/usePlaces";
 import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
 import { CategoryChips } from "@/components/CategoryChips";
 import { RatingPicker } from "@/components/RatingPicker";
+import { PhotoUploader } from "@/components/PhotoUploader";
 import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/constants";
-import { X } from "lucide-react";
 
 export default function FoodFormPage() {
   const { id: placeId, foodId } = useParams();
@@ -28,9 +24,7 @@ export default function FoodFormPage() {
   const [partnerRating, setPartnerRating] = useState<number | null>(null);
   const [category, setCategory] = useState<FoodCategory | null>(null);
   const [memo, setMemo] = useState("");
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   useEffect(() => {
     if (!existing) return;
@@ -39,15 +33,21 @@ export default function FoodFormPage() {
     setPartnerRating(existing.partner_rating);
     setCategory((existing.category as FoodCategory) ?? null);
     setMemo(existing.memo ?? "");
-    setPhotoUrl(existing.photo_url);
+    // Prefer the new photo_urls array, fall back to the legacy single-photo
+    // column for foods saved before the migration.
+    if (existing.photo_urls && existing.photo_urls.length > 0) {
+      setPhotos(existing.photo_urls);
+    } else if (existing.photo_url) {
+      setPhotos([existing.photo_url]);
+    }
   }, [existing]);
 
   // Draft: so if the user taps off mid-entry their typed rating / name
   // is still there when they come back.
   const draftKey = placeId ? `draft:food:new:${placeId}` : "draft:food:new";
   const draftSnapshot = useMemo(
-    () => ({ name, myRating, partnerRating, category, memo, photoUrl }),
-    [name, myRating, partnerRating, category, memo, photoUrl]
+    () => ({ name, myRating, partnerRating, category, memo, photos }),
+    [name, myRating, partnerRating, category, memo, photos]
   );
   const draft = useFormDraft({
     key: draftKey,
@@ -62,27 +62,9 @@ export default function FoodFormPage() {
       if (saved.category !== undefined)
         setCategory(saved.category as FoodCategory | null);
       if (saved.memo != null) setMemo(saved.memo as string);
-      if (saved.photoUrl !== undefined)
-        setPhotoUrl(saved.photoUrl as string | null);
+      if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
     },
   });
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f || !couple) return;
-    setBusy(true);
-    setPhotoError(null);
-    try {
-      const url = await uploadPhoto(f, couple.id);
-      setPhotoUrl(url);
-    } catch (err) {
-      console.error("[FoodFormPage] photo upload failed:", err);
-      setPhotoError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-      e.target.value = "";
-    }
-  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -96,7 +78,10 @@ export default function FoodFormPage() {
         partner_rating: partnerRating,
         category,
         memo: memo.trim() || null,
-        photo_url: photoUrl,
+        // Keep the legacy scalar column populated too so any older build
+        // still reading photo_url sees something.
+        photo_url: photos[0] ?? null,
+        photo_urls: photos.length ? photos : null,
       },
     });
     draft.clear();
@@ -184,36 +169,13 @@ export default function FoodFormPage() {
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             사진 · 美照
           </label>
-          {photoUrl ? (
-            <div className="relative w-32 h-32">
-              <img
-                src={photoUrl}
-                className="w-full h-full object-cover rounded-xl"
-                alt=""
-              />
-              <button
-                type="button"
-                onClick={() => setPhotoUrl(null)}
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white shadow-soft flex items-center justify-center"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <label className="w-32 h-32 rounded-xl border-2 border-dashed border-cream-200 flex items-center justify-center text-ink-500 cursor-pointer">
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => void onFile(e)}
-              />
-              {busy ? "로딩 중... · 上传中..." : "+"}
-            </label>
-          )}
-          {photoError && (
-            <p className="text-xs text-rose-500 mt-2 break-words">
-              {photoError}
-            </p>
+          {couple && (
+            <PhotoUploader
+              coupleId={couple.id}
+              photos={photos}
+              onChange={setPhotos}
+              max={6}
+            />
           )}
         </div>
 
