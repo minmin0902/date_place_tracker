@@ -135,20 +135,20 @@ export default function HomePage() {
 
   return (
     <div className="relative">
-      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-cream-200 px-5 pt-5">
+      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate">
+            <h1 className="text-[26px] font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
               {t("app.title")}
             </h1>
-            <p className="text-[11px] text-ink-400 font-medium tracking-wider">
-              COUPLE FOOD DIARY
+            <p className="text-[10px] text-ink-400 font-bold tracking-[0.2em] uppercase font-number">
+              Couple Food Diary
             </p>
           </div>
           <button
             type="button"
             onClick={() => setShowSearch((v) => !v)}
-            className="p-2 bg-cream-100 rounded-full text-ink-700 hover:bg-cream-200 transition"
+            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50"
             aria-label="search"
           >
             <Search className="w-5 h-5" />
@@ -179,7 +179,7 @@ export default function HomePage() {
             active={tab === "wishlist"}
             accent="peach"
             onClick={() => setTab("wishlist")}
-            label="가고파 · 心愿单 📝"
+            label="위시리스트 · 心愿单 📝"
             count={wishlist?.length}
           />
         </div>
@@ -190,26 +190,26 @@ export default function HomePage() {
           <>
             <StatsDashboard stats={stats} />
 
-            <div className="flex items-center justify-between mt-7 mb-4 px-1 gap-2">
-              <h2 className="font-display font-bold text-base text-ink-900 flex items-center gap-2">
-                <span>다녀온 곳 · 去过的地方</span>
-                <span className="text-rose-500 text-xs font-black bg-rose-50 px-2 py-0.5 rounded-full">
+            <div className="flex items-center justify-between mt-8 mb-5 px-1 gap-2">
+              <h2 className="font-display font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
+                <span>다녀온 곳 · 去过</span>
+                <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
                   {filteredPlaces.length}
                 </span>
               </h2>
               <button
                 type="button"
                 onClick={() => setRevisitOnly((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition border ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold transition-all border ${
                   revisitOnly
-                    ? "bg-rose-50 text-rose-500 border-rose-200 shadow-sm"
-                    : "bg-white text-ink-500 border-cream-200"
+                    ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
+                    : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
                 <Heart
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
-                또 갈래만 · 只看想再去
+                또 갈래! 맛집 · 只看想再去
               </button>
             </div>
 
@@ -236,7 +236,6 @@ export default function HomePage() {
                   place={p}
                   locale={i18n.language}
                   isLast={idx === filteredPlaces.length - 1}
-                  tKey={t}
                 />
               ))}
             </div>
@@ -254,7 +253,7 @@ export default function HomePage() {
           <button
             type="button"
             onClick={() => setRouletteOpen(true)}
-            className="pointer-events-auto w-14 h-14 rounded-full bg-white border-2 border-peach-100 text-peach-500 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex items-center justify-center active:scale-90 transition hover:border-peach-200"
+            className="pointer-events-auto w-16 h-16 rounded-full bg-white/95 backdrop-blur border border-peach-100 text-peach-500 shadow-airy flex items-center justify-center active:scale-90 transition hover:scale-105 hover:border-peach-200"
             aria-label="random pick"
           >
             <Dice5 className="w-7 h-7" />
@@ -262,7 +261,7 @@ export default function HomePage() {
           {tab === "timeline" ? (
             <Link
               to="/places/new"
-              className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-br from-peach-400 to-rose-400 text-white shadow-[0_8px_30px_rgba(249,168,212,0.5)] flex items-center justify-center active:scale-90 transition"
+              className="pointer-events-auto w-16 h-16 rounded-full bg-gradient-to-br from-peach-400 to-rose-400 text-white shadow-lift flex items-center justify-center active:scale-90 transition hover:scale-105"
               aria-label="add place"
             >
               <Plus className="w-7 h-7" />
@@ -271,7 +270,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => setAddWishlistOpen(true)}
-              className="pointer-events-auto w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-peach-400 text-white shadow-[0_8px_30px_rgba(249,168,212,0.5)] flex items-center justify-center active:scale-90 transition"
+              className="pointer-events-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-peach-400 text-white shadow-lift flex items-center justify-center active:scale-90 transition hover:scale-105"
               aria-label="add wishlist"
             >
               <BookmarkPlus className="w-7 h-7" />
@@ -356,25 +355,38 @@ function StatsDashboard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="bg-gradient-to-r from-peach-100 to-rose-100 rounded-3xl p-5 border border-rose-200 shadow-soft flex items-center justify-between gap-3">
+    <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[2rem] p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
       <div className="flex flex-col gap-1 min-w-0">
         <span className="text-[11px] font-bold text-rose-500 tracking-widest uppercase">
           우리의 기록 · 我们的记录
         </span>
-        <span className="text-2xl font-display font-black text-ink-900">
-          {stats.total}곳 · {stats.total} 个地方
-        </span>
+        <div className="mt-1">
+          <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
+            {stats.total}
+          </span>
+          <span className="text-sm font-bold text-ink-700 ml-1">
+            곳 · 处
+          </span>
+        </div>
       </div>
-      <div className="h-10 w-px bg-rose-200 flex-shrink-0" />
+      <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
       <div className="flex flex-col gap-1 items-end min-w-0">
         <span className="text-[11px] font-bold text-peach-500 tracking-widest uppercase">
-          제일 자주 · 最多吃的
+          자주 찾은 · 最常吃
         </span>
-        <span className="text-base font-display font-black text-ink-900 truncate">
-          {stats.topCategory
-            ? `${categoryIcon(stats.topCategory)} ${t(`category.${stats.topCategory}`)} (${stats.topCount})`
-            : "-"}
-        </span>
+        {stats.topCategory ? (
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="text-xl">{categoryIcon(stats.topCategory)}</span>
+            <span className="text-base font-bold text-ink-900">
+              {t(`category.${stats.topCategory}`)}
+            </span>
+            <span className="text-sm font-number font-bold text-ink-400 ml-1">
+              ({stats.topCount})
+            </span>
+          </div>
+        ) : (
+          <span className="text-base font-bold text-ink-400 mt-1">-</span>
+        )}
       </div>
     </div>
   );
@@ -386,12 +398,10 @@ function TimelineItem({
   place,
   locale,
   isLast,
-  tKey,
 }: {
   place: PlaceWithFoods;
   locale: string;
   isLast: boolean;
-  tKey: (k: string) => string;
 }) {
   const avg = avgTotal(place);
   return (
@@ -440,16 +450,17 @@ function TimelineItem({
             )}
             <div className="flex items-center gap-2 mt-2">
               {avg !== null ? (
-                <span className="bg-peach-50 text-peach-500 px-2 py-0.5 rounded-md text-xs font-bold border border-peach-100">
-                  ⭐ {avg.toFixed(1)}
+                <span className="inline-flex items-center bg-peach-50 text-peach-500 px-2.5 py-1 rounded-lg text-xs font-bold border border-peach-100">
+                  <span className="mr-1">⭐</span>
+                  <span className="font-number">{avg.toFixed(1)}</span>
                 </span>
               ) : (
                 <span className="text-[11px] text-ink-400">
                   아직 평가 전 · 还没评分
                 </span>
               )}
-              <span className="text-[11px] text-ink-400">
-                {tKey("place.foods")} {(place.foods ?? []).length}
+              <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2.5 py-1 rounded-lg">
+                메뉴 <span className="font-number font-bold">{(place.foods ?? []).length}</span>개
               </span>
             </div>
           </div>
@@ -983,13 +994,21 @@ function RouletteModal({
               <h3 className="font-display font-bold text-lg text-ink-900 px-2 truncate">
                 {picked.name}
               </h3>
-              <p className="text-[11px] text-rose-500 mt-1 font-medium">
-                {picked.kind === "revisit"
-                  ? picked.avgScore !== null
-                    ? `⭐ ${picked.avgScore.toFixed(1)} / 10 · 又想去`
-                    : "또 갈래 · 又想去"
-                  : "가볼래 · 想去看看"}
-              </p>
+              {picked.kind === "revisit" && picked.avgScore !== null ? (
+                <p className="inline-flex items-center gap-1 text-xs text-rose-500 mt-2 font-medium bg-rose-100/60 px-3 py-1 rounded-full">
+                  <span>⭐</span>
+                  <span className="font-number font-bold">
+                    {picked.avgScore.toFixed(1)}
+                  </span>
+                  <span className="opacity-70">/ 10</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
+                  {picked.kind === "revisit"
+                    ? "또 갈래 · 又想去"
+                    : "가볼래 · 想去看看"}
+                </p>
+              )}
               {picked.memo && (
                 <p className="text-[11px] text-ink-500 mt-1 truncate max-w-[220px] mx-auto">
                   {picked.memo}

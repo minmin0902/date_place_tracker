@@ -8,18 +8,34 @@
   #root {
     height: 100%;
   }
+  html {
+    /* iOS address-bar area; respected by the min-h-full root. */
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-cream-50 text-ink-900 antialiased;
     font-feature-settings: "ss01", "ss02";
+    /* System selection color should match the peach/rose palette. */
+    ::selection {
+      background: #fde2e4;
+    }
   }
   :lang(zh) {
-    font-family: "Noto Sans SC", "Pretendard", sans-serif;
+    font-family: "Noto Sans SC", "Pretendard Variable", "Pretendard", sans-serif;
   }
   :lang(zh) .font-display {
     font-family: "Noto Serif SC", serif;
   }
   button {
     @apply select-none;
+    /* Stops the gray iOS tap flash. */
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Guarantee a 44×44 hit target on mobile — below that is tough to tap. */
+  button,
+  a[role="button"],
+  [type="submit"] {
+    touch-action: manipulation;
   }
 }
 
@@ -50,6 +66,9 @@
   }
   .safe-bottom {
     padding-bottom: calc(env(safe-area-inset-bottom, 0) + 1rem);
+  }
+  .safe-top {
+    padding-top: calc(env(safe-area-inset-top, 0) + 0.5rem);
   }
 }
 

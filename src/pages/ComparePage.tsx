@@ -209,10 +209,10 @@ function FoodCard({
         </div>
         {showTotal && (
           <div className="flex-shrink-0 text-right">
-            <span className="block text-2xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
+            <span className="block text-2xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
               {total.toFixed(1)}
             </span>
-            <span className="text-[10px] text-ink-400">/ 10</span>
+            <span className="text-[10px] text-ink-400 font-number">/ 10</span>
           </div>
         )}
       </div>
@@ -263,7 +263,7 @@ function RatingTile({
       <span className={`text-[10px] font-semibold block mb-1 ${text}`}>
         {label}
       </span>
-      <span className={`text-lg font-display font-black ${text}`}>
+      <span className={`text-lg font-number font-bold ${text}`}>
         {value.toFixed(1)}
       </span>
     </div>
@@ -280,12 +280,12 @@ function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
         <span
           className={mine > partner ? "text-peach-500" : "text-ink-400"}
         >
-          나 · 我 ({mine.toFixed(1)})
+          나 · 我 (<span className="font-number font-bold">{mine.toFixed(1)}</span>)
         </span>
         <span
           className={partner > mine ? "text-rose-500" : "text-ink-400"}
         >
-          상대 · Ta ({partner.toFixed(1)})
+          상대 · Ta (<span className="font-number font-bold">{partner.toFixed(1)}</span>)
         </span>
       </div>
       <div className="w-full h-4 bg-cream-100 rounded-full flex overflow-hidden border border-cream-200">

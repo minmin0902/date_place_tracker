@@ -33,10 +33,10 @@ export function AppShell() {
   const { t } = useTranslation();
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
-      <main className="flex-1 pb-20">
+      <main className="flex-1 pb-24">
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur border-t border-cream-200 safe-bottom">
+      <nav className="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-md border-t border-cream-200/60 safe-bottom shadow-[0_-4px_20px_rgb(0,0,0,0.03)]">
         <div className="max-w-md mx-auto flex">
           <NavItem to="/" icon={Home} label={t("nav.home")} />
           <NavItem to="/map" icon={Map} label={t("nav.map")} />

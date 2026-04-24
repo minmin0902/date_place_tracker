@@ -59,6 +59,15 @@ export default {
           '"Noto Serif SC"',
           "serif",
         ],
+        // Rounded Latin for numbers / English accents — Quicksand on top,
+        // then falls back to Pretendard so Korean/Chinese look consistent
+        // when mixed into the same span.
+        number: [
+          "Quicksand",
+          '"Pretendard Variable"',
+          "Pretendard",
+          "sans-serif",
+        ],
       },
       borderRadius: {
         xl: "1rem",
@@ -66,8 +75,13 @@ export default {
         "3xl": "1.75rem",
       },
       boxShadow: {
+        // Warm tinted (existing — keeps the peach/rose aesthetic)
         soft: "0 4px 20px -6px rgba(180, 130, 100, 0.15)",
         card: "0 2px 12px -2px rgba(180, 130, 100, 0.12)",
+        // Wide, airy, nearly-neutral shadow for a softer iOS-style feel
+        airy: "0 8px 30px rgb(0 0 0 / 0.06)",
+        // Big lift for FABs / modals
+        lift: "0 12px 40px rgb(0 0 0 / 0.12)",
       },
       backgroundImage: {
         "warm-gradient":

@@ -134,12 +134,12 @@ export default function PlaceDetailPage() {
 
         {/* Bento summary */}
         <section className="grid grid-cols-2 gap-3">
-          <div className="col-span-2 flex items-center justify-between p-5 rounded-3xl bg-gradient-to-br from-peach-100 to-rose-100 border border-rose-200 shadow-soft">
+          <div className="col-span-2 flex items-center justify-between p-6 rounded-[2rem] bg-gradient-to-br from-peach-100 to-rose-100 border border-rose-200/60 shadow-airy">
             <div>
               <p className="text-sm font-medium text-rose-500 mb-1">
                 {t("place.avgScore")}
               </p>
-              <div className="text-5xl font-display font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400">
+              <div className="text-5xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 tracking-tight">
                 {avg ?? "-"}
                 <span className="text-xl font-bold text-rose-300 ml-1">/10</span>
               </div>
@@ -326,7 +326,7 @@ function FoodCard({
           {food.name}
         </h3>
         {total > 0 && (
-          <div className="text-2xl font-display font-black text-peach-400 leading-none">
+          <div className="text-2xl font-number font-bold text-peach-400 leading-none">
             {total.toFixed(1)}
           </div>
         )}
@@ -337,17 +337,22 @@ function FoodCard({
           <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-peach-400" />
-              {t("food.myRating")} {food.my_rating != null ? my.toFixed(1) : "-"}
+              {t("food.myRating")}{" "}
+              <span className="font-number font-bold">
+                {food.my_rating != null ? my.toFixed(1) : "-"}
+              </span>
             </span>
             <span className="flex items-center gap-1">
               {t("food.partnerRating")}{" "}
-              {food.partner_rating != null ? partner.toFixed(1) : "-"}
+              <span className="font-number font-bold">
+                {food.partner_rating != null ? partner.toFixed(1) : "-"}
+              </span>
               <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
             </span>
           </div>
           <CoupleBar mine={my} partner={partner} />
           {diff >= DIFF_THRESHOLD && (
-            <p className="text-xs text-rose-400 mt-2">
+            <p className="text-xs text-rose-400 mt-2 font-number">
               Δ {diff.toFixed(1)}
             </p>
           )}
