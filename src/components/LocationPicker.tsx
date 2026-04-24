@@ -12,9 +12,11 @@ const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 export function LocationPicker({
   value,
   onChange,
+  onPlaceSelected,
 }: {
   value: { lat: number; lng: number } | null;
   onChange: (v: { lat: number; lng: number } | null) => void;
+  onPlaceSelected?: (p: { name?: string; address?: string; lat: number; lng: number }) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -23,6 +25,52 @@ export function LocationPicker({
     value ?? null
   );
   const [mapZoom, setMapZoom] = useState<number>(value ? 16 : 13);
+  const [query, setQuery] = useState("");
+  const [predictions, setPredictions] = useState<any[]>([]);
+  // loading indicator kept for future UX improvements
+  const [, setLoadingPred] = useState(false);
+  const predRef = useRef<any[]>([]);
+  const debounceRef = useRef<number | null>(null);
+  
+  async function fetchPredictions(q: string) {
+    if (!KEY) return;
+    if (!q) {
+      setPredictions([]);
+      return;
+    }
+    setLoadingPred(true);
+    const preds = await fetchPredictionsWithLoader(KEY, q);
+    predRef.current = preds || [];
+    setPredictions(predRef.current as any[]);
+    setLoadingPred(false);
+  }
+
+  async function selectPrediction(pred: any) {
+    // get details
+    try {
+      const details = await getPlaceDetails(KEY!, pred.place_id);
+      const loc = details.geometry?.location;
+      if (loc) {
+        const lat = loc.lat();
+        const lng = loc.lng();
+        setMapCenter({ lat, lng });
+        setMapZoom(16);
+        setQuery(details.name || details.formatted_address || "");
+        setPredictions([]);
+        onChange({ lat, lng });
+        if (onPlaceSelected) {
+          onPlaceSelected({
+            name: details.name,
+            address: details.formatted_address,
+            lat,
+            lng,
+          });
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   usePlacesAutocomplete(KEY, inputRef, open, (lat, lng) => {
     // pan map to selected place and set zoom
@@ -74,16 +122,40 @@ export function LocationPicker({
               </button>
             </div>
             <div className="flex-1 relative">
-                <div className="p-3">
+                <div className="p-3 relative">
                   <input
                     ref={inputRef}
                     className="input-base w-full"
                     placeholder={t("place.searchPlaceholder")}
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      // debounce predictions
+                      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+                      debounceRef.current = window.setTimeout(() => {
+                        fetchPredictions(e.target.value);
+                      }, 250);
+                    }}
                   />
+                  {predictions.length > 0 && (
+                    <div className="pac-container absolute left-3 right-3 mt-2">
+                      {predictions.map((p, i) => (
+                        <div
+                          key={p.place_id || i}
+                          className="pac-item cursor-pointer"
+                          onClick={() => selectPrediction(p)}
+                        >
+                          <div className="font-semibold">{p.structured_formatting?.main_text || p.description}</div>
+                          <div className="text-xs text-ink-500">{p.structured_formatting?.secondary_text || ""}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               <APIProvider apiKey={KEY}>
                 <Map
                   key={open ? "map-open" : "map-closed"}
+                  className="h-full w-full"
                   mapId={MAP_ID}
                   center={mapCenter ?? DEFAULT_CENTER}
                   zoom={mapZoom}
@@ -97,9 +169,9 @@ export function LocationPicker({
                     onChange({ lat, lng });
                   }}
                 >
-                  {value && (
-                    <AdvancedMarker position={value}>
-                      <div className="text-3xl">📍</div>
+                  {mapCenter && (
+                    <AdvancedMarker position={mapCenter}>
+                      <div className={`text-3xl animate-bounce`}>📍</div>
                     </AdvancedMarker>
                   )}
                 </Map>
@@ -162,3 +234,40 @@ function usePlacesAutocomplete(
     };
   }, [key, inputRef, enabled, onSelect]);
 }
+
+// fetch predictions (custom UI) and place details
+async function fetchPredictionsWithLoader(key: string, input: string) {
+  if (!input) return [];
+  const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
+  try {
+    await (loader as any).load();
+    const service = new (window as any).google.maps.places.AutocompleteService();
+    return new Promise<any[]>((resolve) => {
+      service.getPlacePredictions({ input }, (preds: any[], status: any) => {
+        if (status !== (window as any).google.maps.places.PlacesServiceStatus.OK) {
+          resolve([]);
+        } else {
+          resolve(preds || []);
+        }
+      });
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
+async function getPlaceDetails(key: string, placeId: string) {
+  const loader: any = new Loader({ apiKey: key, libraries: ["places"] });
+  await (loader as any).load();
+  const dummy = document.createElement("div");
+  const svc = new (window as any).google.maps.places.PlacesService(dummy);
+  return new Promise<any>((resolve, reject) => {
+    svc.getDetails({ placeId, fields: ["geometry", "name", "formatted_address"] }, (res: any, status: any) => {
+      if (status === (window as any).google.maps.places.PlacesServiceStatus.OK) resolve(res);
+      else reject(res);
+    });
+  });
+}
+
+// expose small helper functions into module scope for use in component
+// to avoid changing hook signatures
