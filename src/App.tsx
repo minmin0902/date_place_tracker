@@ -89,17 +89,19 @@ function Gate() {
 
   return (
     <Routes>
+      {/* Every authenticated route lives under AppShell so the bottom nav
+          stays visible on place/food detail & form pages too. */}
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="map" element={<MapPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="places/new" element={<PlaceFormPage />} />
+        <Route path="places/:id" element={<PlaceDetailPage />} />
+        <Route path="places/:id/edit" element={<PlaceFormPage />} />
+        <Route path="places/:id/foods/new" element={<FoodFormPage />} />
+        <Route path="places/:id/foods/:foodId/edit" element={<FoodFormPage />} />
       </Route>
-      <Route path="places/new" element={<PlaceFormPage />} />
-      <Route path="places/:id" element={<PlaceDetailPage />} />
-      <Route path="places/:id/edit" element={<PlaceFormPage />} />
-      <Route path="places/:id/foods/new" element={<FoodFormPage />} />
-      <Route path="places/:id/foods/:foodId/edit" element={<FoodFormPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
