@@ -1,6 +1,6 @@
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 function starFillFor(value: number | null, index: number) {
   const v = value ?? 0;
@@ -25,14 +25,39 @@ export function RatingPicker({
       : color === "sage"
         ? "text-sage-400"
         : "text-peach-400";
+  const borderClass =
+    color === "rose"
+      ? "border-rose-200 focus:border-rose-400 focus:ring-rose-100"
+      : color === "sage"
+        ? "border-sage-200 focus:border-sage-400 focus:ring-sage-100"
+        : "border-peach-200 focus:border-peach-400 focus:ring-peach-100";
 
   const stars = useMemo(() => [1, 2, 3, 4, 5], []);
 
-  const display = value == null ? "-" : value.toFixed(1);
+  // Track the typed string separately so a user can clear the field
+  // mid-typing ("3." → "3.7") without the number coercing back.
+  const [draft, setDraft] = useState<string>(
+    value == null ? "" : value.toString()
+  );
+  useEffect(() => {
+    // Keep the input display in sync when star / slider moves the value.
+    setDraft(value == null ? "" : value.toString());
+  }, [value]);
+
+  function commitDraft(raw: string) {
+    const t = raw.trim();
+    if (t === "") return;
+    const n = Number(t);
+    if (!Number.isFinite(n)) return;
+    const clamped = Math.max(0, Math.min(5, n));
+    // Round to 0.1 to match the slider step.
+    const rounded = Math.round(clamped * 10) / 10;
+    onChange(rounded);
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-3">
         <div className="flex gap-1">
           {stars.map((n) => {
             const partial = starFillFor(value, n);
@@ -55,7 +80,30 @@ export function RatingPicker({
             );
           })}
         </div>
-        <span className={`text-sm font-semibold ${fillClass}`}>{display}</span>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            inputMode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*"
+            value={draft}
+            onChange={(e) => {
+              const v = e.target.value;
+              setDraft(v);
+              commitDraft(v);
+            }}
+            onBlur={(e) => {
+              if (e.target.value.trim() === "") {
+                // User emptied the field on purpose → reset to 0.
+                onChange(0);
+                setDraft("0");
+              }
+            }}
+            placeholder="0.0"
+            className={`w-14 px-2 py-1 rounded-lg bg-white border text-sm font-number font-bold text-center text-ink-900 focus:outline-none focus:ring-2 transition ${borderClass}`}
+            aria-label="rating-number"
+          />
+          <span className="text-xs text-ink-400 font-number">/ 5</span>
+        </div>
       </div>
 
       <input

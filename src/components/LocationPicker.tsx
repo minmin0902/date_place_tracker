@@ -173,11 +173,11 @@ export function LocationPicker({
             {label ? (
               <p className="text-sm font-medium truncate">{label}</p>
             ) : (
-              <p className="text-sm font-medium">
+              <p className="text-sm font-medium font-number">
                 {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
               </p>
             )}
-            <p className="text-xs text-ink-500">
+            <p className="text-xs text-ink-500 font-number">
               {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
             </p>
           </div>

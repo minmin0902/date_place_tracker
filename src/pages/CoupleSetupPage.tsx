@@ -47,7 +47,7 @@ export default function CoupleSetupPage() {
               <Heart className="w-10 h-10 text-rose-400 mx-auto mb-3" />
               <p className="text-sm text-ink-500 mb-2">{t("couple.yourCode")}</p>
               <div className="flex items-center justify-center gap-2 mb-2">
-                <span className="text-4xl font-display font-bold tracking-wider text-peach-500">
+                <span className="text-4xl font-number font-bold tracking-[0.2em] text-peach-500">
                   {couple.invite_code}
                 </span>
                 <button
