@@ -788,9 +788,37 @@ export default function HomePage() {
                 directly under the bar — gives the user a clear "you
                 have X cities + Y categories selected" without opening
                 the sheet, and lets them prune one at a time without
-                re-opening it. */}
-            {(selectedCities.length > 0 || categoryFilter.length > 0) && (
+                re-opening it. Sort chip only renders when viewMode
+                isn't the default ("date"); X resets it to default. */}
+            {(viewMode !== "date" ||
+              selectedCities.length > 0 ||
+              categoryFilter.length > 0) && (
               <div className="flex flex-wrap items-center gap-1.5 mb-4 px-1">
+                {viewMode !== "date" &&
+                  (() => {
+                    const sortLabel =
+                      viewMode === "dateAsc"
+                        ? "📅 오래된순"
+                        : viewMode === "scoreDesc"
+                          ? "⭐ 별점 높은순"
+                          : "🥄 별점 낮은순";
+                    return (
+                      <span
+                        key="sort"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-ink-100 text-ink-700 text-[11px] font-bold rounded-full border border-cream-200"
+                      >
+                        {sortLabel}
+                        <button
+                          type="button"
+                          onClick={() => setViewMode("date")}
+                          className="hover:text-rose-500"
+                          aria-label="reset sort"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })()}
                 {selectedCities.map((c) => (
                   <span
                     key={`city-${c}`}
@@ -842,6 +870,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
+                    setViewMode("date");
                     setSelectedCities([]);
                     setCategoryFilter([]);
                   }}

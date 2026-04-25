@@ -132,3 +132,15 @@ input[type="number"] {
 .pac-item .pac-item-query {
   font-weight: 600;
 }
+
+/* Hide the Google Maps footer chrome — "키보드 단축키", "지도 데이터
+   ©Google", "약관" links + the small Google logo overlay. NOTE: this
+   technically violates Google Maps Platform ToS (logo + attribution
+   are required to remain visible). Kept here because the user
+   explicitly asked for a clean map; revert these rules if you ever
+   ship to production / monetize. */
+.gm-style-cc,
+.gm-style > div > a[href*="maps.google.com/maps"] img,
+.gmnoprint a {
+  display: none !important;
+}
