@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  ChevronDown,
   Dna,
   Frown,
   HeartHandshake,
@@ -138,24 +139,34 @@ const BTI_PROFILES: Record<
   },
 };
 
+// 1:1-ish mapping. Each category falls into a single "broad" BTI plus
+// optionally its own dedicated BTI (japanese, korean, cafe). 양식 /
+// 이국적 / 아시안 / 카페-디저트 / 술 BTI 들이 카테고리 그룹과 정확히
+// 매칭되도록 정리.
 const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
+  // 아시안 그룹 — chinese / thai / vietnamese / indian 만 broad asian
+  // BTI 에 들어감. 한·일 은 각자 전용 BTI 가 있어서 거기로만.
   korean: ["korean"],
-  japanese: ["asian", "japanese"],
+  japanese: ["japanese"],
   chinese: ["asian"],
+  thai: ["asian"],
+  vietnamese: ["asian"],
+  indian: ["asian"],
+  // 양식 그룹
   italian: ["western"],
   western: ["western"],
   french: ["western"],
-  spanish: ["western", "exotic"],
+  spanish: ["western"],
+  // 라틴/이국적 그룹
   mexican: ["exotic"],
   peruvian: ["exotic"],
   middle_eastern: ["exotic"],
-  thai: ["asian", "exotic"],
-  vietnamese: ["asian"],
-  indian: ["exotic", "asian"],
-  cafe: ["sweet", "cafe"],
+  // 카페·디저트 그룹
+  cafe: ["cafe", "sweet"],
   bakery: ["sweet"],
-  brunch: ["sweet", "western"],
+  brunch: ["sweet"],
   dessert: ["sweet"],
+  // 술/패스트
   bar: ["drinker"],
   fastfood: ["western"],
 };
@@ -444,8 +455,15 @@ export default function ComparePage() {
 // Other non-zero buckets → percentage breakdown bars under it.
 
 function FoodBtiCard({ rows }: { rows: Row[] }) {
+  // Track which rows fed each BTI bucket so the user can tap a bar and
+  // see the foods that drove that BTI's score.
+  const [expandedBti, setExpandedBti] = useState<BtiKey | null>(null);
+
   const stats = useMemo(() => {
-    const totals = new Map<BtiKey, { sum: number; count: number }>();
+    const totals = new Map<
+      BtiKey,
+      { sum: number; count: number; rows: Row[] }
+    >();
     for (const r of rows) {
       if (r.placeCategories.length === 0) continue;
       const coupleAvg = (r.mine + r.partner) / 2;
@@ -459,19 +477,36 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
         for (const k of buckets) {
           if (fed.has(k)) continue;
           fed.add(k);
-          const t = totals.get(k) ?? { sum: 0, count: 0 };
+          const t = totals.get(k) ?? { sum: 0, count: 0, rows: [] };
           t.sum += coupleAvg;
           t.count += 1;
+          t.rows.push(r);
           totals.set(k, t);
         }
       }
     }
-    const out: { key: BtiKey; avg: number; percent: number; count: number }[] =
-      [];
+    const out: {
+      key: BtiKey;
+      avg: number;
+      percent: number;
+      count: number;
+      rows: Row[];
+    }[] = [];
     for (const [key, t] of totals) {
       if (t.count === 0) continue;
       const avg = t.sum / t.count;
-      out.push({ key, avg, percent: (avg / 5) * 100, count: t.count });
+      // Sort the contributors highest-couple-avg first so when users
+      // expand they see the top reasons that BTI scored well.
+      const sortedRows = [...t.rows].sort(
+        (a, b) => b.mine + b.partner - (a.mine + a.partner)
+      );
+      out.push({
+        key,
+        avg,
+        percent: (avg / 5) * 100,
+        count: t.count,
+        rows: sortedRows,
+      });
     }
     out.sort((a, b) => b.avg - a.avg);
     return out;
@@ -530,30 +565,78 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
         </div>
         {stats.slice(0, 4).map((s) => {
           const pf = BTI_PROFILES[s.key];
+          const isExpanded = expandedBti === s.key;
           return (
-            <div key={s.key} className="flex items-center gap-2">
-              <div className="w-7 flex-shrink-0 text-base text-center">
-                {pf.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between text-[11px] font-bold text-ink-700 mb-1 gap-2">
-                  <span className="truncate">
-                    {pf.titleKo}{" "}
-                    <span className="text-ink-400 font-medium">
-                      · {pf.titleZh}
+            <div key={s.key}>
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedBti(isExpanded ? null : s.key)
+                }
+                className="w-full flex items-center gap-2 text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
+              >
+                <div className="w-7 flex-shrink-0 text-base text-center">
+                  {pf.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center text-[11px] font-bold text-ink-700 mb-1 gap-2">
+                    <span className="truncate">
+                      {pf.titleKo}{" "}
+                      <span className="text-ink-400 font-medium">
+                        · {pf.titleZh}
+                      </span>
                     </span>
-                  </span>
-                  <span className="font-number flex-shrink-0">
-                    {Math.round(s.percent)}%
-                  </span>
+                    <span className="flex items-center gap-1 flex-shrink-0">
+                      <span className="text-[10px] text-ink-400 font-number">
+                        {s.count}곳
+                      </span>
+                      <span className="font-number">
+                        {Math.round(s.percent)}%
+                      </span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      />
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${pf.bar} rounded-full transition-all duration-1000 ease-out`}
+                      style={{ width: `${s.percent}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${pf.bar} rounded-full transition-all duration-1000 ease-out`}
-                    style={{ width: `${s.percent}%` }}
-                  />
+              </button>
+              {/* Contributing menus — sorted highest couple-avg first
+                  so the user sees what drove this BTI to the top. */}
+              {isExpanded && (
+                <div className="ml-9 mt-2 mb-1 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  {s.rows.map((r) => {
+                    const total = r.mine + r.partner;
+                    return (
+                      <Link
+                        key={r.foodId}
+                        to={`/places/${r.placeId}`}
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-cream-50 hover:bg-cream-100 border border-cream-200/60 text-[11px] transition"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-ink-900 truncate">
+                            {r.foodName}
+                          </p>
+                          <p className="text-ink-400 truncate text-[10px]">
+                            @ {r.placeName}
+                          </p>
+                        </div>
+                        <span className="font-number font-bold text-peach-500 flex-shrink-0 text-[12px]">
+                          {total.toFixed(1)}
+                          <span className="text-ink-400 text-[9px] ml-0.5">
+                            /10
+                          </span>
+                        </span>
+                      </Link>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
