@@ -682,7 +682,11 @@ export default function HomePage() {
               둘이 함께 채우는 맛집 일기 · 咱俩的干饭日记
             </p>
           </div>
-          <div className="flex items-center gap-1.5">
+          {/* Top-right action cluster — only the high-frequency
+              actions (알림 / 새로고침) live here so the gradient
+              wordmark gets full breathing room. Search graduated down
+              to the filter row alongside "상세 필터". */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <NotificationBell />
             <button
               type="button"
@@ -695,14 +699,6 @@ export default function HomePage() {
               <RefreshCw
                 className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
               />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSearch((v) => !v)}
-              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50"
-              aria-label="search"
-            >
-              <Search className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -798,9 +794,9 @@ export default function HomePage() {
               />
             </div>
 
-            {/* 2) 단일 "상세 필터" 버튼 — 어느 시점이든 누르면 통합
-                FilterSheet 가 열려서 정렬·도시·카테고리를 한 번에
-                조정. 활성 카운트 배지로 어떤 필터가 잡혀 있는지 표시. */}
+            {/* 2) 필터 + 검색 한 줄 — 검색은 헤더 우측에서 내려와서
+                필터 버튼 옆 보조 위치를 차지. 토글식이라 평소엔
+                아이콘만, 누르면 아래에 input 이 펼쳐짐. */}
             {(() => {
               const sortActive = viewMode !== "date";
               const sheetCount =
@@ -809,25 +805,40 @@ export default function HomePage() {
                 categoryFilter.length;
               const isActive = sheetCount > 0;
               return (
-                <button
-                  type="button"
-                  onClick={() => setFilterSheetOpen(true)}
-                  className={`w-full inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep mb-3 ${
-                    isActive
-                      ? "bg-peach-50 border-peach-200 text-peach-700"
-                      : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-2 min-w-0 truncate">
-                    <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
-                    상세 필터 · 详细筛选
-                  </span>
-                  {isActive && (
-                    <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
-                      {sheetCount}
+                <div className="flex items-stretch gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setFilterSheetOpen(true)}
+                    className={`flex-1 min-w-0 inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep ${
+                      isActive
+                        ? "bg-peach-50 border-peach-200 text-peach-700"
+                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0 truncate">
+                      <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
+                      상세 필터 · 详细筛选
                     </span>
-                  )}
-                </button>
+                    {isActive && (
+                      <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
+                        {sheetCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSearch((v) => !v)}
+                    className={`flex-shrink-0 px-4 rounded-2xl border text-[13px] font-bold transition shadow-sm ${
+                      showSearch
+                        ? "bg-peach-50 border-peach-200 text-peach-700"
+                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                    }`}
+                    aria-label="search"
+                    title="검색 · 搜索"
+                  >
+                    <Search className="w-4 h-4" />
+                  </button>
+                </div>
               );
             })()}
 

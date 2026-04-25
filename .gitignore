@@ -27,3 +27,7 @@ dist-ssr
 # Local-only scratch dirs
 tmp/
 scripts/
+
+# Supabase CLI link cache (project ref / db creds)
+supabase/.temp/
+supabase/.branches/
