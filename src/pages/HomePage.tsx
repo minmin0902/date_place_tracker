@@ -33,6 +33,7 @@ import {
 } from "@/hooks/useWishlist";
 import type { WishlistPlace } from "@/lib/database.types";
 import {
+  CATEGORY_GROUPS,
   PLACE_CATEGORIES,
   categoryEmojiOf,
   isKnownPlaceCategory,
@@ -292,26 +293,30 @@ export default function HomePage() {
     getCategories(p).length === 0 ||
     (p.foods ?? []).some((f) => getCategories(f).length === 0);
 
-  // Build the category dropdown options dynamically: built-in list first,
-  // then any custom strings the user has saved (via the "기타" input)
-  // appended in the order they appeared. The "__none__" sentinel
-  // surfaces places that still need tagging (place-level or food-level).
-  const categoryOptions = useMemo(() => {
-    const out: { value: string; label: string }[] = [];
+  // Build the category dropdown options dynamically. "all" + 미분류
+  // sit at the top as plain options; built-in categories are bucketed
+  // by CATEGORY_GROUPS so the native picker shows hierarchy via
+  // <optgroup>; custom user strings ("기타" entries) land in their
+  // own trailing group.
+  const categoryOptions = useMemo<DropdownEntry[]>(() => {
+    const out: DropdownEntry[] = [];
     out.push({ value: "all", label: "모든 종류 · 全部" });
     const hasUncategorized = (places ?? []).some(isPlaceUncategorized);
     if (hasUncategorized) {
       out.push({ value: "__none__", label: "❓ 카테고리 미설정 · 未分类" });
     }
-    for (const c of PLACE_CATEGORIES) {
+    for (const g of CATEGORY_GROUPS) {
       out.push({
-        value: c,
-        label: `${categoryEmojiOf(c)} ${t(`category.${c}`)}`,
+        groupLabel: `${g.ko} · ${g.zh}`,
+        options: g.keys.map((c) => ({
+          value: c,
+          label: `${categoryEmojiOf(c)} ${t(`category.${c}`)}`,
+        })),
       });
     }
     // Custom — collect unique non-built-in category strings from
-    // every category attached to every place (across the multi-select
-    // array). Sorted alphabetically so the dropdown order stays stable.
+    // every category attached to every place. Tucked into a single
+    // "내가 직접 입력한 · 自定义" group at the end.
     const customs = new Set<string>();
     for (const p of places ?? []) {
       for (const c of getCategories(p)) {
@@ -319,8 +324,13 @@ export default function HomePage() {
         customs.add(c);
       }
     }
-    for (const c of [...customs].sort()) {
-      out.push({ value: c, label: `${categoryEmojiOf(c)} ${c}` });
+    if (customs.size > 0) {
+      out.push({
+        groupLabel: "✏️ 직접 입력 · 自定义",
+        options: [...customs]
+          .sort()
+          .map((c) => ({ value: c, label: `${categoryEmojiOf(c)} ${c}` })),
+      });
     }
     return out;
   }, [places, t]);
@@ -330,9 +340,14 @@ export default function HomePage() {
   // would silently filter to zero rows.
   useEffect(() => {
     if (categoryFilter === "all") return;
-    if (!categoryOptions.some((o) => o.value === categoryFilter)) {
-      setCategoryFilter("all");
-    }
+    // Flatten grouped + plain entries to check whether the chosen
+    // value still exists somewhere in the dropdown.
+    const present = categoryOptions.some((entry) =>
+      "groupLabel" in entry
+        ? entry.options.some((o) => o.value === categoryFilter)
+        : entry.value === categoryFilter
+    );
+    if (!present) setCategoryFilter("all");
   }, [categoryOptions, categoryFilter]);
 
   // Base list: filter first, then sort per viewMode below.
@@ -877,6 +892,14 @@ function SegmentButton({
 // Generic dropdown styled to look like the filter pills. Uses a real
 // <select> for native picker UX (especially on iOS) and overlays our
 // own ChevronDown to mask the OS arrow without needing extra global CSS.
+// Each entry is either a plain option or a group containing options.
+// Native <optgroup> renders the group label as a non-selectable header
+// in the OS picker on iOS / Android / desktop, giving us hierarchical
+// look (아시안 > 한식, 일식 …) without a custom dropdown widget.
+type DropdownEntry =
+  | { value: string; label: string }
+  | { groupLabel: string; options: { value: string; label: string }[] };
+
 function FilterDropdown({
   value,
   onChange,
@@ -884,7 +907,7 @@ function FilterDropdown({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  options: DropdownEntry[];
 }) {
   return (
     <div className="relative flex-1 min-w-0">
@@ -893,11 +916,21 @@ function FilterDropdown({
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-white border border-cream-200/80 rounded-xl pl-3 pr-8 py-2.5 text-[12px] font-bold text-ink-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-peach-100 focus:border-peach-300 transition appearance-none truncate"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
+        {options.map((entry, idx) =>
+          "groupLabel" in entry ? (
+            <optgroup key={`g-${idx}`} label={entry.groupLabel}>
+              {entry.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            <option key={entry.value} value={entry.value}>
+              {entry.label}
+            </option>
+          )
+        )}
       </select>
       <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 pointer-events-none" />
     </div>

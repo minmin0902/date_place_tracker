@@ -144,7 +144,11 @@ const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
   chinese: ["asian"],
   italian: ["western"],
   western: ["western"],
-  mexican: ["western", "exotic"],
+  french: ["western"],
+  spanish: ["western", "exotic"],
+  mexican: ["exotic"],
+  peruvian: ["exotic"],
+  middle_eastern: ["exotic"],
   thai: ["asian", "exotic"],
   vietnamese: ["asian"],
   indian: ["exotic", "asian"],
@@ -153,6 +157,7 @@ const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
   brunch: ["sweet", "western"],
   dessert: ["sweet"],
   bar: ["drinker"],
+  fastfood: ["western"],
 };
 
 const YYDS = 4.5; // both ≥ 4.5  → 명예의 전당
