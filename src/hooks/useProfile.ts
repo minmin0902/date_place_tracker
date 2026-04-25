@@ -143,6 +143,26 @@ export function useDisplayNames(): {
   return { myDisplay, partnerDisplay };
 }
 
+// Resolve any user_id → their OWN profile nickname + avatar. Used by
+// the notification inbox so the row reads with the name the actor
+// chose for themselves, not whatever pet name the recipient may have
+// set in their own partner_nickname.
+//
+// Different from useMemoAuthor: that one routes through the
+// "me/partner" perspective and prefers partner_nickname for the
+// partner case. For notifications we want the canonical self-set
+// name regardless of viewer.
+export function useActorDisplay(userId: string | null | undefined): {
+  name: string;
+  avatarUrl: string | null;
+} {
+  const profile = useProfile(userId ?? undefined);
+  return {
+    name: profile.data?.nickname?.trim() || "宝宝",
+    avatarUrl: profile.data?.avatar_url ?? null,
+  };
+}
+
 // Resolve a memo's author into the bits the comment-style render needs:
 // display name, avatar, and a peach/rose tone for visual continuity
 // with the rest of the app (peach = me, rose = partner).

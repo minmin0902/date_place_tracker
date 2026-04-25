@@ -6,7 +6,7 @@ import {
   useMarkNotificationRead,
   useNotifications,
 } from "@/hooks/useNotifications";
-import { useMemoAuthor } from "@/hooks/useProfile";
+import { useActorDisplay } from "@/hooks/useProfile";
 import type { NotificationRow } from "@/lib/database.types";
 
 // Inbox: every notification triggered for the current user. Tapping
@@ -79,7 +79,10 @@ function EmptyState() {
 function NotificationItem({ item }: { item: NotificationRow }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
-  const { name, avatarUrl, tone } = useMemoAuthor(item.actor_id);
+  // Actor is rendered with their OWN profile nickname (whatever they
+  // set for themselves) — not the pet name the recipient may have
+  // assigned via partner_nickname.
+  const { name, avatarUrl } = useActorDisplay(item.actor_id);
 
   // Resolve where to navigate based on the notification kind. Foods
   // and threaded memos still land on the parent place page — the food
@@ -126,10 +129,10 @@ function NotificationItem({ item }: { item: NotificationRow }) {
   })();
   const stamp = relativeKo(item.created_at);
   const initial = Array.from(name)[0] ?? "·";
-  const toneCls =
-    tone === "peach"
-      ? "bg-peach-100 text-peach-500"
-      : "bg-rose-100 text-rose-500";
+  // Actor on a notification is always the partner (the trigger
+  // excludes the recipient's own actions), so the colored fallback
+  // bubble can lock to rose without computing a per-row tone.
+  const toneCls = "bg-rose-100 text-rose-500";
 
   return (
     <li>

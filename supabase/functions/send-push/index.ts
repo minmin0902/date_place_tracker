@@ -59,21 +59,25 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 // Build the toast title/body shown by the OS. Kept short — push
 // payloads have a ~4KB limit and notification UIs truncate aggressively.
+//
+// Recipient is the Chinese-speaking partner, so the verb runs in
+// Chinese. Actor name is whatever they set in their own profile —
+// no remapping via the recipient's partner_nickname.
 function renderPayload(n: NotificationRow, actorName: string) {
   const verb = (() => {
     switch (n.kind) {
       case "place":
-        return "새 장소를 등록했어요";
+        return "添加了新地点";
       case "food":
-        return "메뉴를 추가했어요";
+        return "记下了新菜品";
       case "memo":
-        return "메모를 수정했어요";
+        return "改了备注";
       case "memo_thread":
-        return "메모를 남겼어요";
+        return "留了言";
     }
   })();
   return {
-    title: `${actorName}이(가) ${verb}`,
+    title: `${actorName} ${verb}`,
     body: n.preview || "",
     url: n.place_id ? `/places/${n.place_id}` : "/notifications",
     tag: `notif-${n.id}`,
@@ -96,13 +100,15 @@ Deno.serve(async (req) => {
   }
   const n = body.record;
 
-  // Resolve actor name from profiles.nickname (falls back to "짝꿍").
+  // Resolve actor name from THEIR OWN profiles.nickname — never the
+  // recipient's partner_nickname. Whatever the actor put in their own
+  // profile is the canonical label for them across all surfaces.
   const { data: actor } = await sb
     .from("profiles")
     .select("nickname")
     .eq("user_id", n.actor_id)
     .maybeSingle();
-  const actorName = actor?.nickname?.trim() || "짝꿍";
+  const actorName = actor?.nickname?.trim() || "宝宝";
 
   // Total unread count for the recipient — drives the app icon badge
   // on the receiving device. Includes the just-inserted row.
