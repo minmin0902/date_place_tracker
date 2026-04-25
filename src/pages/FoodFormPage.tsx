@@ -131,7 +131,7 @@ export default function FoodFormPage() {
 
         <div>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
-            카테고리 · 种类
+            카테고리 · 种类 *
           </label>
           <CategoryChips
             options={FOOD_CATEGORIES}
@@ -140,6 +140,11 @@ export default function FoodFormPage() {
             scope="category"
             customKey="other"
           />
+          {!category && (
+            <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
+              카테고리를 골라주세요 · 请选择类别
+            </p>
+          )}
         </div>
 
         <div className="card p-4 space-y-4">
@@ -221,7 +226,7 @@ export default function FoodFormPage() {
         <button
           type="submit"
           className="btn-primary w-full"
-          disabled={upsert.isPending || !name.trim()}
+          disabled={upsert.isPending || !name.trim() || !category}
         >
           저장 · 保存
         </button>

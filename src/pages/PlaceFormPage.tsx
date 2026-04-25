@@ -12,16 +12,23 @@ import { PhotoUploader } from "@/components/PhotoUploader";
 import { LocationPicker } from "@/components/LocationPicker";
 import { PLACE_CATEGORIES } from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
+import { FOOD_CATEGORIES } from "@/lib/constants";
 
 type HomeFoodDraft = {
   // local-only id so we can key + remove items before they hit the server
   uid: string;
   name: string;
   chef: ChefRole;
+  category: string | null;
 };
 
 function newHomeFood(): HomeFoodDraft {
-  return { uid: crypto.randomUUID(), name: "", chef: "together" };
+  return {
+    uid: crypto.randomUUID(),
+    name: "",
+    chef: "together",
+    category: null,
+  };
 }
 
 export default function PlaceFormPage() {
@@ -215,11 +222,12 @@ export default function PlaceFormPage() {
               name: f.name.trim(),
               my_rating: null,
               partner_rating: null,
-              category: null,
+              category: f.category,
               memo: null,
               photo_url: null,
               photo_urls: null,
               chef: f.chef,
+              created_by: user?.id ?? null,
             },
           });
         } catch (err) {
@@ -369,7 +377,7 @@ export default function PlaceFormPage() {
 
         <div>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
-            카테고리 · 种类
+            카테고리 · 种类 *
           </label>
           <CategoryChips
             options={PLACE_CATEGORIES}
@@ -378,6 +386,11 @@ export default function PlaceFormPage() {
             scope="category"
             customKey="other"
           />
+          {!category && (
+            <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
+              카테고리를 골라주세요 · 请选择类别
+            </p>
+          )}
         </div>
 
         {/* Address only matters for out mode; home mode uses the couple's
@@ -419,6 +432,9 @@ export default function PlaceFormPage() {
                   onRemove={() => removeHomeFood(food.uid)}
                   onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
                   onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
+                  onChangeCategory={(v) =>
+                    updateHomeFood(food.uid, "category", v)
+                  }
                 />
               ))}
             </div>
@@ -486,13 +502,31 @@ export default function PlaceFormPage() {
           </span>
         </button>
 
-        <button
-          type="submit"
-          className="btn-primary w-full"
-          disabled={upsert.isPending || upsertFood.isPending}
-        >
-          저장 · 保存
-        </button>
+        {(() => {
+          // Home-mode requires every non-empty inline food to have a
+          // category picked too — otherwise the bulk insert below would
+          // create rows that go straight into the "❓ 미분류" bucket.
+          const homeFoodsIncomplete =
+            mode === "home" &&
+            !isEdit &&
+            homeFoods.some(
+              (f) => f.name.trim().length > 0 && !f.category
+            );
+          const cantSave =
+            upsert.isPending ||
+            upsertFood.isPending ||
+            !category ||
+            homeFoodsIncomplete;
+          return (
+            <button
+              type="submit"
+              className="btn-primary w-full"
+              disabled={cantSave}
+            >
+              저장 · 保存
+            </button>
+          );
+        })()}
       </form>
     </div>
   );
@@ -540,6 +574,7 @@ function HomeFoodCard({
   onRemove,
   onChangeName,
   onChangeChef,
+  onChangeCategory,
 }: {
   index: number;
   food: HomeFoodDraft;
@@ -547,9 +582,10 @@ function HomeFoodCard({
   onRemove: () => void;
   onChangeName: (v: string) => void;
   onChangeChef: (v: ChefRole) => void;
+  onChangeCategory: (v: string | null) => void;
 }) {
   return (
-    <div className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative">
+    <div className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative space-y-3">
       {removable && (
         <button
           type="button"
@@ -561,12 +597,28 @@ function HomeFoodCard({
         </button>
       )}
 
-      <div className="pr-8 mb-3">
+      <div className="pr-8">
         <input
           className="w-full bg-transparent text-[15px] font-bold text-ink-900 placeholder:text-ink-300 focus:outline-none border-b border-cream-200 focus:border-rose-300 pb-1.5 transition-colors"
           value={food.name}
           onChange={(e) => onChangeName(e.target.value)}
           placeholder={`메뉴 ${index + 1} 이름 · 第 ${index + 1} 道菜`}
+        />
+      </div>
+
+      {/* Per-food category — required so the menu doesn't end up in the
+          "❓ 미분류" bucket later. Compact chip row keeps the home-mode
+          card from getting tall. */}
+      <div>
+        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
+          종류 · 种类 *
+        </p>
+        <CategoryChips
+          options={FOOD_CATEGORIES}
+          value={food.category}
+          onChange={onChangeCategory}
+          scope="category"
+          customKey="other"
         />
       </div>
 
