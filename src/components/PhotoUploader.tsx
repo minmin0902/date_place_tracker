@@ -3,11 +3,15 @@ import { Camera, X, AlertCircle, Play } from "lucide-react";
 import { uploadPhoto } from "@/hooks/usePlaces";
 import { isVideoUrl } from "@/lib/utils";
 
-// Hard cap to keep storage costs manageable on Supabase free tier and
-// to honor the user's "30-second clip" decision. Browser-side check
-// before upload — server-side enforcement would need a Supabase Edge
-// Function, future work.
-const MAX_VIDEO_SECONDS = 30;
+// Hard caps before upload — saves users a wasted upload that the
+// storage layer will reject anyway. Server-side enforcement is the
+// Supabase bucket's `file_size_limit` (set to 200MB to match — see
+// the matching migration). The byte cap is sized for iPhone 4K 30fps
+// (~130MB / 30s, ~250MB / 60s) so most clips go through, while still
+// guarding against 4K-60fps monsters that would eat storage quota.
+const MAX_VIDEO_SECONDS = 60;
+const MAX_VIDEO_MB = 200;
+const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
 
 // Read video metadata client-side to check duration. Returns null on
 // browsers that can't decode, in which case we let the upload through
@@ -53,10 +57,17 @@ export function PhotoUploader({
       const uploaded: string[] = [];
       const slots = Math.max(0, max - photos.length);
       for (const f of Array.from(files).slice(0, slots)) {
-        // Video duration gate — anything > 15s gets a clear error
-        // instead of a silent upload failure or a 60-second clip
-        // sitting in storage forever.
+        // Video gate — duration + byte size. The byte cap catches the
+        // "60s 4K" case duration alone misses; together they keep the
+        // upload under the matching Supabase bucket limit so we don't
+        // burn bandwidth on a doomed POST.
         if (f.type.startsWith("video/")) {
+          if (f.size > MAX_VIDEO_BYTES) {
+            const mb = (f.size / 1024 / 1024).toFixed(0);
+            throw new Error(
+              `동영상이 ${mb}MB라서 못 올려요. ${MAX_VIDEO_MB}MB 이내로 줄여주세요 (폰 갤러리 트림/압축) · 视频${mb}MB太大了，请压缩到${MAX_VIDEO_MB}MB以内`
+            );
+          }
           const dur = await videoDurationOf(f);
           if (dur != null && dur > MAX_VIDEO_SECONDS + 0.5) {
             throw new Error(
@@ -145,7 +156,7 @@ export function PhotoUploader({
         />
       </div>
       <p className="text-[10px] text-ink-400 px-1">
-        사진 + 동영상 (30초 이내) · 照片 + 视频(30秒以内)
+        사진 + 동영상 (60초 · 200MB 이내) · 照片 + 视频(60秒·200MB以内)
       </p>
       {error && (
         <div className="flex items-start gap-2 text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
