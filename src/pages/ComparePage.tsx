@@ -7,11 +7,9 @@ import {
   isKnownPlaceCategory,
 } from "@/lib/constants";
 import {
-  Activity,
   ChefHat,
   ChevronDown,
   Dna,
-  Flame,
   Frown,
   HeartHandshake,
   RefreshCw,
@@ -297,7 +295,7 @@ export default function ComparePage() {
     );
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
-  const [activeTab, setActiveTab] = useState<TabId>("top3");
+  const [activeTab, setActiveTab] = useState<TabId>("fame");
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
 
