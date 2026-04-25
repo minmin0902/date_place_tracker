@@ -88,21 +88,31 @@ export default function PlaceDetailPage() {
   }
 
   const foods = place.foods ?? [];
+  // Per-food /10 total: solo foods double the eater's single rating,
+  // couple foods sum both partners. Keeps the place average comparable
+  // across both modes.
   const totals = foods
-    .map((f) => (f.my_rating ?? 0) + (f.partner_rating ?? 0))
+    .map((f) => {
+      if (f.is_solo) {
+        const r = f.my_rating ?? f.partner_rating ?? 0;
+        return r * 2;
+      }
+      return (f.my_rating ?? 0) + (f.partner_rating ?? 0);
+    })
     .filter((n) => n > 0);
   const avg = totals.length
     ? (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1)
     : null;
 
   // Group foods by opinion spread.
-  // Same:   |diff| <= 0.5
-  // Diff:   |diff| >= 1 (sorted by diff desc)
-  // (items with 0.5 < diff < 1 fall into "same" as close-enough)
-  const rated = foods.filter(
+  // Solo foods skip the disagree/agree classification (no second opinion
+  // to compare against) and live in their own section below.
+  const soloFoods = foods.filter((f) => f.is_solo);
+  const coupleFoods = foods.filter((f) => !f.is_solo);
+  const rated = coupleFoods.filter(
     (f) => f.my_rating != null && f.partner_rating != null
   );
-  const unrated = foods.filter(
+  const unrated = coupleFoods.filter(
     (f) => f.my_rating == null || f.partner_rating == null
   );
   const diffOf = (f: Food) =>
@@ -311,6 +321,16 @@ export default function PlaceDetailPage() {
               onDelete={(fid) => void onDeleteFood(fid)}
             />
           )}
+
+          {soloFoods.length > 0 && (
+            <FoodGroup
+              title="🍽️ 혼자 먹은 메뉴 · 自己吃的"
+              tone="neutral"
+              foods={soloFoods}
+              placeId={place.id}
+              onDelete={(fid) => void onDeleteFood(fid)}
+            />
+          )}
         </section>
       </div>
     </div>
@@ -368,8 +388,16 @@ function FoodCard({
   const view = ratingsForViewer(food, user?.id);
   const my = view.myRating ?? 0;
   const partner = view.partnerRating ?? 0;
-  const total = my + partner;
-  const diff = Math.abs(my - partner);
+  const isSolo = !!food.is_solo;
+  // Solo food: only the eater's slot has a value. Total doubles that
+  // single rating so the /10 scale stays consistent across solo and
+  // couple foods. The eater is always the food's creator (we never
+  // record solo entries on someone else's behalf).
+  const viewerIsEater =
+    !food.created_by || food.created_by === user?.id;
+  const eaterRating = viewerIsEater ? my : partner;
+  const total = isSolo ? eaterRating * 2 : my + partner;
+  const diff = isSolo ? 0 : Math.abs(my - partner);
   const myWasGiven = view.myRating != null;
   const partnerWasGiven = view.partnerRating != null;
 
@@ -411,10 +439,27 @@ function FoodCard({
                 pointing at the edit form so the user can tag it. */}
             <FoodCategoryChip food={food} placeId={placeId} />
             {food.chef && <ChefBadge chef={food.chef} />}
-            {/* "Rate this" CTA — visible only to the partner who hasn't
-                rated this dish yet. Tapping the badge jumps straight to
-                the edit form so they can drop a score in one tap. */}
-            {!myWasGiven && (
+            {/* Solo-eat badge — surfaces who ate alone so you don't
+                wonder why one rating is missing. */}
+            {isSolo && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-indigo-200 bg-indigo-50 text-indigo-600">
+                {viewerIsEater
+                  ? "🍽️ 내가 혼자 먹음 · 我自己吃的"
+                  : "🍽️ 짝꿍이 혼자 먹음 · 宝宝自己吃的"}
+              </span>
+            )}
+            {/* "Rate this" CTA — only when the viewer is the eater
+                (or it's a couple food they can rate). Solo foods the
+                viewer didn't eat aren't theirs to rate. */}
+            {!isSolo && !myWasGiven && (
+              <Link
+                to={`/places/${placeId}/foods/${food.id}/edit`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
+              >
+                ✏️ 내 별점 아직 안 줬어요 · 还没打分
+              </Link>
+            )}
+            {isSolo && viewerIsEater && view.myRating == null && (
               <Link
                 to={`/places/${placeId}/foods/${food.id}/edit`}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
@@ -444,7 +489,27 @@ function FoodCard({
         </div>
       )}
 
-      {(myWasGiven || partnerWasGiven) && (
+      {/* Solo: single eater label + a one-sided bar. */}
+      {isSolo && (myWasGiven || partnerWasGiven) && (
+        <>
+          <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
+            <span className="flex items-center gap-1">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${viewerIsEater ? "bg-peach-400" : "bg-rose-400"}`}
+              />
+              {viewerIsEater ? "나 · 我" : "짝꿍 · 宝宝"}{" "}
+              <span className="font-number font-bold">
+                {eaterRating.toFixed(1)}
+              </span>
+            </span>
+            <span className="text-[10px] text-ink-400 font-medium">
+              혼자 먹어서 ×2 = {total.toFixed(1)} / 10
+            </span>
+          </div>
+          <SoloBar value={eaterRating} tone={viewerIsEater ? "peach" : "rose"} />
+        </>
+      )}
+      {!isSolo && (myWasGiven || partnerWasGiven) && (
         <>
           <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
             <span className="flex items-center gap-1">
@@ -541,6 +606,21 @@ function FoodCategoryChip({
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-cream-200 bg-cream-50 text-ink-600">
       {categoryEmojiOf(food.category)} {label}
     </span>
+  );
+}
+
+// Single-eater rating bar — used for solo foods so the layout doesn't
+// look broken with one half of CoupleBar empty.
+function SoloBar({ value, tone }: { value: number; tone: "peach" | "rose" }) {
+  const w = Math.min((value / 5) * 100, 100);
+  const fill = tone === "peach" ? "bg-peach-400" : "bg-rose-400";
+  return (
+    <div className="w-full h-3 bg-cream-100 rounded-full overflow-hidden border border-cream-200">
+      <div
+        className={`h-full ${fill} transition-all duration-500`}
+        style={{ width: `${w}%` }}
+      />
+    </div>
   );
 }
 

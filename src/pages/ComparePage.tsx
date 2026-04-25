@@ -171,6 +171,10 @@ export default function ComparePage() {
     const out: Row[] = [];
     for (const p of places) {
       for (const f of p.foods ?? []) {
+        // Only foods both partners rated qualify for comparison —
+        // solo foods (one rater) can't be diffed and would skew the
+        // 별점 요정 stat. Skip them entirely from this page.
+        if (f.is_solo) continue;
         if (f.my_rating == null || f.partner_rating == null) continue;
         // mine / partner are bound to the current viewer so the
         // "내 원픽" badge + bar always reads right whichever partner

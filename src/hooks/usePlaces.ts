@@ -141,6 +141,7 @@ export function useUpsertFood() {
         // for the per-viewer rating swap. Left out of updates so we
         // never accidentally rewrite the original author.
         created_by?: string | null;
+        is_solo?: boolean;
       };
     }) => {
       if (ALLOW_NO_AUTH) return upsertLocalFood(input);

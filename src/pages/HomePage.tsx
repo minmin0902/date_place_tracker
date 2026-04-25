@@ -38,7 +38,7 @@ import { formatDate, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
-type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
+type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc" | "city";
 // Type filter — works alongside ViewMode so users can combine
 // "집밥만 보기" with "별점 높은순".
 type DiningFilter = "all" | "out" | "home";
@@ -325,11 +325,16 @@ export default function HomePage() {
     if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
     if (unratedOnly) {
       // Show only places that still need *my* rating somewhere — at
-      // least one food whose viewer-side rating is null.
+      // least one food whose viewer-side rating is null. Solo foods
+      // the viewer didn't eat are skipped (not theirs to rate).
       list = list.filter((p) =>
-        (p.foods ?? []).some(
-          (f) => ratingsForViewer(f, user?.id).myRating == null
-        )
+        (p.foods ?? []).some((f) => {
+          if (f.is_solo) {
+            const isEater = !f.created_by || f.created_by === user?.id;
+            if (!isEater) return false;
+          }
+          return ratingsForViewer(f, user?.id).myRating == null;
+        })
       );
     }
     if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
@@ -367,9 +372,11 @@ export default function HomePage() {
       list.sort((a, b) => (avgTotal(b) ?? -1) - (avgTotal(a) ?? -1));
     } else if (viewMode === "scoreAsc") {
       list.sort((a, b) => (avgTotal(a) ?? Infinity) - (avgTotal(b) ?? Infinity));
+    } else if (viewMode === "dateAsc") {
+      list.sort((a, b) => (a.date_visited > b.date_visited ? 1 : -1));
     } else {
-      // Default "date" and "city" both sort by date first; "city" also
-      // groups downstream so order inside a group is date-desc.
+      // Default "date" (최근순) and "city" both sort newest-first;
+      // "city" also groups downstream so order inside a group is date-desc.
       list.sort((a, b) => (a.date_visited < b.date_visited ? 1 : -1));
     }
     return list;
@@ -614,7 +621,8 @@ export default function HomePage() {
                   value={viewMode}
                   onChange={(v) => setViewMode(v as ViewMode)}
                   options={[
-                    { value: "date", label: "최근순 · 时间顺" },
+                    { value: "date", label: "최근순 · 最新到旧" },
+                    { value: "dateAsc", label: "오래된순 · 最旧到新" },
                     { value: "scoreDesc", label: "별점 높은순 · 评分高到低" },
                     { value: "scoreAsc", label: "별점 낮은순 · 评分低到高" },
                     { value: "city", label: "도시별 · 按城市" },
@@ -1011,8 +1019,13 @@ function TimelineItem({
   const theme = timelineTheme(isHome);
   // Count foods on this place where the *viewer* hasn't dropped a
   // rating yet — drives the small "✏️ N 개" CTA so the user knows at
-  // a glance which entries still need their input.
+  // a glance which entries still need their input. Solo foods that
+  // the viewer didn't eat aren't theirs to rate, so they're excluded.
   const unratedByMe = (place.foods ?? []).filter((f) => {
+    if (f.is_solo) {
+      const isEater = !f.created_by || f.created_by === viewerId;
+      if (!isEater) return false;
+    }
     const view = ratingsForViewer(f, viewerId);
     return view.myRating == null;
   }).length;

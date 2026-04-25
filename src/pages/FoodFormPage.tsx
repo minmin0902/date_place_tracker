@@ -28,6 +28,9 @@ export default function FoodFormPage() {
   const [category, setCategory] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
+  // Solo flag — when true, only the food's creator ate this dish, so
+  // the partner rating slot is suppressed and the total is doubled.
+  const [isSolo, setIsSolo] = useState(false);
 
   useEffect(() => {
     if (!existing) return;
@@ -39,6 +42,7 @@ export default function FoodFormPage() {
     setPartnerRating(view.partnerRating);
     setCategory(existing.category ?? null);
     setMemo(existing.memo ?? "");
+    setIsSolo(existing.is_solo ?? false);
     // Prefer the new photo_urls array, fall back to the legacy single-photo
     // column for foods saved before the migration.
     if (existing.photo_urls && existing.photo_urls.length > 0) {
@@ -48,12 +52,20 @@ export default function FoodFormPage() {
     }
   }, [existing, user?.id]);
 
+  // Whether the current viewer is the food's creator. Solo foods are
+  // ALWAYS authored by the eater, so this also tells us whether the
+  // viewer is the one who ate it (= the only one who can rate).
+  const viewerIsCreator =
+    !existing || existing.created_by == null
+      ? true
+      : existing.created_by === user?.id;
+
   // Draft: so if the user taps off mid-entry their typed rating / name
   // is still there when they come back.
   const draftKey = placeId ? `draft:food:new:${placeId}` : "draft:food:new";
   const draftSnapshot = useMemo(
-    () => ({ name, myRating, partnerRating, category, memo, photos }),
-    [name, myRating, partnerRating, category, memo, photos]
+    () => ({ name, myRating, partnerRating, category, memo, photos, isSolo }),
+    [name, myRating, partnerRating, category, memo, photos, isSolo]
   );
   const draft = useFormDraft({
     key: draftKey,
@@ -69,6 +81,7 @@ export default function FoodFormPage() {
         setCategory(saved.category as string | null);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
+      if (typeof saved.isSolo === "boolean") setIsSolo(saved.isSolo);
     },
   });
 
@@ -80,11 +93,15 @@ export default function FoodFormPage() {
     // creator (editing someone else's food), swap the form values so the
     // server's "my_rating" column still tracks the original author.
     const ownerId = existing?.created_by ?? user?.id ?? null;
-    const isOwner = !existing || existing.created_by == null
-      ? true
-      : existing.created_by === user?.id;
-    const my_rating_to_save = isOwner ? myRating : partnerRating;
-    const partner_rating_to_save = isOwner ? partnerRating : myRating;
+    const isOwner = viewerIsCreator;
+    let my_rating_to_save = isOwner ? myRating : partnerRating;
+    let partner_rating_to_save = isOwner ? partnerRating : myRating;
+    // Solo: only the eater's slot keeps a value, the other side is
+    // forced null so the display logic + comparison filters can rely
+    // on "non-eater rating is null" being a hard rule.
+    if (isSolo) {
+      partner_rating_to_save = null;
+    }
     await upsert.mutateAsync({
       id: foodId,
       place_id: placeId,
@@ -101,13 +118,25 @@ export default function FoodFormPage() {
         // On insert: stamp the current user. On update: preserve the
         // existing author so swap math stays consistent forever.
         created_by: ownerId,
+        is_solo: isSolo,
       },
     });
     draft.clear();
     navigate(`/places/${placeId}`, { replace: true });
   }
 
-  const total = (myRating ?? 0) + (partnerRating ?? 0);
+  // Total = solo ? eaterRating × 2 : myRating + partnerRating.
+  // For solo, the "eater" is whichever side has the value from the
+  // viewer's perspective (myRating if I'm the creator, partnerRating
+  // otherwise).
+  const eaterRating = isSolo
+    ? viewerIsCreator
+      ? myRating
+      : partnerRating
+    : null;
+  const total = isSolo
+    ? (eaterRating ?? 0) * 2
+    : (myRating ?? 0) + (partnerRating ?? 0);
 
   return (
     <div>
@@ -147,49 +176,99 @@ export default function FoodFormPage() {
           )}
         </div>
 
+        {/* Solo / together toggle — gates the rating UI below.
+            New entries default to "together"; editing a solo entry
+            keeps it solo. Only the creator can flip the flag (it's
+            their meal record). */}
+        <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
+          <SoloSegment
+            active={!isSolo}
+            disabled={!viewerIsCreator}
+            onClick={() => setIsSolo(false)}
+            label="둘이 같이 먹었어 · 我们都吃了"
+          />
+          <SoloSegment
+            active={isSolo}
+            disabled={!viewerIsCreator}
+            onClick={() => setIsSolo(true)}
+            label="혼자 먹었어 · 自己吃的"
+          />
+        </div>
+
         <div className="card p-4 space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-ink-700">
-                나의 별점 · 我的评分
-              </span>
-              <span className="text-xs font-bold text-ink-400 font-number">
-                {myRating ?? "-"} / 5
-              </span>
+          {/* My rating slot — visible whenever:
+              · couple food (always)
+              · solo + I'm the creator (the eater) */}
+          {(!isSolo || viewerIsCreator) && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-ink-700">
+                  나의 별점 · 我的评分
+                </span>
+                <span className="text-xs font-bold text-ink-400 font-number">
+                  {myRating ?? "-"} / 5
+                </span>
+              </div>
+              <RatingPicker
+                value={myRating}
+                onChange={setMyRating}
+                color="peach"
+              />
             </div>
-            <RatingPicker
-              value={myRating}
-              onChange={setMyRating}
-              color="peach"
-            />
-          </div>
-          {/* Partner's rating is read-only here — each user only edits
-              their own slot, the other half lands when the partner logs
-              in and rates from their own session. */}
-          <div className="border-t border-cream-100 pt-4">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-bold text-ink-700">
-                짝꿍 별점 · 宝宝的评分
-              </span>
-              <span className="text-xs font-bold text-ink-400 font-number">
-                {partnerRating ?? "-"} / 5
-              </span>
+          )}
+          {/* Partner slot — read-only display:
+              · couple food: show partner's rating, with "still pending"
+                copy when null
+              · solo where I'm NOT the creator: show partner's rating
+                (the eater's score), since I didn't eat */}
+          {!isSolo && (
+            <div className={`${viewerIsCreator ? "border-t border-cream-100 pt-4" : ""}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-ink-700">
+                  짝꿍 별점 · 宝宝的评分
+                </span>
+                <span className="text-xs font-bold text-ink-400 font-number">
+                  {partnerRating ?? "-"} / 5
+                </span>
+              </div>
+              {partnerRating != null ? (
+                <p className="text-[11px] text-ink-400 mt-1">
+                  짝꿍이 직접 평가했어요 · 宝宝亲自打的分
+                </p>
+              ) : (
+                <p className="text-[11px] text-rose-400 mt-1">
+                  짝꿍이 아직 평가 전이에요. 짝꿍이 자기 계정에서 평가하면
+                  자동으로 떠요. · 宝宝还没打分，等TA登录后自己打。
+                </p>
+              )}
             </div>
-            {partnerRating != null ? (
+          )}
+          {/* Solo + I'm not the creator → show the eater's score read-only */}
+          {isSolo && !viewerIsCreator && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-ink-700">
+                  짝꿍 별점 · 宝宝的评分
+                </span>
+                <span className="text-xs font-bold text-ink-400 font-number">
+                  {partnerRating ?? "-"} / 5
+                </span>
+              </div>
               <p className="text-[11px] text-ink-400 mt-1">
-                짝꿍이 직접 평가했어요 · 宝宝亲自打的分
+                짝꿍이 혼자 먹은 메뉴라 별점은 짝꿍 거예요 ·
+                宝宝自己吃的，分数也是宝宝打的
               </p>
-            ) : (
-              <p className="text-[11px] text-rose-400 mt-1">
-                짝꿍이 아직 평가 전이에요. 짝꿍이 자기 계정에서 평가하면
-                자동으로 떠요. · 宝宝还没打分，等TA登录后自己打。
-              </p>
-            )}
-          </div>
+            </div>
+          )}
           {total > 0 && (
             <div className="pt-3 border-t border-cream-100 flex items-center justify-between">
               <span className="text-sm font-bold text-ink-700">
-                합계 · 总分
+                합계 · 总分{" "}
+                {isSolo && (
+                  <span className="text-[10px] font-medium text-ink-400 ml-1">
+                    (혼자 먹어서 ×2)
+                  </span>
+                )}
               </span>
               <span className="text-xl font-number font-bold text-peach-500">
                 {total} / 10
@@ -232,5 +311,36 @@ export default function FoodFormPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+// Compact 2-button segment used by the solo/together toggle. Disabled
+// state is for non-creators editing a solo food — the flag is locked
+// because flipping it would require swapping which slot the rating
+// lives in, which is the creator's call to make.
+function SoloSegment({
+  active,
+  onClick,
+  label,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all min-w-0 truncate ${
+        active
+          ? "bg-white shadow-sm border border-peach-100 text-peach-500"
+          : "text-ink-500 hover:text-ink-700"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      {label}
+    </button>
   );
 }

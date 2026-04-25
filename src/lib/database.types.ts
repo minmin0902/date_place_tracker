@@ -57,6 +57,10 @@ export type Database = {
           photo_urls: string[] | null;
           chef: ChefRole | null;
           created_by: string | null;
+          // When true, only the creator (created_by) ate this dish.
+          // UI hides the other partner's rating slot and doubles the
+          // single rating for the /10 total.
+          is_solo: boolean;
           created_at: string;
         };
         Insert: {
@@ -71,6 +75,7 @@ export type Database = {
           photo_urls?: string[] | null;
           chef?: ChefRole | null;
           created_by?: string | null;
+          is_solo?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["foods"]["Insert"]>;
       };
