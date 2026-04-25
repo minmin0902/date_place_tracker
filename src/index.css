@@ -21,24 +21,35 @@
   }
   body {
     @apply bg-cream-50 text-ink-900 antialiased;
-    /* Mobile: fall back immediately to system CJK font if web fonts are
-       still loading. -apple-system picks PingFang SC on iOS, Roboto +
-       Noto Sans CJK SC on Android. Keeps text crisp while Pretendard /
-       Quicksand / Noto web fonts arrive. */
-    font-family: "Pretendard Variable", "Pretendard", -apple-system,
-      BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Noto Sans KR",
-      "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
+    /* Fallback order matters here: on iOS/Android, the *system* CJK
+       fonts (PingFang SC, Noto Sans SC, Microsoft YaHei) must come
+       *before* generic sans-serif, otherwise mobile browsers fall back
+       to a Japanese kanji face or an old Mincho serif and the Chinese
+       glyphs render visibly broken. We keep Pretendard first so Korean
+       still uses its custom face on devices that have it. */
+    font-family: "Pretendard Variable", "Pretendard", "PingFang SC",
+      "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", -apple-system,
+      BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI",
+      Roboto, sans-serif;
     font-feature-settings: "ss01", "ss02";
     overscroll-behavior-y: none;
     ::selection {
       background: #fde2e4;
     }
   }
+  /* Same chain explicitly tied to the .font-sans utility used by the
+     stats / header / detail bento — if something opts back into sans
+     via Tailwind, it should still pick the same CJK-safe stack. */
+  .font-sans {
+    font-family: "Pretendard Variable", "Pretendard", "PingFang SC",
+      "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", -apple-system,
+      BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
   /* Explicit CJK-heavy passages (not a whole page, but per-element) can
      still opt into the system CJK face first. */
   :lang(zh) {
-    font-family: "PingFang SC", "Noto Sans SC", "Pretendard Variable",
-      "Pretendard", sans-serif;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
+      "Microsoft YaHei", "Pretendard Variable", "Pretendard", sans-serif;
   }
   button {
     @apply select-none;

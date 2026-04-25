@@ -175,7 +175,7 @@ export default function MapPage() {
   if (!KEY) {
     return (
       <div>
-        <PageHeader title="우리의 맛집 지도 · 咱俩的美食地图" />
+        <PageHeader title="우리의 맛집 지도 · 咱俩的美食宝藏图" />
         <div className="px-5">
           <div className="card p-4 text-sm text-ink-500">
             Google Maps API key가 설정되지 않았어요. <code>.env.local</code>의{" "}
@@ -188,7 +188,7 @@ export default function MapPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] flex flex-col">
-      <PageHeader title="우리의 맛집 지도 · 咱俩的美食地图" />
+      <PageHeader title="우리의 맛집 지도 · 咱俩的美食宝藏图" />
       <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
         {/* Legend overlay — lives on top of the map */}
         <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] font-bold text-ink-700 flex flex-col gap-1">

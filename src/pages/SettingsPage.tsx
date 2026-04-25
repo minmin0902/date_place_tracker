@@ -9,7 +9,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="설정 · 设置" />
+      <PageHeader title="설정 · 偏好设置" />
       <div className="px-5 space-y-4">
         <div className="card p-4">
           <p className="text-sm font-bold text-ink-500 mb-1">

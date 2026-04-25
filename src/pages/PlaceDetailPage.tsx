@@ -20,7 +20,7 @@ export default function PlaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const { data: place, isLoading } = usePlace(id);
+  const { data: place, isLoading, isError, error } = usePlace(id);
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const deletePlace = useDeletePlace();
@@ -50,8 +50,37 @@ export default function PlaceDetailPage() {
   if (isLoading) {
     return <p className="p-8 text-center text-ink-500">{t("common.loading")}</p>;
   }
+  // Surface any underlying Supabase / network error instead of falling
+  // through to the silent "common.empty" copy — that made every failure
+  // look like a missing record.
+  if (isError) {
+    console.error("[PlaceDetailPage] usePlace error:", error);
+    const e = error as unknown;
+    const msg =
+      e instanceof Error
+        ? e.message
+        : typeof e === "object" && e !== null
+          ? JSON.stringify(e)
+          : String(e);
+    return (
+      <div className="p-6">
+        <PageHeader title="불러오기 실패 · 加载失败" back />
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-600 p-4 text-sm whitespace-pre-wrap break-words">
+          {msg}
+        </div>
+        <p className="text-xs text-ink-400 mt-3">
+          place id: <span className="font-number">{id}</span>
+        </p>
+      </div>
+    );
+  }
   if (!place) {
-    return <p className="p-8 text-center text-ink-500">{t("common.empty")}</p>;
+    return (
+      <div className="p-6">
+        <PageHeader title="찾을 수 없어요 · 找不到记录" back />
+        <p className="mt-4 text-sm text-ink-500">{t("common.empty")}</p>
+      </div>
+    );
   }
 
   const foods = place.foods ?? [];
@@ -138,7 +167,7 @@ export default function PlaceDetailPage() {
           <div className="col-span-2 flex items-center justify-between p-6 rounded-[2rem] bg-gradient-to-br from-peach-100 to-rose-100 border border-rose-200/60 shadow-airy">
             <div>
               <p className="text-sm font-medium text-rose-500 mb-1">
-                {t("place.avgScore")}
+                우리의 별점 · 我们的评分
               </p>
               <div className="text-5xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 tracking-tight">
                 {avg ?? "-"}
@@ -175,7 +204,7 @@ export default function PlaceDetailPage() {
                 place.want_to_revisit ? "fill-rose-400 text-rose-400" : ""
               }`}
             />
-            <span className="text-sm font-medium">{t("place.wantRevisit")}</span>
+            <span className="text-sm font-medium">또 올래! · 必须二刷</span>
           </button>
         </section>
 
@@ -200,28 +229,32 @@ export default function PlaceDetailPage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-sans font-bold text-lg flex items-baseline gap-2">
-              {t("place.foods")}
-              <span className="text-peach-400 text-sm">{foods.length}</span>
+              우리가 먹은 메뉴 · 我们吃过的
+              <span className="text-peach-400 text-sm font-number">
+                {foods.length}
+              </span>
             </h2>
             <Link
               to={`/places/${place.id}/foods/new`}
               className="flex items-center gap-1 px-3 py-1.5 bg-peach-100 text-peach-500 rounded-full text-sm font-medium hover:bg-peach-200 transition"
             >
               <Plus className="w-4 h-4" />
-              {t("place.addFood")}
+              메뉴 추가 · 记一笔
             </Link>
           </div>
 
           {!foods.length && (
             <div className="text-center py-10 bg-white rounded-3xl border border-cream-200 border-dashed">
               <span className="text-4xl mb-2 block">🍽️</span>
-              <p className="text-ink-500 text-sm">{t("place.noFoods")}</p>
+              <p className="text-ink-500 text-sm">
+                아직 등록된 메뉴가 없어요 · 还没记下吃了啥
+              </p>
             </div>
           )}
 
           {disagreeFoods.length > 0 && (
             <FoodGroup
-              title={t("place.disagreeFoods")}
+              title="🧐 서로 입맛이 달랐어요 · 评价两极分化"
               tone="rose"
               foods={disagreeFoods}
               placeId={place.id}
@@ -231,7 +264,7 @@ export default function PlaceDetailPage() {
 
           {agreeFoods.length > 0 && (
             <FoodGroup
-              title={t("place.agreeFoods")}
+              title="🥰 둘 다 만족했어요 · 疯狂打call"
               tone="peach"
               foods={agreeFoods}
               placeId={place.id}
@@ -241,7 +274,7 @@ export default function PlaceDetailPage() {
 
           {unrated.length > 0 && (
             <FoodGroup
-              title="-"
+              title="💬 아직 평가 전 · 等待打分"
               tone="neutral"
               foods={unrated}
               placeId={place.id}
@@ -275,12 +308,10 @@ function FoodGroup({
         : "bg-ink-300";
   return (
     <div className="mt-5 first:mt-0">
-      {title !== "-" && (
-        <div className="flex items-center gap-2 mb-2 px-1">
-          <span className={`w-2 h-2 rounded-full ${dotClass}`} />
-          <span className="text-sm font-semibold text-ink-700">{title}</span>
-        </div>
-      )}
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+        <span className="text-sm font-semibold text-ink-700">{title}</span>
+      </div>
       <div className="space-y-3">
         {foods.map((f) => (
           <FoodCard key={f.id} food={f} placeId={placeId} onDelete={onDelete} />
