@@ -10,7 +10,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate } from "@/lib/utils";
+import { formatDate, ratingsForViewer } from "@/lib/utils";
 import { categoryEmojiOf, isKnownPlaceCategory } from "@/lib/constants";
 import type { Food } from "@/lib/database.types";
 
@@ -338,10 +338,18 @@ function FoodCard({
   placeId: string;
   onDelete: (id: string) => void;
 }) {
-  const my = food.my_rating ?? 0;
-  const partner = food.partner_rating ?? 0;
+  const { user } = useAuth();
+  // Swap "my" / "partner" so the current viewer always sees their own
+  // score in the "나 · 我" slot. Diff and total are perspective-free
+  // (|a-b|, a+b), so the section header classification still works
+  // off the raw fields upstream.
+  const view = ratingsForViewer(food, user?.id);
+  const my = view.myRating ?? 0;
+  const partner = view.partnerRating ?? 0;
   const total = my + partner;
   const diff = Math.abs(my - partner);
+  const myWasGiven = view.myRating != null;
+  const partnerWasGiven = view.partnerRating != null;
 
   // Normalize: prefer photo_urls, fall back to the legacy single column.
   const photos: string[] =
@@ -397,20 +405,20 @@ function FoodCard({
         </div>
       )}
 
-      {(food.my_rating != null || food.partner_rating != null) && (
+      {(myWasGiven || partnerWasGiven) && (
         <>
           <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-peach-400" />
               나 · 我{" "}
               <span className="font-number font-bold">
-                {food.my_rating != null ? my.toFixed(1) : "-"}
+                {myWasGiven ? my.toFixed(1) : "-"}
               </span>
             </span>
             <span className="flex items-center gap-1">
               짝꿍 · 宝宝{" "}
               <span className="font-number font-bold">
-                {food.partner_rating != null ? partner.toFixed(1) : "-"}
+                {partnerWasGiven ? partner.toFixed(1) : "-"}
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
             </span>

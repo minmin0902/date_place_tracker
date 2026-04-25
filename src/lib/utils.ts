@@ -20,6 +20,31 @@ export function generateInviteCode(length = 6) {
 // stored value won't shift across the date line for non-US users.
 const APP_TIMEZONE = "America/New_York";
 
+// Swap "my" / "partner" rating per viewer so each member of the couple
+// always sees their own rating in the "내 별점 / 我的评分" slot. Storage
+// convention: `my_rating` belongs to the food's `created_by` user;
+// `partner_rating` belongs to the other partner. Legacy rows where
+// created_by is null fall back to the as-stored values.
+export function ratingsForViewer(
+  food: {
+    my_rating: number | null;
+    partner_rating: number | null;
+    created_by?: string | null;
+  },
+  viewerId: string | undefined
+): { myRating: number | null; partnerRating: number | null } {
+  if (!viewerId || !food.created_by) {
+    return {
+      myRating: food.my_rating,
+      partnerRating: food.partner_rating,
+    };
+  }
+  const isCreator = food.created_by === viewerId;
+  return isCreator
+    ? { myRating: food.my_rating, partnerRating: food.partner_rating }
+    : { myRating: food.partner_rating, partnerRating: food.my_rating };
+}
+
 export function formatDate(date: string | Date, locale: string) {
   let d: Date;
   if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {

@@ -43,6 +43,10 @@ export type Database = {
           id: string;
           place_id: string;
           name: string;
+          // my_rating / partner_rating are stored from the *creator's*
+          // perspective: my_rating is always the rating belonging to
+          // foods.created_by, partner_rating is the co-partner's. The
+          // UI swaps the labels per viewer (see ratingsForViewer).
           my_rating: number | null;
           partner_rating: number | null;
           category: string | null;
@@ -52,6 +56,7 @@ export type Database = {
           photo_url: string | null;
           photo_urls: string[] | null;
           chef: ChefRole | null;
+          created_by: string | null;
           created_at: string;
         };
         Insert: {
@@ -65,6 +70,7 @@ export type Database = {
           photo_url?: string | null;
           photo_urls?: string[] | null;
           chef?: ChefRole | null;
+          created_by?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["foods"]["Insert"]>;
       };

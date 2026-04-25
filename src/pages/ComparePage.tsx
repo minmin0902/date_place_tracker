@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Swords, HeartHandshake, Frown } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { PageHeader } from "@/components/PageHeader";
+import { ratingsForViewer } from "@/lib/utils";
 
 type Row = {
   foodId: string;
@@ -19,6 +21,7 @@ const LOW = 2; // both ≤ 2  → 다신 안 가 / 再也不去
 const WAR = 2; // diff ≥ 2  → 입맛 전쟁 / 口味之争
 
 export default function ComparePage() {
+  const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
 
@@ -28,18 +31,22 @@ export default function ComparePage() {
     for (const p of places) {
       for (const f of p.foods ?? []) {
         if (f.my_rating == null || f.partner_rating == null) continue;
+        // mine / partner are bound to the current viewer so the
+        // "내 원픽" badge + bar always reads right whichever partner
+        // is logged in.
+        const view = ratingsForViewer(f, user?.id);
         out.push({
           foodId: f.id,
           placeId: p.id,
           placeName: p.name,
           foodName: f.name,
-          mine: f.my_rating,
-          partner: f.partner_rating,
+          mine: view.myRating ?? 0,
+          partner: view.partnerRating ?? 0,
         });
       }
     }
     return out;
-  }, [places]);
+  }, [places, user?.id]);
 
   const soulmates = [...rows]
     .filter((r) => r.mine >= HIGH && r.partner >= HIGH)

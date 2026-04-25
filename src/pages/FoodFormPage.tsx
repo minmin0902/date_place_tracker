@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlace, useUpsertFood } from "@/hooks/usePlaces";
 import { useFormDraft } from "@/hooks/useDraft";
@@ -8,11 +9,13 @@ import { CategoryChips } from "@/components/CategoryChips";
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { FOOD_CATEGORIES } from "@/lib/constants";
+import { ratingsForViewer } from "@/lib/utils";
 
 export default function FoodFormPage() {
   const { id: placeId, foodId } = useParams();
   const isEdit = !!foodId;
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: place } = usePlace(placeId);
   const upsert = useUpsertFood();
@@ -29,8 +32,11 @@ export default function FoodFormPage() {
   useEffect(() => {
     if (!existing) return;
     setName(existing.name);
-    setMyRating(existing.my_rating);
-    setPartnerRating(existing.partner_rating);
+    // Hydrate ratings from the *viewer's* perspective so each partner
+    // sees their own rating in the "내 별점" slot when editing.
+    const view = ratingsForViewer(existing, user?.id);
+    setMyRating(view.myRating);
+    setPartnerRating(view.partnerRating);
     setCategory(existing.category ?? null);
     setMemo(existing.memo ?? "");
     // Prefer the new photo_urls array, fall back to the legacy single-photo
@@ -40,7 +46,7 @@ export default function FoodFormPage() {
     } else if (existing.photo_url) {
       setPhotos([existing.photo_url]);
     }
-  }, [existing]);
+  }, [existing, user?.id]);
 
   // Draft: so if the user taps off mid-entry their typed rating / name
   // is still there when they come back.
@@ -69,19 +75,32 @@ export default function FoodFormPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!placeId) return;
+    // Storage convention: my_rating belongs to created_by, partner_rating
+    // belongs to the other partner. If the current viewer is NOT the
+    // creator (editing someone else's food), swap the form values so the
+    // server's "my_rating" column still tracks the original author.
+    const ownerId = existing?.created_by ?? user?.id ?? null;
+    const isOwner = !existing || existing.created_by == null
+      ? true
+      : existing.created_by === user?.id;
+    const my_rating_to_save = isOwner ? myRating : partnerRating;
+    const partner_rating_to_save = isOwner ? partnerRating : myRating;
     await upsert.mutateAsync({
       id: foodId,
       place_id: placeId,
       values: {
         name: name.trim(),
-        my_rating: myRating,
-        partner_rating: partnerRating,
+        my_rating: my_rating_to_save,
+        partner_rating: partner_rating_to_save,
         category,
         memo: memo.trim() || null,
         // Keep the legacy scalar column populated too so any older build
         // still reading photo_url sees something.
         photo_url: photos[0] ?? null,
         photo_urls: photos.length ? photos : null,
+        // On insert: stamp the current user. On update: preserve the
+        // existing author so swap math stays consistent forever.
+        created_by: ownerId,
       },
     });
     draft.clear();
