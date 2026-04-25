@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -492,7 +492,7 @@ export default function ComparePage() {
         >
           {cardConfig.order
             .filter((id) => !cardConfig.hidden.includes(id))
-            .map((id) => {
+            .map((id, i) => {
               // Chef card is home-only; under "외식" filter or with
               // zero home rows it has nothing meaningful to show, so
               // hide it from the carousel rather than render an empty
@@ -526,6 +526,11 @@ export default function ComparePage() {
                       rows={filteredRows}
                       myDisplay={myDisplay}
                       partnerDisplay={partnerDisplay}
+                      // Carousel-aware: when this card scrolls off-
+                      // screen the inner "더 보기" expansion auto-
+                      // collapses so neighboring cards don't render
+                      // tall while peeking at the side.
+                      isActive={i === activeCardIdx}
                     />
                   )}
                   {id === "rating" && (
@@ -769,10 +774,15 @@ function TasteDiagnosisCard({
   rows,
   myDisplay,
   partnerDisplay,
+  isActive,
 }: {
   rows: Row[];
   myDisplay: string;
   partnerDisplay: string;
+  // True only while this card is the centered slide. When it scrolls
+  // off the user's view we collapse the breakdown so peeking
+  // neighbors don't see a tall "더 보기" view.
+  isActive: boolean;
 }) {
   const { t } = useTranslation();
   const [breakdownTab, setBreakdownTab] = useState<"bti" | "category">("bti");
@@ -780,6 +790,14 @@ function TasteDiagnosisCard({
   // is open. Switching tabs clears the expansion implicitly because
   // the keys (BtiKey vs cat string) don't collide in practice.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // Card height adapts to the carousel: when this slide is the
+  // centered (active) one, the breakdown body opens up taller so
+  // more ranks read at a glance. When the user swipes away, it
+  // shrinks back so neighboring cards aren't dwarfed mid-scroll.
+  // Drilldown rows get folded too — keeps the inactive snapshot tidy.
+  useEffect(() => {
+    if (!isActive) setExpandedKey(null);
+  }, [isActive]);
 
   // ----- sync % -----
   const syncPercent = useMemo(() => {
@@ -984,26 +1002,29 @@ function TasteDiagnosisCard({
         </p>
       </div>
 
-      {/* Compact stat row: sync % + sample size. */}
+      {/* Compact stat row — kept tight (one-liner-ish) so the rank
+          list below has more vertical room without the diagnosis card
+          getting taller. Number + label render side-by-side instead
+          of stacked. */}
       <div className="relative z-10 grid grid-cols-2 gap-2 mb-2">
         <div
-          className={`rounded-xl px-2 py-1.5 border text-center ${syncTone.chip}`}
+          className={`rounded-lg px-2 py-1 border flex items-center justify-center gap-1.5 ${syncTone.chip}`}
         >
-          <div className="text-[9px] font-bold tracking-wider uppercase opacity-70">
-            싱크 · 默契度
-          </div>
-          <div className="font-number font-black text-[18px] leading-none mt-0.5">
+          <span className="text-[9px] font-bold tracking-wider uppercase opacity-70">
+            싱크·默契
+          </span>
+          <span className="font-number font-black text-[13px] leading-none">
             {syncPercent.toFixed(0)}
-            <span className="text-[12px]">%</span>
-          </div>
+            <span className="text-[10px]">%</span>
+          </span>
         </div>
-        <div className="rounded-xl px-2 py-1.5 border bg-cream-50 border-cream-200 text-ink-700 text-center">
-          <div className="text-[9px] font-bold tracking-wider uppercase text-ink-400">
-            메뉴 · 评价数
-          </div>
-          <div className="font-number font-black text-[18px] leading-none mt-0.5 text-ink-900">
+        <div className="rounded-lg px-2 py-1 border bg-cream-50 border-cream-200 text-ink-700 flex items-center justify-center gap-1.5">
+          <span className="text-[9px] font-bold tracking-wider uppercase text-ink-400">
+            메뉴·评价
+          </span>
+          <span className="font-number font-black text-[13px] leading-none text-ink-900">
             {rows.length}
-          </div>
+          </span>
         </div>
       </div>
 
@@ -1042,11 +1063,14 @@ function TasteDiagnosisCard({
         </button>
       </div>
 
-      {/* Breakdown body — fixed-height "rectangle" that exposes ~2 rows
-          and scrolls internally for the rest. Keeps the diagnosis card
-          short while still letting the user dig into every bucket /
-          category if they want. */}
-      <div className="relative z-10 h-[88px] overflow-y-auto hide-scrollbar text-ink-500 border border-cream-100 rounded-lg bg-cream-50/40 px-2 py-1.5">
+      {/* Breakdown body — height tracks the carousel state. When
+          this card is the active (centered) slide it opens up to
+          ~3-4 rows; sliding away snaps back to the compact 88px so
+          the off-screen neighbors don't peek a tall, unbalanced
+          rectangle while the user is scrolling. */}
+      <div
+        className={`relative z-10 ${isActive ? "h-[180px]" : "h-[88px]"} transition-[height] duration-200 ease-out overflow-y-auto hide-scrollbar text-ink-500 border border-cream-100 rounded-lg bg-cream-50/40 px-2 py-1.5`}
+      >
         {breakdownTab === "bti" ? (
           <div className="space-y-2">
             {btiStats.map((s) => {
@@ -1065,10 +1089,10 @@ function TasteDiagnosisCard({
                       {pf.emoji}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center text-[10px] font-bold text-ink-600 mb-0.5 gap-2">
+                      <div className="flex justify-between items-center text-[12px] font-bold text-ink-700 mb-0.5 gap-2">
                         <span className="truncate break-keep">
                           {pf.titleKo}{" "}
-                          <span className="text-ink-400 font-medium">
+                          <span className="text-ink-400 font-medium text-[11px]">
                             · {pf.titleZh}
                           </span>
                         </span>
@@ -1077,7 +1101,7 @@ function TasteDiagnosisCard({
                               place counter) + 家 (Chinese restaurant
                               counter) so the raw number doesn't read
                               as just "3". */}
-                          <span className="text-[9px] text-ink-400 font-number">
+                          <span className="text-[11px] text-ink-400 font-number">
                             {s.count}곳·家
                           </span>
                           <span className="font-number">
@@ -1109,7 +1133,7 @@ function TasteDiagnosisCard({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex justify-between text-[10px] font-bold px-1">
+            <div className="flex justify-between text-[12px] font-bold px-1">
               <span className="text-peach-500 truncate max-w-[45%]">
                 {myDisplay}
               </span>
@@ -1119,7 +1143,7 @@ function TasteDiagnosisCard({
             </div>
             {categorySections.map((section) => (
               <div key={section.headerKo}>
-                <p className="text-[10px] font-bold text-ink-400 tracking-wider mb-1.5 uppercase">
+                <p className="text-[11px] font-bold text-ink-400 tracking-wider mb-1.5 uppercase">
                   {section.headerKo} · {section.headerZh}
                 </p>
                 <div className="space-y-2">
@@ -1141,15 +1165,15 @@ function TasteDiagnosisCard({
                           className="w-full text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
                         >
                           <div className="flex items-center justify-between mb-1 px-0.5 gap-2">
-                            <span className="text-[11px] font-bold text-ink-700 flex items-center gap-1 min-w-0 truncate">
+                            <span className="text-[13px] font-bold text-ink-700 flex items-center gap-1 min-w-0 truncate">
                               <span>{categoryEmojiOf(cat)}</span>
                               <span className="truncate">{label}</span>
-                              <span className="text-[10px] text-ink-400 font-number ml-1 flex-shrink-0">
+                              <span className="text-[11px] text-ink-400 font-number ml-1 flex-shrink-0">
                                 ({b.count}곳·家)
                               </span>
                             </span>
                             <span className="flex items-center gap-1 flex-shrink-0">
-                              <span className="text-[10px] font-number font-bold text-ink-500 bg-cream-100 px-1.5 py-0.5 rounded-md">
+                              <span className="text-[11px] font-number font-bold text-ink-500 bg-cream-100 px-1.5 py-0.5 rounded-md">
                                 Δ {b.diff.toFixed(1)}
                               </span>
                               <ChevronDown
