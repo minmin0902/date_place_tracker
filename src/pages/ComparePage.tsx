@@ -31,9 +31,10 @@ import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 
 type DiningFilter = "all" | "out" | "home";
-// Four list sections moved to a horizontal tab so the page doesn't
-// stack four full lists vertically.
-type TabId = "top3" | "match" | "clash" | "pass";
+// 명예의 전당 흡수 후 3-tab 구성: fame(명예의 전당, top 3 + 그 외 4.5+
+// 메뉴 묶음) / clash / pass. 이전에는 명예의 전당 / 천생연분이 사실상
+// 같은 4.5+ 풀에서 잘려 나가 두 탭이 겹쳐 보였음.
+type TabId = "fame" | "clash" | "pass";
 
 // Carousel cards are user-configurable: the user can reorder them and
 // hide ones they don't care about. State lives in sessionStorage so
@@ -274,8 +275,11 @@ const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
   fastfood: ["western"],
 };
 
-const YYDS = 4.5; // both ≥ 4.5  → 명예의 전당
-const HIGH = 4; // both ≥ 4    → 천생연분
+// 명예의 전당 = both ≥ 4.5. 천생연분이 별도로 4.0+ 구간을 가져갔던
+// 옛 구조에서는 두 탭이 4.5+ 메뉴를 두고 겹쳐 보였음 — 이제 4.5+ 풀
+// 안에서 상위 3개만 트로피, 나머지를 같은 탭의 천생연분 서브섹션으로
+// 모음.
+const FAME = 4.5;
 const LOW = 2; // both ≤ 2    → 여긴 패스
 const WAR = 2; // diff ≥ 2    → 입맛 격돌
 
@@ -344,17 +348,13 @@ export default function ComparePage() {
   // chef stats only make sense for home rows).
   const homeRows = useMemo(() => rows.filter((r) => r.isHomeCooked), [rows]);
 
-  const yyds = [...filteredRows]
-    .filter((r) => r.mine >= YYDS && r.partner >= YYDS)
-    .sort((a, b) => b.mine + b.partner - (a.mine + a.partner))
-    .slice(0, 3);
-  const yydsIds = new Set(yyds.map((r) => r.foodId));
-
-  const soulmates = [...filteredRows]
-    .filter(
-      (r) => r.mine >= HIGH && r.partner >= HIGH && !yydsIds.has(r.foodId)
-    )
+  // 4.5+ 풀을 한 번에 정렬해두고 상위 3개를 트로피, 나머지를 천생연분
+  // 서브섹션으로 분배. 임계값 통일로 두 섹션이 더 이상 겹치지 않음.
+  const fameAll = [...filteredRows]
+    .filter((r) => r.mine >= FAME && r.partner >= FAME)
     .sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+  const fameTop = fameAll.slice(0, 3);
+  const fameRest = fameAll.slice(3);
 
   const neverAgain = [...filteredRows]
     .filter((r) => r.mine <= LOW && r.partner <= LOW)
@@ -364,7 +364,7 @@ export default function ComparePage() {
     .filter(
       (r) =>
         Math.abs(r.mine - r.partner) >= WAR &&
-        !(r.mine >= HIGH && r.partner >= HIGH) &&
+        !(r.mine >= FAME && r.partner >= FAME) &&
         !(r.mine <= LOW && r.partner <= LOW)
     )
     .sort(
@@ -492,22 +492,13 @@ export default function ComparePage() {
       <div className="px-5 pb-8">
         <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 pb-1">
           <SectionTab
-            active={activeTab === "top3"}
-            onClick={() => setActiveTab("top3")}
+            active={activeTab === "fame"}
+            onClick={() => setActiveTab("fame")}
             icon={<Trophy className="w-3.5 h-3.5" />}
             labelKo="명예의 전당"
             labelZh="封神榜"
-            count={yyds.length}
+            count={fameAll.length}
             tone="amber"
-          />
-          <SectionTab
-            active={activeTab === "match"}
-            onClick={() => setActiveTab("match")}
-            icon={<HeartHandshake className="w-3.5 h-3.5" />}
-            labelKo="천생연분"
-            labelZh="双向奔赴"
-            count={soulmates.length}
-            tone="rose"
           />
           <SectionTab
             active={activeTab === "clash"}
@@ -542,14 +533,14 @@ export default function ComparePage() {
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
-            {activeTab === "top3" && (
+            {activeTab === "fame" && (
               <ListPanel
-                titleKo="둘 다 만점급 준 레전드 메뉴"
-                titleZh="俩人都给了神级评分！"
-                empty={yyds.length === 0}
-                emptyText="만점 메뉴가 아직 없어요 · 还没有满分菜"
+                titleKo="둘 다 4.5점 이상 — 우리의 레전드 메뉴"
+                titleZh="俩人都给了4.5+，封神级！"
+                empty={fameAll.length === 0}
+                emptyText="아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
               >
-                {yyds.map((r, idx) => (
+                {fameTop.map((r, idx) => (
                   <FoodCard
                     key={r.foodId}
                     r={r}
@@ -558,18 +549,24 @@ export default function ComparePage() {
                     badge={`🏆 TOP ${idx + 1}`}
                   />
                 ))}
-              </ListPanel>
-            )}
-            {activeTab === "match" && (
-              <ListPanel
-                titleKo="우리 둘 다 푹 빠진 곳"
-                titleZh="俩人都爱惨了！"
-                empty={soulmates.length === 0}
-                emptyText="아직 없어요 · 还没有"
-              >
-                {soulmates.map((r) => (
-                  <FoodCard key={r.foodId} r={r} showTotal />
-                ))}
+                {fameRest.length > 0 && (
+                  <div className="pt-2 mt-2">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                      <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="text-[12px] font-bold text-rose-500">
+                        천생연분 · 双向奔赴
+                      </span>
+                      <span className="text-[10px] text-ink-400 font-number">
+                        {fameRest.length}
+                      </span>
+                    </div>
+                    <ExpandableList items={fameRest} initial={5}>
+                      {(r) => (
+                        <FoodCard key={r.foodId} r={r} showTotal />
+                      )}
+                    </ExpandableList>
+                  </div>
+                )}
               </ListPanel>
             )}
             {activeTab === "clash" && (
@@ -579,15 +576,22 @@ export default function ComparePage() {
                 empty={tasteWar.length === 0}
                 emptyText="아직 없어요 · 还没有"
               >
-                {tasteWar.map((r) => {
-                  const myFav = r.mine > r.partner;
-                  const badge = myFav
-                    ? "🙋‍♂️ 내 원픽! · 我的本命"
-                    : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
-                  return (
-                    <FoodCard key={r.foodId} r={r} badge={badge} showBalance />
-                  );
-                })}
+                <ExpandableList items={tasteWar} initial={5}>
+                  {(r) => {
+                    const myFav = r.mine > r.partner;
+                    const badge = myFav
+                      ? "🙋‍♂️ 내 원픽! · 我的本命"
+                      : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
+                    return (
+                      <FoodCard
+                        key={r.foodId}
+                        r={r}
+                        badge={badge}
+                        showBalance
+                      />
+                    );
+                  }}
+                </ExpandableList>
               </ListPanel>
             )}
             {activeTab === "pass" && (
@@ -597,9 +601,9 @@ export default function ComparePage() {
                 empty={neverAgain.length === 0}
                 emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
               >
-                {neverAgain.map((r) => (
-                  <FoodCard key={r.foodId} r={r} />
-                ))}
+                <ExpandableList items={neverAgain} initial={5}>
+                  {(r) => <FoodCard key={r.foodId} r={r} />}
+                </ExpandableList>
               </ListPanel>
             )}
           </div>
@@ -1521,6 +1525,49 @@ function SectionTab({
         {count}
       </span>
     </button>
+  );
+}
+
+// ---------- expandable list ----------
+
+// Generic "show first N → reveal rest" wrapper used by every results
+// list. Keeps the page short by default while still letting the user
+// pull up the full list if they want.
+function ExpandableList<T>({
+  items,
+  initial = 5,
+  children,
+}: {
+  items: T[];
+  initial?: number;
+  children: (item: T) => React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, initial);
+  const hiddenCount = items.length - initial;
+  return (
+    <>
+      {visible.map(children)}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full mt-2 py-2.5 rounded-2xl border border-cream-200 bg-white text-[12px] font-bold text-ink-700 hover:bg-cream-50 transition flex items-center justify-center gap-1"
+        >
+          {expanded ? (
+            <>
+              접기 · 收起
+              <ChevronDown className="w-3.5 h-3.5 rotate-180" />
+            </>
+          ) : (
+            <>
+              더보기 · 还有 {hiddenCount}개
+              <ChevronDown className="w-3.5 h-3.5" />
+            </>
+          )}
+        </button>
+      )}
+    </>
   );
 }
 
