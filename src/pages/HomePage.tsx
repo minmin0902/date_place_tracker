@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   BookmarkPlus,
   CheckCircle2,
+  ChevronDown,
   Dice5,
   Heart,
   MapPin,
@@ -149,7 +150,7 @@ function avgTotal(p: PlaceWithFoods): number | null {
 }
 
 export default function HomePage() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
@@ -162,7 +163,50 @@ export default function HomePage() {
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("date");
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
+  // Category filter — "all" means no filter; otherwise the value is
+  // either a built-in PLACE_CATEGORIES key OR a freeform "기타" string
+  // typed by the user. Both are handled the same in `place.category`.
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
+
+  // Build the category dropdown options dynamically: built-in list first,
+  // then any custom strings the user has saved (via the "기타" input)
+  // appended in the order they appeared. This way the dropdown grows
+  // automatically without needing a schema change.
+  const categoryOptions = useMemo(() => {
+    const out: { value: string; label: string }[] = [];
+    out.push({ value: "all", label: "모든 종류 · 全部" });
+    for (const c of PLACE_CATEGORIES) {
+      out.push({
+        value: c,
+        label: `${categoryEmojiOf(c)} ${t(`category.${c}`)}`,
+      });
+    }
+    // Custom — collect unique non-built-in category strings from the
+    // user's existing places and append. Sorted alphabetically so the
+    // dropdown ordering is stable even when new entries arrive.
+    const customs = new Set<string>();
+    for (const p of places ?? []) {
+      const c = p.category;
+      if (!c) continue;
+      if (isKnownPlaceCategory(c)) continue;
+      customs.add(c);
+    }
+    for (const c of [...customs].sort()) {
+      out.push({ value: c, label: `${categoryEmojiOf(c)} ${c}` });
+    }
+    return out;
+  }, [places, t]);
+
+  // Drop the categoryFilter back to "all" if the user deletes every
+  // place that used a now-invalid custom category, otherwise the chip
+  // would silently filter to zero rows.
+  useEffect(() => {
+    if (categoryFilter === "all") return;
+    if (!categoryOptions.some((o) => o.value === categoryFilter)) {
+      setCategoryFilter("all");
+    }
+  }, [categoryOptions, categoryFilter]);
 
   // Base list: filter first, then sort per viewMode below.
   const baseList = useMemo(() => {
@@ -172,6 +216,9 @@ export default function HomePage() {
     if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
     else if (diningFilter === "home")
       list = list.filter((p) => p.is_home_cooked);
+    if (categoryFilter !== "all") {
+      list = list.filter((p) => p.category === categoryFilter);
+    }
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter((p) => {
@@ -183,7 +230,7 @@ export default function HomePage() {
       });
     }
     return list;
-  }, [places, query, revisitOnly, diningFilter]);
+  }, [places, query, revisitOnly, diningFilter, categoryFilter]);
 
   const filteredPlaces = useMemo(() => {
     const list = [...baseList];
@@ -349,52 +396,52 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* Two-row filter:
-                Row 1 — type (모두 / 외식 / 집밥), tone-coded so the active
-                pill picks up its category color.
-                Row 2 — sort/grouping (date / score / city). The two
-                interact: 집밥 + 별점 높은순 = 집에서 만든 것 중 별점 1등. */}
-            <div className="flex flex-col gap-2 mb-5 px-1">
-              <div className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
-                <DiningChip
+            {/* Filter area — segmented control on top for 외식/집밥, then
+                two side-by-side dropdowns for sort + category. The chip
+                grid grew unwieldy as the category list expanded, so the
+                category bucket is a <select> now. */}
+            <div className="flex flex-col gap-3 mb-6 px-1">
+              {/* Segmented: 모두 / 외식 / 집밥 */}
+              <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
+                <SegmentButton
                   active={diningFilter === "all"}
                   onClick={() => setDiningFilter("all")}
                   label="모두 · 全部"
-                  tone="neutral"
+                  activeText="text-ink-900"
+                  activeBorder="border-cream-100"
                 />
-                <DiningChip
+                <SegmentButton
                   active={diningFilter === "out"}
                   onClick={() => setDiningFilter("out")}
                   label="🍽️ 외식 · 探店"
-                  tone="peach"
+                  activeText="text-peach-500"
+                  activeBorder="border-peach-100"
                 />
-                <DiningChip
+                <SegmentButton
                   active={diningFilter === "home"}
                   onClick={() => setDiningFilter("home")}
                   label="🍳 집밥 · 私房菜"
-                  tone="teal"
+                  activeText="text-teal-600"
+                  activeBorder="border-teal-100"
                 />
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                <ViewChip
-                  active={viewMode === "date"}
-                  onClick={() => setViewMode("date")}
-                  label="최근순 · 时间顺"
+
+              {/* Two dropdowns: sort + category */}
+              <div className="flex gap-2">
+                <FilterDropdown
+                  value={viewMode}
+                  onChange={(v) => setViewMode(v as ViewMode)}
+                  options={[
+                    { value: "date", label: "최근순 · 时间顺" },
+                    { value: "scoreDesc", label: "별점 높은순 · 评分高到低" },
+                    { value: "scoreAsc", label: "별점 낮은순 · 评分低到高" },
+                    { value: "city", label: "도시별 · 按城市" },
+                  ]}
                 />
-                <ViewChip
-                  active={viewMode === "scoreDesc"}
-                  onClick={() => setViewMode("scoreDesc")}
-                  label="별점 높은순 · 评分高到低"
-                />
-                <ViewChip
-                  active={viewMode === "scoreAsc"}
-                  onClick={() => setViewMode("scoreAsc")}
-                  label="별점 낮은순 · 评分低到高"
-                />
-                <ViewChip
-                  active={viewMode === "city"}
-                  onClick={() => setViewMode("city")}
-                  label="도시별 · 按城市"
+                <FilterDropdown
+                  value={categoryFilter}
+                  onChange={setCategoryFilter}
+                  options={categoryOptions}
                 />
               </div>
             </div>
@@ -568,25 +615,32 @@ export default function HomePage() {
   );
 }
 
-// ---------- tab button ----------
+// ---------- segmented control + dropdown ----------
 
-function ViewChip({
+// Single button inside the 외식/집밥 segmented control. Active state
+// hangs a tinted text color + a subtle outlined "chip-on-pill" effect
+// (white bg + matching border) so the selected slot reads clearly.
+function SegmentButton({
   active,
   onClick,
   label,
+  activeText,
+  activeBorder,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  activeText: string;
+  activeBorder: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap ${
+      className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all min-w-0 truncate ${
         active
-          ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
-          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
+          ? `bg-white shadow-sm border ${activeText} ${activeBorder}`
+          : "text-ink-500 hover:text-ink-700"
       }`}
     >
       {label}
@@ -594,38 +648,33 @@ function ViewChip({
   );
 }
 
-// Type-filter chip used by the timeline's first row (모두 / 외식 / 집밥).
-// Tone-coded so the active state mirrors the card color of that mode —
-// peach = 외식, teal = 집밥, neutral dark for 모두.
-function DiningChip({
-  active,
-  onClick,
-  label,
-  tone,
+// Generic dropdown styled to look like the filter pills. Uses a real
+// <select> for native picker UX (especially on iOS) and overlays our
+// own ChevronDown to mask the OS arrow without needing extra global CSS.
+function FilterDropdown({
+  value,
+  onChange,
+  options,
 }: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  tone: "neutral" | "peach" | "teal";
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
 }) {
-  const activeCls =
-    tone === "peach"
-      ? "bg-peach-100 text-peach-600 border-peach-200 shadow-sm"
-      : tone === "teal"
-        ? "bg-teal-100 text-teal-600 border-teal-200 shadow-sm"
-        : "bg-ink-900 text-white border-ink-900 shadow-sm";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition border whitespace-nowrap flex-shrink-0 ${
-        active
-          ? activeCls
-          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
-      }`}
-    >
-      {label}
-    </button>
+    <div className="relative flex-1 min-w-0">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-white border border-cream-200/80 rounded-xl pl-3 pr-8 py-2.5 text-[12px] font-bold text-ink-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-peach-100 focus:border-peach-300 transition appearance-none truncate"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 pointer-events-none" />
+    </div>
   );
 }
 
