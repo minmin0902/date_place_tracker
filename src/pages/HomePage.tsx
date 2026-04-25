@@ -866,7 +866,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋 {myDisplay}만 먹음 · {myDisplay}独享
+                🍴{myDisplay}만 먹음 · {myDisplay}独享
               </button>
               <button
                 type="button"
@@ -877,7 +877,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋 {partnerDisplay}만 먹음 · {partnerDisplay}独享
+                🍴{partnerDisplay}만 먹음 · {partnerDisplay}独享
               </button>
             </div>
 
@@ -997,9 +997,9 @@ export default function HomePage() {
                         : listFilter === "revisit"
                           ? "💖"
                           : listFilter === "myOnly"
-                            ? "🙋"
+                            ? "🍴"
                             : listFilter === "partnerOnly"
-                              ? "🙋"
+                              ? "🍴"
                               : diningFilter === "home"
                                 ? "🍳"
                                 : "🍽️"
@@ -1624,12 +1624,12 @@ function MenuRow({
           ))}
           {eaterRole === "me" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-peach-50 text-peach-600 border border-peach-200 font-bold">
-              🙋 {myDisplay}만 · {myDisplay}独享
+              🍴{myDisplay}만 · {myDisplay}独享
             </span>
           )}
           {eaterRole === "partner" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 border border-rose-200 font-bold">
-              🙋 {partnerDisplay}만 · {partnerDisplay}独享
+              🍴{partnerDisplay}만 · {partnerDisplay}独享
             </span>
           )}
         </div>
@@ -1694,10 +1694,11 @@ function TimelineGridItem({
   return (
     <Link
       to={`/places/${place.id}`}
-      className={`block rounded-2xl overflow-hidden border ${theme.cardBorder} shadow-soft active:scale-[0.97] transition`}
+      className="block rounded-2xl overflow-hidden bg-white border border-cream-200/70 shadow-soft active:scale-[0.97] transition"
     >
-      {/* Photo well — square. Falls back to a big emoji on the
-          home/category-tinted background when no photo is uploaded. */}
+      {/* Square photo well (Instagram-style hero). Photo fills the
+          frame; emoji fallback uses the theme tint so the card still
+          reads visually rich without an upload. */}
       <div
         className={`aspect-square relative ${
           photo ? "bg-cream-50" : `${theme.img} flex items-center justify-center`
@@ -1714,7 +1715,21 @@ function TimelineGridItem({
             {isHome ? "🍳" : categoryIcon(place.category)}
           </span>
         )}
-        {/* Top-left: dining-type tag */}
+        {/* Top-right corner badges */}
+        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+          {place.want_to_revisit && (
+            <span className="bg-white/90 rounded-full p-1 shadow-sm">
+              <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+            </span>
+          )}
+          {unratedByMe > 0 && (
+            <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm flex items-center gap-0.5">
+              ✏️ <span className="font-number">{unratedByMe}</span>
+            </span>
+          )}
+        </div>
+        {/* Top-left: dining-type tag stays here so the photo bottom
+            stays uncluttered for the IG-style caption below. */}
         <div className="absolute top-2 left-2">
           <span
             className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold leading-none border ${theme.tag}`}
@@ -1722,47 +1737,29 @@ function TimelineGridItem({
             {isHome ? "🍳 집밥 · 私房菜" : "🍽️ 외식 · 探店"}
           </span>
         </div>
-        {/* Top-right: revisit heart */}
-        {place.want_to_revisit && (
-          <div className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow-sm">
-            <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-          </div>
-        )}
-        {/* Bottom: gradient overlay + name. Only over photos so the
-            emoji fallback stays clean. */}
-        {photo && (
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-2 pt-8">
-            <h3 className="text-white font-bold text-[13px] leading-tight line-clamp-2 drop-shadow">
-              {place.name}
-            </h3>
-          </div>
-        )}
-        {/* Unrated-by-me badge */}
-        {unratedByMe > 0 && (
-          <div className="absolute bottom-2 right-2 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm flex items-center gap-0.5">
-            ✏️ <span className="font-number">{unratedByMe}</span>
-          </div>
-        )}
       </div>
 
-      {/* Footer: name (only when no photo so it isn't duplicated) +
-          date + score. Tight layout — grid cards prioritize density. */}
-      <div className={`p-2 bg-white ${theme.card}`}>
-        {!photo && (
-          <h3 className="font-bold text-ink-900 text-[13px] truncate mb-1">
+      {/* Caption block — Instagram-style: place name bold, memo as
+          muted caption with line-clamp, date + score footer. */}
+      <div className="p-3 space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-bold text-ink-900 text-[14px] truncate flex-1 break-keep">
             {place.name}
           </h3>
-        )}
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[10px] text-ink-500 font-number truncate">
-            {formatDate(place.date_visited, locale)}
-          </span>
           {avg !== null && (
             <span className="inline-flex items-center text-peach-500 font-bold font-number text-[11px] flex-shrink-0">
               ⭐ {avg.toFixed(1)}
             </span>
           )}
         </div>
+        {place.memo && (
+          <p className="text-[11px] text-ink-500 leading-snug whitespace-pre-wrap line-clamp-3 break-keep">
+            {place.memo}
+          </p>
+        )}
+        <p className="text-[10px] text-ink-400 font-number truncate">
+          {formatDate(place.date_visited, locale)}
+        </p>
       </div>
     </Link>
   );

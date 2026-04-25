@@ -600,11 +600,11 @@ function ChefBadge({
   // for 🍳 (cooking together) so no gendered chef pictograms remain.
   const map = {
     me: {
-      label: `🙋 ${myDisplay}이 만들었어! · ${myDisplay}做的`,
+      label: `🍳 ${myDisplay}이 만들었어! · ${myDisplay}做的`,
       cls: "bg-peach-50 text-peach-500 border-peach-100",
     },
     partner: {
-      label: `🙋 ${partnerDisplay}이 만들었어! · ${partnerDisplay}做的`,
+      label: `🍳 ${partnerDisplay}이 만들었어! · ${partnerDisplay}做的`,
       cls: "bg-rose-50 text-rose-500 border-rose-100",
     },
     together: {

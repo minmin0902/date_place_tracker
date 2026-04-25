@@ -714,8 +714,8 @@ export default function ComparePage() {
                   {(r) => {
                     const myFav = r.mine > r.partner;
                     const badge = myFav
-                      ? `🙋 ${myDisplay} 원픽! · ${myDisplay}的本命`
-                      : `🙋 ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
+                      ? `⭐ ${myDisplay} 원픽! · ${myDisplay}的本命`
+                      : `⭐ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
                     return (
                       <FoodCard
                         key={r.foodId}
