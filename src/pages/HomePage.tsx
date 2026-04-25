@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
+import { useCoupleProfiles } from "@/hooks/useProfile";
 import {
   usePlaces,
   useUpsertPlace,
@@ -254,6 +255,19 @@ export default function HomePage() {
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
+  // Resolve display labels for "me" / "partner" once at the top of
+  // the page. Priority for the partner side: my애칭 (partner_nickname
+  // I set) → partner's own nickname → 짝꿍 fallback. For me: my own
+  // nickname → 나 fallback. These flow into filter chips, the menu
+  // row's solo-eater badges, etc.
+  const { me: meProfileQuery, partner: partnerProfileQuery } =
+    useCoupleProfiles();
+  const myDisplay =
+    meProfileQuery.data?.nickname?.trim() || "나";
+  const partnerDisplay =
+    meProfileQuery.data?.partner_nickname?.trim() ||
+    partnerProfileQuery.data?.nickname?.trim() ||
+    "짝꿍";
   const qc = useQueryClient();
   // Refresh covers everything the home tab cares about; pull gesture
   // and manual header button share the same callback.
@@ -852,7 +866,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋‍♂️ 나만 먹음 · 我独享
+                🙋‍♂️ {myDisplay}만 먹음 · 我独享
               </button>
               <button
                 type="button"
@@ -863,7 +877,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋‍♀️ 짝꿍만 먹음 · 宝宝独享
+                🙋‍♀️ {partnerDisplay}만 먹음 · 宝宝独享
               </button>
             </div>
 
@@ -998,9 +1012,9 @@ export default function HomePage() {
                         : listFilter === "revisit"
                           ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
                           : listFilter === "myOnly"
-                            ? "혼자 먹은 메뉴가 아직 없어요 · 还没有我独享的菜"
+                            ? `${myDisplay}만 먹은 메뉴가 아직 없어요 · 还没有我独享的菜`
                             : listFilter === "partnerOnly"
-                              ? "짝꿍이 혼자 먹은 메뉴가 아직 없어요 · 还没有宝宝独享的菜"
+                              ? `${partnerDisplay}만 먹은 메뉴가 아직 없어요 · 还没有宝宝独享的菜`
                               : diningFilter === "home"
                                 ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
                                 : diningFilter === "out"
@@ -1037,6 +1051,8 @@ export default function HomePage() {
                       place={m.place}
                       locale={i18n.language}
                       viewerId={user?.id}
+                      myDisplay={myDisplay}
+                      partnerDisplay={partnerDisplay}
                     />
                   ))}
                 </div>
@@ -1515,11 +1531,18 @@ function MenuRow({
   place,
   locale,
   viewerId,
+  myDisplay,
+  partnerDisplay,
 }: {
   food: PlaceWithFoods["foods"][number];
   place: PlaceWithFoods;
   locale: string;
   viewerId: string | undefined;
+  // Resolved nicknames piped down from HomePage so the solo-eater
+  // badge reflects whatever the user named themselves and their
+  // partner (e.g. "민쥬만 · 我独享" instead of "나만 · 我独享").
+  myDisplay: string;
+  partnerDisplay: string;
 }) {
   const { t } = useTranslation();
   const isHome = !!place.is_home_cooked;
@@ -1591,17 +1614,22 @@ function MenuRow({
               key={c}
               className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-ink-600 border border-cream-200/60"
             >
-              {isKnownPlaceCategory(c) ? t(`category.${c}`) : c}
+              {/* i18n covers both place + food category keys
+                  (main/side/drink/dessert/...). isKnownPlaceCategory
+                  was the wrong gate — it false'd food keys back to
+                  raw english. Fall back to raw value only when the
+                  key really isn't translated (custom freeform tags). */}
+              {t(`category.${c}`, { defaultValue: c })}
             </span>
           ))}
           {eaterRole === "me" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-peach-50 text-peach-600 border border-peach-200 font-bold">
-              🙋‍♂️ 나만 · 我独享
+              🙋‍♂️ {myDisplay}만 · 我独享
             </span>
           )}
           {eaterRole === "partner" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 border border-rose-200 font-bold">
-              🙋‍♀️ 짝꿍만 · 宝宝独享
+              🙋‍♀️ {partnerDisplay}만 · 宝宝独享
             </span>
           )}
         </div>

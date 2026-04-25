@@ -11,11 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
-import {
-  CATEGORY_EMOJI,
-  categoryEmojiOf,
-  isKnownPlaceCategory,
-} from "@/lib/constants";
+import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -239,9 +235,7 @@ export default function PlaceDetailPage() {
                 </div>
                 <span className="text-[13px] font-medium text-ink-700 text-center leading-tight">
                   {cats
-                    .map((c) =>
-                      isKnownPlaceCategory(c) ? t(`category.${c}`) : c
-                    )
+                    .map((c) => t(`category.${c}`, { defaultValue: c }))
                     .join(" · ")}
                 </span>
               </div>

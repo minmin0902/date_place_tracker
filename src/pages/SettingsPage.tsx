@@ -231,7 +231,15 @@ export default function SettingsPage() {
                 tone="peach"
                 editable
                 editTo="/profile/me"
-                badge="나 · 我"
+                // When the user has set a nickname the displayName
+                // already shows it — surfacing "나 · 我" underneath
+                // becomes redundant, so suppress the badge in that
+                // case. No nickname → keep the default role label.
+                badge={
+                  meProfileQuery.data?.nickname?.trim()
+                    ? null
+                    : "나 · 我"
+                }
                 role={tasteStats.myRole}
                 showRole={tasteStats.sampleSize >= 3}
               />
@@ -242,7 +250,16 @@ export default function SettingsPage() {
                 tone="rose"
                 editable
                 editTo="/profile/partner"
-                badge="짝꿍 · 宝宝"
+                badge={
+                  // Same logic for partner: if I set 애칭 (or partner
+                  // has their own nickname) the displayName already
+                  // shows it, so the "짝꿍 · 宝宝" caption underneath
+                  // would just repeat. Drop it in that case.
+                  meProfileQuery.data?.partner_nickname?.trim() ||
+                  partnerProfileQuery.data?.nickname?.trim()
+                    ? null
+                    : "짝꿍 · 宝宝"
+                }
                 // For the partner card we display the애칭 *I* set for
                 // them rather than what they call themselves. Falls back
                 // to their own nickname if I haven't set one yet.
@@ -572,7 +589,10 @@ function ProfileAvatar({
   tone: "peach" | "rose";
   editable?: boolean;
   editTo: string;
-  badge: string;
+  // null/undefined hides the caption row entirely — we suppress it
+  // when the user already has a nickname so the avatar doesn't show
+  // the same name twice (displayName ↑ + badge ↓).
+  badge: string | null;
   overrideNickname?: string | null;
   // Auto-derived role from RatingStats data — gets surfaced as a small
   // badge under the avatar so the profile reads as "data-backed".
@@ -609,7 +629,9 @@ function ProfileAvatar({
       <p className="text-[12px] font-bold text-ink-900 mt-2 truncate w-full px-1 text-center">
         {displayName}
       </p>
-      <p className="text-[10px] font-bold text-ink-400">{badge}</p>
+      {badge && (
+        <p className="text-[10px] font-bold text-ink-400">{badge}</p>
+      )}
       {roleBadge && (
         <span
           className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border max-w-full ${roleBadge.cls}`}
