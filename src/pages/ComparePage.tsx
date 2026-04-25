@@ -467,17 +467,9 @@ export default function ComparePage() {
           saving a full screen of vertical space. CSS scroll snap handles
           the gesture. Card visibility + order is fully user-controlled
           via the ⚙️ button below the carousel. */}
-      <div className="pt-5 pb-4">
-        <div className="flex items-center justify-end mb-2 px-6">
-          <button
-            type="button"
-            onClick={() => setCardEditorOpen(true)}
-            className="inline-flex items-center gap-1 text-[10px] font-bold text-ink-500 bg-cream-100/80 border border-cream-200/60 px-2 py-1 rounded-full hover:bg-cream-200 transition"
-          >
-            <Settings2 className="w-3 h-3" />
-            카드 관리 · 卡片管理
-          </button>
-        </div>
+      <div className="pt-3 pb-4">
+        {/* Card-manager moved into the dots row below — keeps the
+            carousel area clean. */}
         <div
           ref={carouselRef}
           onScroll={onCarouselScroll}
@@ -532,7 +524,9 @@ export default function ComparePage() {
         {/* Pagination dots — replaces the old "👉 가로로 스와이프"
             text hint. Tells the user at a glance how many cards there
             are and which one they're on. Active dot expands to a small
-            pill so the cue is visible without color alone. */}
+            pill so the cue is visible without color alone. The card-
+            manager ⚙️ rides on the right edge of the same row so it's
+            present but doesn't distract from the dots. */}
         {(() => {
           const visible = cardConfig.order.filter(
             (id) => !cardConfig.hidden.includes(id)
@@ -543,19 +537,31 @@ export default function ComparePage() {
             if (id !== "chef") return true;
             return diningFilter !== "out" && homeRows.length > 0;
           }).length;
-          if (renderedCount <= 1) return null;
           return (
-            <div className="flex items-center justify-center gap-1.5 mt-1">
-              {Array.from({ length: renderedCount }).map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-1.5 rounded-full transition-all duration-200 ${
-                    i === activeCardIdx
-                      ? "w-5 bg-peach-400"
-                      : "w-1.5 bg-cream-200"
-                  }`}
-                />
-              ))}
+            <div className="relative flex items-center justify-center mt-1 px-5">
+              {renderedCount > 1 && (
+                <div className="flex items-center gap-1.5">
+                  {Array.from({ length: renderedCount }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-1.5 rounded-full transition-all duration-200 ${
+                        i === activeCardIdx
+                          ? "w-5 bg-peach-400"
+                          : "w-1.5 bg-cream-200"
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setCardEditorOpen(true)}
+                aria-label="card manager"
+                title="카드 관리 · 卡片管理"
+                className="absolute right-5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream-100/80 border border-cream-200/60 text-ink-500 hover:bg-cream-200 hover:text-ink-700 transition"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           );
         })()}

@@ -335,18 +335,36 @@ export default function MapPage() {
       <PageHeader
         title="우리의 맛집 지도 · 咱俩的美食宝藏图"
         right={
-          <button
-            type="button"
-            onClick={() => void onManualRefresh()}
-            disabled={manualRefreshing || refreshing}
-            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
-            aria-label="refresh"
-            title="새로고침 · 刷新"
-          >
-            <RefreshCw
-              className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
-            />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* MAP N/N counter rides up here (instead of below the
+                legend) so the legend row owns its full width and can
+                fit 다녀온/또 갈래/우리집 without truncating on a
+                360px phone. */}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 border text-[10px] font-bold flex-shrink-0 ${
+                breakdown.onMap === breakdown.total && breakdown.total > 0
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                  : "bg-amber-50 border-amber-200 text-amber-700"
+              }`}
+            >
+              <span className="tracking-wider">MAP</span>
+              <span className="font-number">
+                {breakdown.onMap}/{breakdown.total}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => void onManualRefresh()}
+              disabled={manualRefreshing || refreshing}
+              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-label="refresh"
+              title="새로고침 · 刷新"
+            >
+              <RefreshCw
+                className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+              />
+            </button>
+          </div>
         }
       />
       {/* Legend + counter graduated out of the map canvas — sit above
@@ -354,8 +372,11 @@ export default function MapPage() {
           mobile width. Counter is a single-line stat; the sub-info
           ("좌표 채우는 중 N", "주소 없음 N") drops to its own row
           underneath only when relevant, so the main row never wraps. */}
-      <div className="px-5 mb-2 flex items-stretch gap-3 flex-nowrap">
-        <div className="flex-1 min-w-0 inline-flex items-center gap-3 bg-white rounded-xl px-3 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden">
+      {/* Legend chip — owns the full row so 다녀온 / 또 갈래 / 우리집
+          all stay readable. The MAP counter moved up to the header
+          right slot so this row never has to share width. */}
+      <div className="px-5 mb-2">
+        <div className="inline-flex items-center gap-3 bg-white rounded-xl px-3 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 max-w-full overflow-x-auto hide-scrollbar">
           <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
             <span className="text-sm leading-none">📍</span>
             다녀온 곳 · 去过
@@ -373,23 +394,6 @@ export default function MapPage() {
               우리집 · 我们家
             </span>
           )}
-        </div>
-        {/* Counter — green when 100% mapped, amber when geocoding is
-            still pending. Single-line stat; details drop to the next
-            row when there's something worth flagging. Plain "MAP" text
-            instead of an emoji + bilingual label so it doesn't read
-            as a second pin icon next to the legend. */}
-        <div
-          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 shadow-soft border text-[10px] font-bold flex-shrink-0 ${
-            breakdown.onMap === breakdown.total && breakdown.total > 0
-              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-              : "bg-amber-50 border-amber-200 text-amber-700"
-          }`}
-        >
-          <span className="tracking-wider">MAP</span>
-          <span className="font-number">
-            {breakdown.onMap}/{breakdown.total}
-          </span>
         </div>
       </div>
       {(breakdown.backfillable > 0 || breakdown.noAddress > 0) && (

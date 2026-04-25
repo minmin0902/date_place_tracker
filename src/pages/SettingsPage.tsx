@@ -215,10 +215,19 @@ export default function SettingsPage() {
             the partner side edits the애칭 *I* gave them. */}
         {couple && (
           <div className="card p-5">
-            <div className="flex items-center justify-around pb-4 border-b border-cream-100">
+            {/* Grid keeps the two avatars symmetrical on every width
+                — left/right columns are 1fr 1fr, centre is auto for
+                the heart. Old justify-around pushed avatars hard
+                against the card edges on narrow phones. */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pb-4 border-b border-cream-100">
               <ProfileAvatar
                 profile={meProfileQuery.data ?? null}
-                fallbackLabel={user?.email ?? "나"}
+                fallbackLabel={
+                  // Use the local-part of the email as a friendlier
+                  // fallback so we don't dump "luoyuhan2025@gmail..."
+                  // and risk truncation on narrow widths.
+                  user?.email?.split("@")[0] ?? "나"
+                }
                 tone="peach"
                 editable
                 editTo="/profile/me"
@@ -597,26 +606,35 @@ function ProfileAvatar({
           <span className="text-[28px] font-sans font-black">{initial}</span>
         )}
       </div>
-      <p className="text-[12px] font-bold text-ink-900 mt-2 truncate max-w-[110px]">
+      <p className="text-[12px] font-bold text-ink-900 mt-2 truncate w-full px-1 text-center">
         {displayName}
       </p>
       <p className="text-[10px] font-bold text-ink-400">{badge}</p>
       {roleBadge && (
         <span
-          className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleBadge.cls}`}
+          className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border max-w-full ${roleBadge.cls}`}
         >
-          <span>{roleBadge.emoji}</span>
-          <span>{roleBadge.label}</span>
+          <span className="flex-shrink-0">{roleBadge.emoji}</span>
+          <span className="truncate">{roleBadge.label}</span>
         </span>
       )}
     </>
   );
 
+  // min-w-0 so this column inside the grid can shrink past the
+  // intrinsic name width; the truncate above kicks in when needed.
   if (!editable) {
-    return <div className="text-center">{inner}</div>;
+    return (
+      <div className="text-center flex flex-col items-center min-w-0">
+        {inner}
+      </div>
+    );
   }
   return (
-    <Link to={editTo} className="text-center group">
+    <Link
+      to={editTo}
+      className="text-center group flex flex-col items-center min-w-0"
+    >
       {inner}
     </Link>
   );
