@@ -37,6 +37,9 @@ import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
 type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
+// Type filter — works alongside ViewMode so users can combine
+// "집밥만 보기" with "별점 높은순".
+type DiningFilter = "all" | "out" | "home";
 
 // Extract a clean city label from a freeform address. Strips country,
 // state+zip, bare state abbreviations, and street-address-looking tails
@@ -158,6 +161,7 @@ export default function HomePage() {
   const [revisitOnly, setRevisitOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("date");
+  const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
   // Base list: filter first, then sort per viewMode below.
@@ -165,6 +169,9 @@ export default function HomePage() {
     if (!places) return [];
     let list = places;
     if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
+    if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
+    else if (diningFilter === "home")
+      list = list.filter((p) => p.is_home_cooked);
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter((p) => {
@@ -176,7 +183,7 @@ export default function HomePage() {
       });
     }
     return list;
-  }, [places, query, revisitOnly]);
+  }, [places, query, revisitOnly, diningFilter]);
 
   const filteredPlaces = useMemo(() => {
     const list = [...baseList];
@@ -342,28 +349,54 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* View mode selector: date / score / city */}
-            <div className="flex flex-wrap gap-1.5 mb-5 px-1">
-              <ViewChip
-                active={viewMode === "date"}
-                onClick={() => setViewMode("date")}
-                label="최근순 · 时间顺"
-              />
-              <ViewChip
-                active={viewMode === "scoreDesc"}
-                onClick={() => setViewMode("scoreDesc")}
-                label="별점 높은순 · 评分高到低"
-              />
-              <ViewChip
-                active={viewMode === "scoreAsc"}
-                onClick={() => setViewMode("scoreAsc")}
-                label="별점 낮은순 · 评分低到高"
-              />
-              <ViewChip
-                active={viewMode === "city"}
-                onClick={() => setViewMode("city")}
-                label="도시별 · 按城市"
-              />
+            {/* Two-row filter:
+                Row 1 — type (모두 / 외식 / 집밥), tone-coded so the active
+                pill picks up its category color.
+                Row 2 — sort/grouping (date / score / city). The two
+                interact: 집밥 + 별점 높은순 = 집에서 만든 것 중 별점 1등. */}
+            <div className="flex flex-col gap-2 mb-5 px-1">
+              <div className="flex gap-1.5 overflow-x-auto pb-1 hide-scrollbar">
+                <DiningChip
+                  active={diningFilter === "all"}
+                  onClick={() => setDiningFilter("all")}
+                  label="모두 · 全部"
+                  tone="neutral"
+                />
+                <DiningChip
+                  active={diningFilter === "out"}
+                  onClick={() => setDiningFilter("out")}
+                  label="🍽️ 외식 · 探店"
+                  tone="peach"
+                />
+                <DiningChip
+                  active={diningFilter === "home"}
+                  onClick={() => setDiningFilter("home")}
+                  label="🍳 집밥 · 私房菜"
+                  tone="teal"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <ViewChip
+                  active={viewMode === "date"}
+                  onClick={() => setViewMode("date")}
+                  label="최근순 · 时间顺"
+                />
+                <ViewChip
+                  active={viewMode === "scoreDesc"}
+                  onClick={() => setViewMode("scoreDesc")}
+                  label="별점 높은순 · 评分高到低"
+                />
+                <ViewChip
+                  active={viewMode === "scoreAsc"}
+                  onClick={() => setViewMode("scoreAsc")}
+                  label="별점 낮은순 · 评分低到高"
+                />
+                <ViewChip
+                  active={viewMode === "city"}
+                  onClick={() => setViewMode("city")}
+                  label="도시별 · 按城市"
+                />
+              </div>
             </div>
 
             {/* City single-select — only when 도시별 view is active.
@@ -411,11 +444,23 @@ export default function HomePage() {
             )}
             {!placesLoading && filteredPlaces.length === 0 && (
               <EmptyState
-                emoji={revisitOnly ? "💖" : "🍽️"}
+                emoji={
+                  revisitOnly
+                    ? "💖"
+                    : diningFilter === "home"
+                      ? "🍳"
+                      : diningFilter === "out"
+                        ? "🍽️"
+                        : "🍽️"
+                }
                 text={
                   revisitOnly
                     ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
-                    : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
+                    : diningFilter === "home"
+                      ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
+                      : diningFilter === "out"
+                        ? "아직 외식 기록이 없어요 · 还没有探店记录"
+                        : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
                 }
               />
             )}
@@ -549,6 +594,41 @@ function ViewChip({
   );
 }
 
+// Type-filter chip used by the timeline's first row (모두 / 외식 / 집밥).
+// Tone-coded so the active state mirrors the card color of that mode —
+// peach = 외식, teal = 집밥, neutral dark for 모두.
+function DiningChip({
+  active,
+  onClick,
+  label,
+  tone,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  tone: "neutral" | "peach" | "teal";
+}) {
+  const activeCls =
+    tone === "peach"
+      ? "bg-peach-100 text-peach-600 border-peach-200 shadow-sm"
+      : tone === "teal"
+        ? "bg-teal-100 text-teal-600 border-teal-200 shadow-sm"
+        : "bg-ink-900 text-white border-ink-900 shadow-sm";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition border whitespace-nowrap flex-shrink-0 ${
+        active
+          ? activeCls
+          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function TabButton({
   active,
   accent,
@@ -651,6 +731,30 @@ function StatsDashboard({
 
 // ---------- timeline card ----------
 
+// Theme bundle so the dot, connector line, card, and image well all
+// pick up the right tone for 외식 vs 집밥 from a single source of truth.
+function timelineTheme(isHomeCooked: boolean) {
+  return isHomeCooked
+    ? {
+        line: "bg-teal-200",
+        dot: "border-teal-400",
+        card: "bg-gradient-to-br from-teal-100/60 to-white",
+        cardBorder: "border-teal-200",
+        img: "bg-teal-50 border-teal-200",
+        tag: "bg-teal-500 text-white border-teal-600",
+        addrIcon: "text-teal-500",
+      }
+    : {
+        line: "bg-peach-200",
+        dot: "border-peach-400",
+        card: "bg-gradient-to-br from-peach-100/70 to-white",
+        cardBorder: "border-peach-200",
+        img: "bg-peach-50 border-peach-200",
+        tag: "bg-peach-500 text-white border-peach-600",
+        addrIcon: "text-peach-500",
+      };
+}
+
 function TimelineItem({
   place,
   locale,
@@ -661,53 +765,72 @@ function TimelineItem({
   isLast: boolean;
 }) {
   const avg = avgTotal(place);
+  const isHome = !!place.is_home_cooked;
+  const theme = timelineTheme(isHome);
   return (
     <div className="relative pl-6 pb-6">
       {!isLast && (
-        <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-rose-200" />
+        <div
+          className={`absolute left-[11px] top-6 bottom-0 w-0.5 ${theme.line}`}
+        />
       )}
-      <div className="absolute left-0 top-2 w-6 h-6 rounded-full bg-white border-[3px] border-rose-400 z-[1]" />
+      <div
+        className={`absolute left-0 top-2 w-6 h-6 rounded-full bg-white border-[3px] ${theme.dot} z-[1]`}
+      />
 
       <div className="mb-1.5 pl-2">
-        <span className="text-[11px] font-semibold text-ink-400 tracking-wide">
+        <span className="text-[11px] font-semibold text-ink-400 tracking-wide font-number">
           {formatDate(place.date_visited, locale)}
         </span>
       </div>
 
       <Link
         to={`/places/${place.id}`}
-        className="block bg-white rounded-2xl p-4 ml-2 border border-cream-200 shadow-soft active:scale-[0.98] transition"
+        className={`block rounded-2xl p-4 ml-2 border shadow-soft active:scale-[0.98] transition ${theme.card} ${theme.cardBorder}`}
       >
         <div className="flex gap-4">
-          <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-cream-50 border border-cream-100 flex items-center justify-center text-3xl">
+          <div
+            className={`w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center text-3xl border ${theme.img}`}
+          >
             {place.photo_urls?.[0] ? (
               <img
                 src={place.photo_urls[0]}
                 alt={place.name}
                 className="w-full h-full object-cover"
               />
+            ) : isHome ? (
+              "🍳"
             ) : (
               categoryIcon(place.category)
             )}
           </div>
           <div className="flex-1 min-w-0 flex flex-col justify-center">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-ink-900 truncate">
-                {place.name}
-              </h3>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold text-ink-900 text-[15px] truncate">
+                  {place.name}
+                </h3>
+                <span
+                  className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold leading-none border ${theme.tag}`}
+                >
+                  {isHome ? "🍳 집밥 · 私房菜" : "🍽️ 외식 · 探店"}
+                </span>
+              </div>
               {place.want_to_revisit && (
-                <Heart className="w-4 h-4 fill-rose-400 text-rose-400 flex-shrink-0" />
+                <Heart className="w-4 h-4 fill-rose-500 text-rose-500 flex-shrink-0 mt-0.5 drop-shadow-sm" />
               )}
             </div>
             {place.address && (
-              <p className="text-[11px] text-ink-500 mt-1 flex items-center gap-1 truncate">
-                <MapPin className="w-3 h-3 flex-shrink-0" />
+              <p className="text-[11px] text-ink-500 mt-1.5 flex items-center gap-1 truncate">
+                <MapPin
+                  className={`w-3 h-3 flex-shrink-0 ${theme.addrIcon}`}
+                />
                 <span className="truncate">{place.address}</span>
               </p>
             )}
             <div className="flex items-center flex-wrap gap-1.5 mt-2">
               {avg !== null ? (
-                <span className="inline-flex items-center bg-peach-50 text-peach-500 px-2 py-0.5 rounded-lg text-xs font-bold border border-peach-100">
+                <span className="inline-flex items-center bg-white/90 px-2 py-0.5 rounded-lg text-xs font-bold border border-peach-200/60 text-peach-500 shadow-sm">
                   <span className="mr-1">⭐</span>
                   <span className="font-number">{avg.toFixed(1)}</span>
                 </span>
@@ -716,8 +839,12 @@ function TimelineItem({
                   아직 평가 전 · 等待打分
                 </span>
               )}
-              <span className="text-[11px] text-ink-500 bg-cream-50 border border-cream-200 px-2 py-0.5 rounded-lg">
-                🍽️ <span className="font-number font-bold">{(place.foods ?? []).length}</span> <span className="opacity-70">개 · 道</span>
+              <span className="text-[11px] text-ink-600 bg-white/90 border border-cream-200/60 px-2 py-0.5 rounded-lg shadow-sm">
+                🍽️{" "}
+                <span className="font-number font-bold">
+                  {(place.foods ?? []).length}
+                </span>{" "}
+                <span className="opacity-70">개 · 道</span>
               </span>
             </div>
           </div>
