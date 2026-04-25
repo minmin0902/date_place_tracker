@@ -26,6 +26,64 @@ type LatLng = { lat: number; lng: number };
 // House-shaped pin for the couple's home address. Stands out from the
 // food markers via a different gradient + roof silhouette so users can
 // orient relative to home at a glance.
+// Mini variants — same path data as the full pins below, just sized
+// down so they match the in-map markers 1:1 inside the legend chip.
+function HomePinMini() {
+  return (
+    <svg
+      width="14"
+      height="17"
+      viewBox="0 0 38 46"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id="homePinFillMini" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#7DD3C0" />
+          <stop offset="1" stopColor="#3EB7A0" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M19 0 C9 0 1 8 1 18 C1 29 14 38 18 45 C18.4 45.7 19.6 45.7 20 45 C24 38 37 29 37 18 C37 8 29 0 19 0 Z"
+        fill="url(#homePinFillMini)"
+        stroke="white"
+        strokeWidth="2"
+      />
+      <path d="M19 8 L11 16 L11 24 L27 24 L27 16 Z" fill="white" />
+      <rect x="17" y="18" width="4" height="6" fill="#3EB7A0" />
+    </svg>
+  );
+}
+
+function RevisitPinMini() {
+  return (
+    <svg
+      width="13"
+      height="17"
+      viewBox="0 0 34 44"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id="revisitPinFillMini" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#F89570" />
+          <stop offset="1" stopColor="#E47C88" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M17 0 C8 0 1 7 1 16 C1 26 12 35 16 42 C16.4 42.7 17.6 42.7 18 42 C22 35 33 26 33 16 C33 7 26 0 17 0 Z"
+        fill="url(#revisitPinFillMini)"
+        stroke="white"
+        strokeWidth="2"
+      />
+      <path
+        d="M17 24 C14.5 21.5 10 19 10 14.5 C10 12 12 10 14.3 10 C15.6 10 16.5 10.6 17 11.4 C17.5 10.6 18.4 10 19.7 10 C22 10 24 12 24 14.5 C24 19 19.5 21.5 17 24 Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
 function HomePin() {
   return (
     <div className="relative drop-shadow-md">
@@ -291,51 +349,61 @@ export default function MapPage() {
           </button>
         }
       />
-      <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
-        {/* Legend overlay — lives on top of the map */}
-        <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] font-bold text-ink-700 flex flex-col gap-1">
-          <span className="flex items-center gap-2">
-            <span className="inline-block text-base leading-none">📍</span>
+      {/* Legend + counter graduated out of the map canvas — sit above
+          it as a single horizontal row that holds even on a 360px
+          mobile width. Counter is a single-line stat; the sub-info
+          ("좌표 채우는 중 N", "주소 없음 N") drops to its own row
+          underneath only when relevant, so the main row never wraps. */}
+      <div className="px-5 mb-2 flex items-stretch gap-3 flex-nowrap">
+        <div className="flex-1 min-w-0 inline-flex items-center gap-3 bg-white rounded-xl px-3 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden">
+          <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+            <span className="text-sm leading-none">📍</span>
             다녀온 곳 · 去过
           </span>
-          <span className="flex items-center gap-2">
-            <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-peach-400 to-rose-400" />
-            또 갈래 · 必须二刷
+          {/* Mini RevisitPin — same SVG shapes as the actual map
+              marker, just shrunk to fit the legend so the icon
+              matches what the user sees on the map 1:1. */}
+          <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+            <RevisitPinMini />
+            또 갈래 · 二刷
           </span>
           {couple?.home_latitude != null && couple?.home_longitude != null && (
-            <span className="flex items-center gap-2">
-              <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-teal-300 to-teal-500" />
+            <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+              <HomePinMini />
               우리집 · 我们家
             </span>
           )}
         </div>
-        {/* Debug breakdown — total places vs how many made it to the map.
-            Yellow when there are gaps, green when 100%. Helps diagnose
-            "왜 어떤 곳은 안 떠?" at a glance. */}
+        {/* Counter — green when 100% mapped, amber when geocoding is
+            still pending. Single-line stat; details drop to the next
+            row when there's something worth flagging. Plain "MAP" text
+            instead of an emoji + bilingual label so it doesn't read
+            as a second pin icon next to the legend. */}
         <div
-          className={`absolute top-3 right-3 z-10 backdrop-blur rounded-xl px-3 py-2 shadow-soft border text-[11px] font-bold max-w-[200px] ${
+          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 shadow-soft border text-[10px] font-bold flex-shrink-0 ${
             breakdown.onMap === breakdown.total && breakdown.total > 0
-              ? "bg-emerald-50/95 border-emerald-200 text-emerald-700"
-              : "bg-amber-50/95 border-amber-200 text-amber-700"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-amber-50 border-amber-200 text-amber-700"
           }`}
         >
-          <div>
-            지도 · 地图{" "}
-            <span className="font-number">
-              {breakdown.onMap}/{breakdown.total}
-            </span>
-          </div>
+          <span className="tracking-wider">MAP</span>
+          <span className="font-number">
+            {breakdown.onMap}/{breakdown.total}
+          </span>
+        </div>
+      </div>
+      {(breakdown.backfillable > 0 || breakdown.noAddress > 0) && (
+        <div className="px-5 mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-bold text-amber-700 break-keep">
           {breakdown.backfillable > 0 && (
-            <div className="text-[10px] opacity-80 mt-0.5">
-              좌표 채우는 중 · {breakdown.backfillable}곳
-            </div>
+            <span>좌표 채우는 중 · {breakdown.backfillable}곳</span>
           )}
           {breakdown.noAddress > 0 && (
-            <div className="text-[10px] opacity-80 mt-0.5">
-              주소 없음 · 无地址 {breakdown.noAddress}곳
-            </div>
+            <span>주소 없음 · 无地址 {breakdown.noAddress}곳</span>
           )}
         </div>
+      )}
+
+      <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
         {initialCenter ? (
           <APIProvider apiKey={KEY}>
             <GeocodeBackfill places={places ?? []} />
@@ -344,17 +412,15 @@ export default function MapPage() {
               defaultCenter={initialCenter}
               defaultZoom={14}
               gestureHandling="greedy"
-              // Top-right of the map houses our own counter chip + the
-              // legend hugs top-left, so we disable Google's defaults
-              // that paint over those zones (2D/3D map-type toggle,
-              // fullscreen button) and the vector-mode camera/tilt
-              // controls. Zoom + pegman stay since they live
-              // bottom-right and don't collide with our overlays.
+              // Now that the legend + counter graduated out of the
+              // map canvas, Google's default top-right controls
+              // (mapType / camera-tilt / rotate) have empty corner
+              // space again — keep them ON so users can flip 2D/3D.
+              // Fullscreen + keyboard-shortcut links stay off because
+              // they're not useful here and the keyboard-shortcuts
+              // link in particular bloats the bottom chrome.
               disableDefaultUI={false}
-              mapTypeControl={false}
               fullscreenControl={false}
-              cameraControl={false}
-              rotateControl={false}
               keyboardShortcuts={false}
             >
               {userLoc !== "denied" && userLoc && (
