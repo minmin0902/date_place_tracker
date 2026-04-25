@@ -172,7 +172,11 @@ export default function FoodFormPage() {
       },
     });
     draft.clear();
-    navigate(`/places/${placeId}`, { replace: true });
+    // navigate(-1) instead of navigate(target, replace) so the form
+    // entry is popped off history instead of being replaced with a
+    // duplicate /places/:id entry. Without this, hitting back from
+    // the place page after each save needed an extra press per edit.
+    navigate(-1);
   }
 
   // Total: 'both' = my + partner; otherwise eater × 2.

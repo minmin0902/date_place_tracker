@@ -43,6 +43,42 @@ type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc" | "city";
 // "집밥만 보기" with "별점 높은순".
 type DiningFilter = "all" | "out" | "home";
 
+// Persist filter state across navigation in this tab session — so
+// "내 별점 안 줬어요" + "외식" + "별점 높은순" is preserved when the
+// user dives into a place to rate, then comes back via the bottom tab
+// or the browser back button.
+const FILTER_STORAGE_KEY = "homepage:filters:v1";
+
+type StoredFilters = {
+  tab?: Tab;
+  revisitOnly?: boolean;
+  unratedOnly?: boolean;
+  diningFilter?: DiningFilter;
+  viewMode?: ViewMode;
+  categoryFilter?: string;
+  selectedCity?: string | null;
+  query?: string;
+  showSearch?: boolean;
+};
+
+function loadFilters(): StoredFilters {
+  try {
+    const raw = sessionStorage.getItem(FILTER_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as StoredFilters) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFilters(filters: StoredFilters) {
+  try {
+    sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+  } catch {
+    // sessionStorage can throw if quota is exceeded or in private mode
+    // — silently swallow. Filter persistence is a nice-to-have.
+  }
+}
+
 // Extract a clean city label from a freeform address. Strips country,
 // state+zip, bare state abbreviations, and street-address-looking tails
 // so we get "Providence" instead of "214 Wickenden St" or "RI".
@@ -248,24 +284,71 @@ export default function HomePage() {
     }
   }
 
-  const [tab, setTab] = useState<Tab>("timeline");
-  const [query, setQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
+  // Hydrate filters from sessionStorage exactly once. useRef so the
+  // load happens before the first render and isn't re-evaluated on
+  // every state change.
+  const initialFilters = useRef<StoredFilters>(loadFilters());
+  const [tab, setTab] = useState<Tab>(
+    initialFilters.current.tab ?? "timeline"
+  );
+  const [query, setQuery] = useState(initialFilters.current.query ?? "");
+  const [showSearch, setShowSearch] = useState(
+    initialFilters.current.showSearch ?? false
+  );
   const [rouletteOpen, setRouletteOpen] = useState(false);
-  const [revisitOnly, setRevisitOnly] = useState(false);
+  const [revisitOnly, setRevisitOnly] = useState(
+    initialFilters.current.revisitOnly ?? false
+  );
   // "내가 아직 평가 안 한 곳만" filter — flips on/off via the chip next
   // to revisitOnly. Hides places where the viewer has already rated
   // every food.
-  const [unratedOnly, setUnratedOnly] = useState(false);
+  const [unratedOnly, setUnratedOnly] = useState(
+    initialFilters.current.unratedOnly ?? false
+  );
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("date");
-  const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    initialFilters.current.viewMode ?? "date"
+  );
+  const [diningFilter, setDiningFilter] = useState<DiningFilter>(
+    initialFilters.current.diningFilter ?? "all"
+  );
   // Category filter — "all" means no filter; "__none__" filters to
   // places without a category set; otherwise the value is either a
   // built-in PLACE_CATEGORIES key OR a freeform "기타" string typed
   // by the user. All three cases are handled in baseList below.
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>(
+    initialFilters.current.categoryFilter ?? "all"
+  );
+  const [selectedCity, setSelectedCity] = useState<string | null>(
+    initialFilters.current.selectedCity ?? null
+  );
+
+  // Persist filters every time one changes — picked up on the next
+  // mount of HomePage so users return to the same view after diving
+  // into a place to rate.
+  useEffect(() => {
+    saveFilters({
+      tab,
+      query,
+      showSearch,
+      revisitOnly,
+      unratedOnly,
+      viewMode,
+      diningFilter,
+      categoryFilter,
+      selectedCity,
+    });
+  }, [
+    tab,
+    query,
+    showSearch,
+    revisitOnly,
+    unratedOnly,
+    viewMode,
+    diningFilter,
+    categoryFilter,
+    selectedCity,
+  ]);
 
   // A place is "needs categorizing" if either the place itself has no
   // category, or any of its foods is missing a category. That way the

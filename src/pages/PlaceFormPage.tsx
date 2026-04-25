@@ -248,13 +248,19 @@ export default function PlaceFormPage() {
     // Draft succeeded → drop the saved snapshot so the next "new" form
     // doesn't rehydrate stale data.
     draft.clear();
-    const targetId =
-      place && typeof place === "object" && "id" in place
-        ? (place as { id: string }).id
-        : id;
-    navigate(isEdit ? `/places/${id}` : `/places/${targetId}`, {
-      replace: true,
-    });
+    if (isEdit) {
+      // Edit case: pop the form off history so back doesn't land on a
+      // duplicate /places/:id entry (the replace target).
+      navigate(-1);
+    } else {
+      // Brand-new place: take the user straight to the new detail
+      // page (replacing the form entry). Back from there goes home.
+      const targetId =
+        place && typeof place === "object" && "id" in place
+          ? (place as { id: string }).id
+          : id;
+      navigate(`/places/${targetId}`, { replace: true });
+    }
   }
 
   const homeReady = !!couple?.home_address;
