@@ -20,6 +20,21 @@ export function generateInviteCode(length = 6) {
 // stored value won't shift across the date line for non-US users.
 const APP_TIMEZONE = "America/New_York";
 
+// Resolve the canonical list of categories for a place / food. Reads
+// `categories` first (the multi-select source of truth), falls back
+// to a 1-element array of the legacy `category` for rows that haven't
+// been migrated. Returns [] when there are no categories assigned.
+export function getCategories(item: {
+  category?: string | null;
+  categories?: string[] | null;
+}): string[] {
+  if (item.categories && item.categories.length > 0) {
+    return item.categories;
+  }
+  if (item.category) return [item.category];
+  return [];
+}
+
 // Swap "my" / "partner" rating per viewer so each member of the couple
 // always sees their own rating in the "내 별점 / 我的评分" slot. Storage
 // convention: `my_rating` belongs to the food's `created_by` user;

@@ -16,7 +16,7 @@ import { usePlaces } from "@/hooks/usePlaces";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
-import { ratingsForViewer } from "@/lib/utils";
+import { getCategories, ratingsForViewer } from "@/lib/utils";
 
 type DiningFilter = "all" | "out" | "home";
 
@@ -26,7 +26,7 @@ type Row = {
   placeName: string;
   foodName: string;
   isHomeCooked: boolean;
-  placeCategory: string | null;
+  placeCategories: string[];
   mine: number;
   partner: number;
 };
@@ -201,7 +201,7 @@ export default function ComparePage() {
           placeName: p.name,
           foodName: f.name,
           isHomeCooked: !!p.is_home_cooked,
-          placeCategory: p.category,
+          placeCategories: getCategories(p),
           mine: view.myRating ?? 0,
           partner: view.partnerRating ?? 0,
         });
@@ -405,16 +405,23 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
   const stats = useMemo(() => {
     const totals = new Map<BtiKey, { sum: number; count: number }>();
     for (const r of rows) {
-      const cat = r.placeCategory;
-      if (!cat) continue;
-      const buckets = CATEGORY_TO_BTI[cat];
-      if (!buckets) continue;
+      if (r.placeCategories.length === 0) continue;
       const coupleAvg = (r.mine + r.partner) / 2;
-      for (const k of buckets) {
-        const t = totals.get(k) ?? { sum: 0, count: 0 };
-        t.sum += coupleAvg;
-        t.count += 1;
-        totals.set(k, t);
+      // Multi-cat places feed every BTI bucket their tags map to.
+      // Dedupe inside the loop so e.g. "italian + western" doesn't
+      // double-credit "western" twice for one row.
+      const fed = new Set<BtiKey>();
+      for (const cat of r.placeCategories) {
+        const buckets = CATEGORY_TO_BTI[cat];
+        if (!buckets) continue;
+        for (const k of buckets) {
+          if (fed.has(k)) continue;
+          fed.add(k);
+          const t = totals.get(k) ?? { sum: 0, count: 0 };
+          t.sum += coupleAvg;
+          t.count += 1;
+          totals.set(k, t);
+        }
       }
     }
     const out: { key: BtiKey; avg: number; percent: number; count: number }[] =

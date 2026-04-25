@@ -16,7 +16,13 @@ export type Database = {
           name: string;
           date_visited: string;
           address: string | null;
+          // Legacy single-string category, kept in sync with the
+          // first entry of `categories` for back-compat.
           category: string | null;
+          // New multi-select. Null on legacy rows that haven't been
+          // touched since the migration; treat null as "fall back to
+          // the singleton form of `category`".
+          categories: string[] | null;
           memo: string | null;
           want_to_revisit: boolean;
           is_home_cooked: boolean;
@@ -34,6 +40,7 @@ export type Database = {
           date_visited: string;
           address?: string | null;
           category?: string | null;
+          categories?: string[] | null;
           memo?: string | null;
           want_to_revisit?: boolean;
           is_home_cooked?: boolean;
@@ -56,7 +63,10 @@ export type Database = {
           // UI swaps the labels per viewer (see ratingsForViewer).
           my_rating: number | null;
           partner_rating: number | null;
+          // Legacy singleton — backfilled from / synced with first
+          // element of `categories`.
           category: string | null;
+          categories: string[] | null;
           memo: string | null;
           // Legacy single-photo column, kept for back-compat. Prefer
           // photo_urls for reads/writes.
@@ -77,6 +87,7 @@ export type Database = {
           my_rating?: number | null;
           partner_rating?: number | null;
           category?: string | null;
+          categories?: string[] | null;
           memo?: string | null;
           photo_url?: string | null;
           photo_urls?: string[] | null;

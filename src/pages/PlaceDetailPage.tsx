@@ -10,7 +10,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate, ratingsForViewer } from "@/lib/utils";
+import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import {
   CATEGORY_EMOJI,
   categoryEmojiOf,
@@ -205,34 +205,48 @@ export default function PlaceDetailPage() {
             <div className="text-5xl drop-shadow-sm">🏆</div>
           </div>
 
-          {/* Category tile — always rendered now. When the place has
-              no category set, the tile becomes an amber "❓ 미분류"
-              CTA linking straight to the edit form so the user can
-              tag it without hunting through settings. */}
-          {place.category ? (
-            <div className="p-4 rounded-3xl bg-white border border-cream-200 flex flex-col items-center justify-center gap-2 shadow-soft">
-              <span className="text-3xl">{categoryEmojiOf(place.category)}</span>
-              <span className="text-sm font-medium text-ink-700 text-center">
-                {isKnownPlaceCategory(place.category)
-                  ? t(`category.${place.category}`)
-                  : place.category}
-              </span>
-            </div>
-          ) : (
-            <Link
-              to={`/places/${place.id}/edit`}
-              className="p-4 rounded-3xl bg-amber-50 border border-amber-200 flex flex-col items-center justify-center gap-1 shadow-soft active:scale-[0.98] transition"
-            >
-              <span className="text-3xl">❓</span>
-              <span className="text-[12px] font-bold text-amber-700 text-center leading-tight">
-                미분류 · 未分类
-                <br />
-                <span className="text-[10px] opacity-70 font-medium">
-                  탭해서 태그하기 · 点击分类
+          {/* Category tile — shows up to 3 emojis for multi-cat places.
+              Empty list collapses into an amber "❓ 미분류" CTA linking
+              to the edit form so tagging is one tap away. */}
+          {(() => {
+            const cats = getCategories(place);
+            if (cats.length === 0) {
+              return (
+                <Link
+                  to={`/places/${place.id}/edit`}
+                  className="p-4 rounded-3xl bg-amber-50 border border-amber-200 flex flex-col items-center justify-center gap-1 shadow-soft active:scale-[0.98] transition"
+                >
+                  <span className="text-3xl">❓</span>
+                  <span className="text-[12px] font-bold text-amber-700 text-center leading-tight">
+                    미분류 · 未分类
+                    <br />
+                    <span className="text-[10px] opacity-70 font-medium">
+                      탭해서 태그하기 · 点击分类
+                    </span>
+                  </span>
+                </Link>
+              );
+            }
+            // Show stacked emojis (capped at 3) + comma-joined labels
+            // so 2-3 categories don't overflow the bento tile.
+            const displayCats = cats.slice(0, 3);
+            return (
+              <div className="p-4 rounded-3xl bg-white border border-cream-200 flex flex-col items-center justify-center gap-2 shadow-soft">
+                <div className="flex items-center gap-0.5 text-2xl leading-none">
+                  {displayCats.map((c) => (
+                    <span key={c}>{categoryEmojiOf(c)}</span>
+                  ))}
+                </div>
+                <span className="text-[13px] font-medium text-ink-700 text-center leading-tight">
+                  {cats
+                    .map((c) =>
+                      isKnownPlaceCategory(c) ? t(`category.${c}`) : c
+                    )
+                    .join(" · ")}
                 </span>
-              </span>
-            </Link>
-          )}
+              </div>
+            );
+          })()}
 
           <button
             type="button"
@@ -606,7 +620,8 @@ function FoodCategoryChip({
   placeId: string;
 }) {
   const { t } = useTranslation();
-  if (!food.category) {
+  const cats = getCategories(food);
+  if (cats.length === 0) {
     return (
       <Link
         to={`/places/${placeId}/foods/${food.id}/edit`}
@@ -616,18 +631,25 @@ function FoodCategoryChip({
       </Link>
     );
   }
-  // Treat any FOOD_CATEGORIES / PLACE_CATEGORIES key as known and
-  // run it through i18n; custom strings (typed via "기타" input)
-  // render as-is. Both share the same category.* namespace so a
-  // single t() call covers it.
-  const known = food.category in CATEGORY_EMOJI;
-  const label = known
-    ? t(`category.${food.category}`, { defaultValue: food.category })
-    : food.category;
+  // Multi-category: render one chip per assigned category. Built-in
+  // keys go through i18n; custom strings render as-is.
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-cream-200 bg-cream-50 text-ink-600">
-      {categoryEmojiOf(food.category)} {label}
-    </span>
+    <>
+      {cats.map((c) => {
+        const known = c in CATEGORY_EMOJI;
+        const label = known
+          ? t(`category.${c}`, { defaultValue: c })
+          : c;
+        return (
+          <span
+            key={c}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-cream-200 bg-cream-50 text-ink-600"
+          >
+            {categoryEmojiOf(c)} {label}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

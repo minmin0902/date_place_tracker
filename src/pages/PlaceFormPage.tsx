@@ -13,13 +13,14 @@ import { LocationPicker } from "@/components/LocationPicker";
 import { PLACE_CATEGORIES } from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
 import { FOOD_CATEGORIES } from "@/lib/constants";
+import { getCategories } from "@/lib/utils";
 
 type HomeFoodDraft = {
   // local-only id so we can key + remove items before they hit the server
   uid: string;
   name: string;
   chef: ChefRole;
-  category: string | null;
+  categories: string[];
 };
 
 function newHomeFood(): HomeFoodDraft {
@@ -27,7 +28,7 @@ function newHomeFood(): HomeFoodDraft {
     uid: crypto.randomUUID(),
     name: "",
     chef: "together",
-    category: null,
+    categories: [],
   };
 }
 
@@ -51,7 +52,9 @@ export default function PlaceFormPage() {
     new Date().toISOString().slice(0, 10)
   );
   const [address, setAddress] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
+  // Multi-select categories — store as array. Backward-compatible:
+  // hydrate from `categories` first, fall back to legacy `category`.
+  const [categories, setCategories] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
   const [wantRevisit, setWantRevisit] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -67,7 +70,7 @@ export default function PlaceFormPage() {
     setName(existing.name);
     setDateVisited(existing.date_visited);
     setAddress(existing.address ?? "");
-    setCategory(existing.category ?? null);
+    setCategories(getCategories(existing));
     setMemo(existing.memo ?? "");
     setWantRevisit(existing.want_to_revisit);
     setPhotos(existing.photo_urls ?? []);
@@ -89,7 +92,7 @@ export default function PlaceFormPage() {
       name,
       dateVisited,
       address,
-      category,
+      categories,
       memo,
       wantRevisit,
       photos,
@@ -102,7 +105,7 @@ export default function PlaceFormPage() {
       name,
       dateVisited,
       address,
-      category,
+      categories,
       memo,
       wantRevisit,
       photos,
@@ -121,8 +124,8 @@ export default function PlaceFormPage() {
       if (saved.dateVisited != null)
         setDateVisited(saved.dateVisited as string);
       if (saved.address != null) setAddress(saved.address as string);
-      if (saved.category != null)
-        setCategory(saved.category as string | null);
+      if (Array.isArray(saved.categories))
+        setCategories(saved.categories as string[]);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (saved.wantRevisit != null)
         setWantRevisit(saved.wantRevisit as boolean);
@@ -144,7 +147,7 @@ export default function PlaceFormPage() {
     void fetchWishlistItem(fromWishlistId).then((w) => {
       if (cancelled || !w) return;
       setName(w.name);
-      if (w.category) setCategory(w.category);
+      if (w.category) setCategories([w.category]);
       if (w.memo) setMemo(w.memo);
       if (w.address) setAddress(w.address);
       if (w.latitude != null && w.longitude != null) {
@@ -197,7 +200,11 @@ export default function PlaceFormPage() {
         name: name.trim(),
         date_visited: dateVisited,
         address: placeAddress,
-        category,
+        // Keep `category` synced with the first picked category so
+        // older client builds + the singleton-based UI surfaces still
+        // see something. The full multi-select lives in `categories`.
+        category: categories[0] ?? null,
+        categories: categories.length ? categories : null,
         memo: memo.trim() || null,
         want_to_revisit: wantRevisit,
         is_home_cooked: isHome,
@@ -222,7 +229,8 @@ export default function PlaceFormPage() {
               name: f.name.trim(),
               my_rating: null,
               partner_rating: null,
-              category: f.category,
+              category: f.categories[0] ?? null,
+              categories: f.categories.length ? f.categories : null,
               memo: null,
               photo_url: null,
               photo_urls: null,
@@ -386,15 +394,21 @@ export default function PlaceFormPage() {
             카테고리 · 种类 *
           </label>
           <CategoryChips
+            multiple
             options={PLACE_CATEGORIES}
-            value={category}
-            onChange={setCategory}
+            value={categories}
+            onChange={setCategories}
             scope="category"
             customKey="other"
           />
-          {!category && (
+          {categories.length === 0 && (
             <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
-              카테고리를 골라주세요 · 请选择类别
+              카테고리를 하나 이상 골라주세요 · 请至少选择一个类别
+            </p>
+          )}
+          {categories.length > 0 && (
+            <p className="text-[11px] text-ink-400 mt-1.5">
+              여러 개 골라도 돼요 · 可以选多个 ({categories.length}개 선택됨)
             </p>
           )}
         </div>
@@ -438,8 +452,8 @@ export default function PlaceFormPage() {
                   onRemove={() => removeHomeFood(food.uid)}
                   onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
                   onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
-                  onChangeCategory={(v) =>
-                    updateHomeFood(food.uid, "category", v)
+                  onChangeCategories={(v) =>
+                    updateHomeFood(food.uid, "categories", v)
                   }
                 />
               ))}
@@ -509,19 +523,19 @@ export default function PlaceFormPage() {
         </button>
 
         {(() => {
-          // Home-mode requires every non-empty inline food to have a
-          // category picked too — otherwise the bulk insert below would
-          // create rows that go straight into the "❓ 미분류" bucket.
+          // Home-mode requires every non-empty inline food to have at
+          // least one category picked too — otherwise the bulk insert
+          // below creates rows that land in the "❓ 미분류" bucket.
           const homeFoodsIncomplete =
             mode === "home" &&
             !isEdit &&
             homeFoods.some(
-              (f) => f.name.trim().length > 0 && !f.category
+              (f) => f.name.trim().length > 0 && f.categories.length === 0
             );
           const cantSave =
             upsert.isPending ||
             upsertFood.isPending ||
-            !category ||
+            categories.length === 0 ||
             homeFoodsIncomplete;
           return (
             <button
@@ -580,7 +594,7 @@ function HomeFoodCard({
   onRemove,
   onChangeName,
   onChangeChef,
-  onChangeCategory,
+  onChangeCategories,
 }: {
   index: number;
   food: HomeFoodDraft;
@@ -588,7 +602,7 @@ function HomeFoodCard({
   onRemove: () => void;
   onChangeName: (v: string) => void;
   onChangeChef: (v: ChefRole) => void;
-  onChangeCategory: (v: string | null) => void;
+  onChangeCategories: (v: string[]) => void;
 }) {
   return (
     <div className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative space-y-3">
@@ -620,9 +634,10 @@ function HomeFoodCard({
           종류 · 种类 *
         </p>
         <CategoryChips
+          multiple
           options={FOOD_CATEGORIES}
-          value={food.category}
-          onChange={onChangeCategory}
+          value={food.categories}
+          onChange={onChangeCategories}
           scope="category"
           customKey="other"
         />

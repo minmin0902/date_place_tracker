@@ -36,7 +36,7 @@ import {
   isKnownPlaceCategory,
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
-import { formatDate, ratingsForViewer } from "@/lib/utils";
+import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
@@ -278,7 +278,8 @@ export default function HomePage() {
   // fix the missing food categories without combing through every
   // record.
   const isPlaceUncategorized = (p: PlaceWithFoods) =>
-    !p.category || (p.foods ?? []).some((f) => !f.category);
+    getCategories(p).length === 0 ||
+    (p.foods ?? []).some((f) => getCategories(f).length === 0);
 
   // Build the category dropdown options dynamically: built-in list first,
   // then any custom strings the user has saved (via the "기타" input)
@@ -297,15 +298,15 @@ export default function HomePage() {
         label: `${categoryEmojiOf(c)} ${t(`category.${c}`)}`,
       });
     }
-    // Custom — collect unique non-built-in category strings from the
-    // user's existing places and append. Sorted alphabetically so the
-    // dropdown ordering is stable even when new entries arrive.
+    // Custom — collect unique non-built-in category strings from
+    // every category attached to every place (across the multi-select
+    // array). Sorted alphabetically so the dropdown order stays stable.
     const customs = new Set<string>();
     for (const p of places ?? []) {
-      const c = p.category;
-      if (!c) continue;
-      if (isKnownPlaceCategory(c)) continue;
-      customs.add(c);
+      for (const c of getCategories(p)) {
+        if (!c || isKnownPlaceCategory(c)) continue;
+        customs.add(c);
+      }
     }
     for (const c of [...customs].sort()) {
       out.push({ value: c, label: `${categoryEmojiOf(c)} ${c}` });
@@ -353,7 +354,11 @@ export default function HomePage() {
     if (categoryFilter === "__none__") {
       list = list.filter(isPlaceUncategorized);
     } else if (categoryFilter !== "all") {
-      list = list.filter((p) => p.category === categoryFilter);
+      // Match if the chosen category is in the place's multi-select
+      // (or matches the legacy singleton via getCategories fallback).
+      list = list.filter((p) =>
+        getCategories(p).includes(categoryFilter)
+      );
     }
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -448,8 +453,11 @@ export default function HomePage() {
     }
     const byCat = new Map<string, number>();
     for (const p of places) {
-      if (!p.category) continue;
-      byCat.set(p.category, (byCat.get(p.category) ?? 0) + 1);
+      // Each category the place carries gets a tally — multi-cat
+      // entries contribute to multiple buckets.
+      for (const c of getCategories(p)) {
+        byCat.set(c, (byCat.get(c) ?? 0) + 1);
+      }
     }
     let topCategory: string | null = null;
     let topCount = 0;
@@ -573,12 +581,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* Filter area — segmented control on top for 외식/집밥, then
-                two side-by-side dropdowns for sort + category. The chip
-                grid grew unwieldy as the category list expanded, so the
-                category bucket is a <select> now. */}
             <div className="flex flex-col gap-3 mb-6 px-1">
-              {/* Segmented: 모두 / 외식 / 집밥 */}
               <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
                 <SegmentButton
                   active={diningFilter === "all"}
@@ -603,7 +606,6 @@ export default function HomePage() {
                 />
               </div>
 
-              {/* Two dropdowns: sort + category */}
               <div className="flex gap-2">
                 <FilterDropdown
                   value={viewMode}
@@ -624,9 +626,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* City single-select — only when 도시별 view is active.
-                Null means "show all"; picking a city narrows to that one.
-                Tapping the same city again clears the selection. */}
             {viewMode === "city" && allCities.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-5 px-1">
                 <button
@@ -646,9 +645,7 @@ export default function HomePage() {
                     <button
                       key={c}
                       type="button"
-                      onClick={() =>
-                        setSelectedCity(active ? null : c)
-                      }
+                      onClick={() => setSelectedCity(active ? null : c)}
                       className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap flex items-center gap-1 ${
                         active
                           ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
@@ -797,6 +794,7 @@ export default function HomePage() {
           onClose={() => setAddWishlistOpen(false)}
         />
       )}
+
     </div>
   );
 }
@@ -1021,15 +1019,21 @@ function TimelineItem({
     const view = ratingsForViewer(f, viewerId);
     return view.myRating == null;
   }).length;
-  const uncategorizedFoods = (place.foods ?? []).filter((f) => !f.category)
-    .length;
-  // Resolve the place-level category label: built-in keys go through
-  // i18n, custom strings render as-is, falsy collapses to "미분류".
-  const catLabel = place.category
-    ? isKnownPlaceCategory(place.category)
-      ? `${categoryEmojiOf(place.category)} ${t(`category.${place.category}`)}`
-      : `${categoryEmojiOf(place.category)} ${place.category}`
-    : "❓ 미분류 · 未分类";
+  const uncategorizedFoods = (place.foods ?? []).filter(
+    (f) => getCategories(f).length === 0
+  ).length;
+  // Resolve all category labels: built-in keys go through i18n,
+  // custom strings render as-is. Empty array → render a single
+  // "❓ 미분류" pill.
+  const placeCategories = getCategories(place);
+  const catLabels: string[] =
+    placeCategories.length === 0
+      ? []
+      : placeCategories.map((c) =>
+          isKnownPlaceCategory(c)
+            ? `${categoryEmojiOf(c)} ${t(`category.${c}`)}`
+            : `${categoryEmojiOf(c)} ${c}`
+        );
   return (
     <div className="relative pl-6 pb-6">
       {!isLast && (
@@ -1092,18 +1096,23 @@ function TimelineItem({
               </p>
             )}
             <div className="flex items-center flex-wrap gap-1.5 mt-2">
-              {/* Place-level category chip — shows "❓ 미분류" when
-                  the place hasn't been tagged so the user can spot
-                  unclassified entries at a glance from the timeline. */}
-              <span
-                className={`text-[11px] px-2 py-0.5 rounded-lg shadow-sm border ${
-                  place.category
-                    ? "bg-white/90 text-ink-700 border-cream-200/60"
-                    : "bg-amber-50 text-amber-700 border-amber-200 font-bold"
-                }`}
-              >
-                {catLabel}
-              </span>
+              {/* Place-level category chips — one chip per assigned
+                  category. Empty list collapses to a single amber
+                  "❓ 미분류" pill so unclassified entries stand out. */}
+              {catLabels.length === 0 ? (
+                <span className="text-[11px] px-2 py-0.5 rounded-lg shadow-sm border bg-amber-50 text-amber-700 border-amber-200 font-bold">
+                  ❓ 미분류 · 未分类
+                </span>
+              ) : (
+                catLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] px-2 py-0.5 rounded-lg shadow-sm border bg-white/90 text-ink-700 border-cream-200/60"
+                  >
+                    {label}
+                  </span>
+                ))
+              )}
               {avg !== null ? (
                 <span className="inline-flex items-center bg-white/90 px-2 py-0.5 rounded-lg text-xs font-bold border border-peach-200/60 text-peach-500 shadow-sm">
                   <span className="mr-1">⭐</span>

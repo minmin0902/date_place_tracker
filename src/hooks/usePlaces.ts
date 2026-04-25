@@ -70,6 +70,7 @@ export function useUpsertPlace() {
         date_visited: string;
         address: string | null;
         category: string | null;
+        categories?: string[] | null;
         memo: string | null;
         want_to_revisit: boolean;
         is_home_cooked?: boolean;
@@ -133,6 +134,7 @@ export function useUpsertFood() {
         my_rating: number | null;
         partner_rating: number | null;
         category: string | null;
+        categories?: string[] | null;
         memo: string | null;
         photo_url: string | null;
         photo_urls: string[] | null;

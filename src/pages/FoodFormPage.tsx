@@ -9,7 +9,7 @@ import { CategoryChips } from "@/components/CategoryChips";
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { FOOD_CATEGORIES } from "@/lib/constants";
-import { ratingsForViewer } from "@/lib/utils";
+import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
 
 // Viewer-relative eater used by the form UI. Translated back to the
@@ -51,7 +51,7 @@ export default function FoodFormPage() {
   const [name, setName] = useState("");
   const [myRating, setMyRating] = useState<number | null>(null);
   const [partnerRating, setPartnerRating] = useState<number | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   // Eater (viewer perspective): 'both' / 'me' / 'partner'. Drives the
@@ -73,7 +73,7 @@ export default function FoodFormPage() {
     const view = ratingsForViewer(existing, user?.id);
     setMyRating(view.myRating);
     setPartnerRating(view.partnerRating);
-    setCategory(existing.category ?? null);
+    setCategories(getCategories(existing));
     setMemo(existing.memo ?? "");
     // Prefer the new `eater` enum; fall back to the legacy is_solo
     // boolean ('me' if true, 'both' if false) so older rows hydrate.
@@ -100,12 +100,12 @@ export default function FoodFormPage() {
       name,
       myRating,
       partnerRating,
-      category,
+      categories,
       memo,
       photos,
       viewerEater,
     }),
-    [name, myRating, partnerRating, category, memo, photos, viewerEater]
+    [name, myRating, partnerRating, categories, memo, photos, viewerEater]
   );
   const draft = useFormDraft({
     key: draftKey,
@@ -117,8 +117,8 @@ export default function FoodFormPage() {
         setMyRating(saved.myRating as number | null);
       if (saved.partnerRating !== undefined)
         setPartnerRating(saved.partnerRating as number | null);
-      if (saved.category !== undefined)
-        setCategory(saved.category as string | null);
+      if (Array.isArray(saved.categories))
+        setCategories(saved.categories as string[]);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
       if (
@@ -157,7 +157,10 @@ export default function FoodFormPage() {
         name: name.trim(),
         my_rating: my_rating_to_save,
         partner_rating: partner_rating_to_save,
-        category,
+        // Keep `category` synced with first picked category for older
+        // client builds; `categories` carries the full multi-select.
+        category: categories[0] ?? null,
+        categories: categories.length ? categories : null,
         memo: memo.trim() || null,
         // Keep the legacy scalar column populated too so any older build
         // still reading photo_url sees something.
@@ -214,15 +217,21 @@ export default function FoodFormPage() {
             카테고리 · 种类 *
           </label>
           <CategoryChips
+            multiple
             options={FOOD_CATEGORIES}
-            value={category}
-            onChange={setCategory}
+            value={categories}
+            onChange={setCategories}
             scope="category"
             customKey="other"
           />
-          {!category && (
+          {categories.length === 0 && (
             <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
-              카테고리를 골라주세요 · 请选择类别
+              카테고리를 하나 이상 골라주세요 · 请至少选择一个类别
+            </p>
+          )}
+          {categories.length > 0 && (
+            <p className="text-[11px] text-ink-400 mt-1.5">
+              여러 개 골라도 돼요 · 可以选多个 ({categories.length}개 선택됨)
             </p>
           )}
         </div>
@@ -346,7 +355,9 @@ export default function FoodFormPage() {
         <button
           type="submit"
           className="btn-primary w-full"
-          disabled={upsert.isPending || !name.trim() || !category}
+          disabled={
+            upsert.isPending || !name.trim() || categories.length === 0
+          }
         >
           저장 · 保存
         </button>
