@@ -142,6 +142,7 @@ export function useUpsertFood() {
         // never accidentally rewrite the original author.
         created_by?: string | null;
         is_solo?: boolean;
+        eater?: "both" | "creator" | "partner";
       };
     }) => {
       if (ALLOW_NO_AUTH) return upsertLocalFood(input);

@@ -1,5 +1,12 @@
 export type ChefRole = "me" | "partner" | "together";
 
+// Who ate this food. Stored from the creator's perspective (same
+// convention as my_rating/partner_rating). Default 'both'.
+//   'both'    — both partners ate
+//   'creator' — only foods.created_by ate
+//   'partner' — only the non-creator ate
+export type EaterRole = "both" | "creator" | "partner";
+
 export type Database = {
   public: {
     Tables: {
@@ -57,10 +64,10 @@ export type Database = {
           photo_urls: string[] | null;
           chef: ChefRole | null;
           created_by: string | null;
-          // When true, only the creator (created_by) ate this dish.
-          // UI hides the other partner's rating slot and doubles the
-          // single rating for the /10 total.
+          // Legacy boolean — superseded by `eater`. Kept for older
+          // client builds. New code should branch on `eater`.
           is_solo: boolean;
+          eater: EaterRole;
           created_at: string;
         };
         Insert: {
@@ -76,6 +83,7 @@ export type Database = {
           chef?: ChefRole | null;
           created_by?: string | null;
           is_solo?: boolean;
+          eater?: EaterRole;
         };
         Update: Partial<Database["public"]["Tables"]["foods"]["Insert"]>;
       };

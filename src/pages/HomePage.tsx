@@ -325,12 +325,17 @@ export default function HomePage() {
     if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
     if (unratedOnly) {
       // Show only places that still need *my* rating somewhere — at
-      // least one food whose viewer-side rating is null. Solo foods
-      // the viewer didn't eat are skipped (not theirs to rate).
+      // least one food whose viewer-side rating is null AND I'm
+      // expected to rate. Foods marked as "partner only" or "creator
+      // only" + I'm not the eater don't count against me.
       list = list.filter((p) =>
         (p.foods ?? []).some((f) => {
-          if (f.is_solo) {
-            const isEater = !f.created_by || f.created_by === user?.id;
+          const eater = f.eater ?? (f.is_solo ? "creator" : "both");
+          if (eater !== "both") {
+            const isEater =
+              eater === "creator"
+                ? !f.created_by || f.created_by === user?.id
+                : f.created_by !== user?.id;
             if (!isEater) return false;
           }
           return ratingsForViewer(f, user?.id).myRating == null;
@@ -1018,12 +1023,16 @@ function TimelineItem({
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
   // Count foods on this place where the *viewer* hasn't dropped a
-  // rating yet — drives the small "✏️ N 개" CTA so the user knows at
-  // a glance which entries still need their input. Solo foods that
-  // the viewer didn't eat aren't theirs to rate, so they're excluded.
+  // rating yet — drives the small "✏️ N 개" CTA. Foods marked as
+  // "creator only" / "partner only" where the viewer isn't the eater
+  // don't count against the viewer.
   const unratedByMe = (place.foods ?? []).filter((f) => {
-    if (f.is_solo) {
-      const isEater = !f.created_by || f.created_by === viewerId;
+    const eater = f.eater ?? (f.is_solo ? "creator" : "both");
+    if (eater !== "both") {
+      const isEater =
+        eater === "creator"
+          ? !f.created_by || f.created_by === viewerId
+          : f.created_by !== viewerId;
       if (!isEater) return false;
     }
     const view = ratingsForViewer(f, viewerId);

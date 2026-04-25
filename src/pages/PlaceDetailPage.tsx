@@ -88,12 +88,18 @@ export default function PlaceDetailPage() {
   }
 
   const foods = place.foods ?? [];
+  // Whether the food is fully solo (one eater only). Reads `eater`
+  // when present, falls back to the legacy is_solo boolean.
+  const isFoodSolo = (f: Food) => {
+    const eater = f.eater ?? (f.is_solo ? "creator" : "both");
+    return eater !== "both";
+  };
   // Per-food /10 total: solo foods double the eater's single rating,
   // couple foods sum both partners. Keeps the place average comparable
   // across both modes.
   const totals = foods
     .map((f) => {
-      if (f.is_solo) {
+      if (isFoodSolo(f)) {
         const r = f.my_rating ?? f.partner_rating ?? 0;
         return r * 2;
       }
@@ -107,8 +113,8 @@ export default function PlaceDetailPage() {
   // Group foods by opinion spread.
   // Solo foods skip the disagree/agree classification (no second opinion
   // to compare against) and live in their own section below.
-  const soloFoods = foods.filter((f) => f.is_solo);
-  const coupleFoods = foods.filter((f) => !f.is_solo);
+  const soloFoods = foods.filter(isFoodSolo);
+  const coupleFoods = foods.filter((f) => !isFoodSolo(f));
   const rated = coupleFoods.filter(
     (f) => f.my_rating != null && f.partner_rating != null
   );
@@ -388,13 +394,29 @@ function FoodCard({
   const view = ratingsForViewer(food, user?.id);
   const my = view.myRating ?? 0;
   const partner = view.partnerRating ?? 0;
-  const isSolo = !!food.is_solo;
-  // Solo food: only the eater's slot has a value. Total doubles that
-  // single rating so the /10 scale stays consistent across solo and
-  // couple foods. The eater is always the food's creator (we never
-  // record solo entries on someone else's behalf).
-  const viewerIsEater =
+  // Resolve eater (storage convention) with a fallback to the legacy
+  // is_solo boolean for foods saved before the migration.
+  const eaterStored: "both" | "creator" | "partner" =
+    food.eater
+      ? (food.eater as "both" | "creator" | "partner")
+      : food.is_solo
+        ? "creator"
+        : "both";
+  const viewerIsCreator =
     !food.created_by || food.created_by === user?.id;
+  // Translate to viewer perspective for display.
+  const eaterView: "both" | "me" | "partner" =
+    eaterStored === "both"
+      ? "both"
+      : eaterStored === "creator"
+        ? viewerIsCreator
+          ? "me"
+          : "partner"
+        : viewerIsCreator
+          ? "partner"
+          : "me";
+  const isSolo = eaterView !== "both";
+  const viewerIsEater = eaterView === "me";
   const eaterRating = viewerIsEater ? my : partner;
   const total = isSolo ? eaterRating * 2 : my + partner;
   const diff = isSolo ? 0 : Math.abs(my - partner);

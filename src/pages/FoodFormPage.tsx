@@ -10,6 +10,32 @@ import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { FOOD_CATEGORIES } from "@/lib/constants";
 import { ratingsForViewer } from "@/lib/utils";
+import type { EaterRole } from "@/lib/database.types";
+
+// Viewer-relative eater used by the form UI. Translated back to the
+// storage-relative `EaterRole` ('creator' / 'partner') when saving.
+type ViewerEater = "both" | "me" | "partner";
+
+function viewerEaterFromStorage(
+  stored: EaterRole | null | undefined,
+  isCreator: boolean
+): ViewerEater {
+  if (!stored || stored === "both") return "both";
+  if (stored === "creator") return isCreator ? "me" : "partner";
+  // stored === "partner"
+  return isCreator ? "partner" : "me";
+}
+
+function storageEaterFromViewer(
+  v: ViewerEater,
+  isCreator: boolean
+): EaterRole {
+  if (v === "both") return "both";
+  // "me" from the viewer means whichever role the viewer occupies.
+  if (v === "me") return isCreator ? "creator" : "partner";
+  // "partner" from the viewer means the role the OTHER partner occupies.
+  return isCreator ? "partner" : "creator";
+}
 
 export default function FoodFormPage() {
   const { id: placeId, foodId } = useParams();
@@ -28,9 +54,16 @@ export default function FoodFormPage() {
   const [category, setCategory] = useState<string | null>(null);
   const [memo, setMemo] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
-  // Solo flag — when true, only the food's creator ate this dish, so
-  // the partner rating slot is suppressed and the total is doubled.
-  const [isSolo, setIsSolo] = useState(false);
+  // Eater (viewer perspective): 'both' / 'me' / 'partner'. Drives the
+  // segmented toggle. Translated to storage-relative EaterRole on save.
+  const [viewerEater, setViewerEater] = useState<ViewerEater>("both");
+
+  // Whether the current viewer is the food's creator. Drives the
+  // viewer ↔ storage translation for both ratings and the eater enum.
+  const viewerIsCreator =
+    !existing || existing.created_by == null
+      ? true
+      : existing.created_by === user?.id;
 
   useEffect(() => {
     if (!existing) return;
@@ -42,7 +75,14 @@ export default function FoodFormPage() {
     setPartnerRating(view.partnerRating);
     setCategory(existing.category ?? null);
     setMemo(existing.memo ?? "");
-    setIsSolo(existing.is_solo ?? false);
+    // Prefer the new `eater` enum; fall back to the legacy is_solo
+    // boolean ('me' if true, 'both' if false) so older rows hydrate.
+    const eaterStored: EaterRole = existing.eater
+      ? (existing.eater as EaterRole)
+      : existing.is_solo
+        ? "creator"
+        : "both";
+    setViewerEater(viewerEaterFromStorage(eaterStored, viewerIsCreator));
     // Prefer the new photo_urls array, fall back to the legacy single-photo
     // column for foods saved before the migration.
     if (existing.photo_urls && existing.photo_urls.length > 0) {
@@ -50,22 +90,22 @@ export default function FoodFormPage() {
     } else if (existing.photo_url) {
       setPhotos([existing.photo_url]);
     }
-  }, [existing, user?.id]);
-
-  // Whether the current viewer is the food's creator. Solo foods are
-  // ALWAYS authored by the eater, so this also tells us whether the
-  // viewer is the one who ate it (= the only one who can rate).
-  const viewerIsCreator =
-    !existing || existing.created_by == null
-      ? true
-      : existing.created_by === user?.id;
+  }, [existing, user?.id, viewerIsCreator]);
 
   // Draft: so if the user taps off mid-entry their typed rating / name
   // is still there when they come back.
   const draftKey = placeId ? `draft:food:new:${placeId}` : "draft:food:new";
   const draftSnapshot = useMemo(
-    () => ({ name, myRating, partnerRating, category, memo, photos, isSolo }),
-    [name, myRating, partnerRating, category, memo, photos, isSolo]
+    () => ({
+      name,
+      myRating,
+      partnerRating,
+      category,
+      memo,
+      photos,
+      viewerEater,
+    }),
+    [name, myRating, partnerRating, category, memo, photos, viewerEater]
   );
   const draft = useFormDraft({
     key: draftKey,
@@ -81,7 +121,13 @@ export default function FoodFormPage() {
         setCategory(saved.category as string | null);
       if (saved.memo != null) setMemo(saved.memo as string);
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
-      if (typeof saved.isSolo === "boolean") setIsSolo(saved.isSolo);
+      if (
+        saved.viewerEater === "both" ||
+        saved.viewerEater === "me" ||
+        saved.viewerEater === "partner"
+      ) {
+        setViewerEater(saved.viewerEater);
+      }
     },
   });
 
@@ -96,11 +142,13 @@ export default function FoodFormPage() {
     const isOwner = viewerIsCreator;
     let my_rating_to_save = isOwner ? myRating : partnerRating;
     let partner_rating_to_save = isOwner ? partnerRating : myRating;
-    // Solo: only the eater's slot keeps a value, the other side is
-    // forced null so the display logic + comparison filters can rely
-    // on "non-eater rating is null" being a hard rule.
-    if (isSolo) {
+    const eaterStored = storageEaterFromViewer(viewerEater, isOwner);
+    // Solo modes force the non-eater's slot to null so display + compare
+    // filters can rely on a single hard rule.
+    if (eaterStored === "creator") {
       partner_rating_to_save = null;
+    } else if (eaterStored === "partner") {
+      my_rating_to_save = null;
     }
     await upsert.mutateAsync({
       id: foodId,
@@ -118,25 +166,24 @@ export default function FoodFormPage() {
         // On insert: stamp the current user. On update: preserve the
         // existing author so swap math stays consistent forever.
         created_by: ownerId,
-        is_solo: isSolo,
+        eater: eaterStored,
+        // Keep the legacy boolean in sync for older client builds.
+        is_solo: eaterStored !== "both",
       },
     });
     draft.clear();
     navigate(`/places/${placeId}`, { replace: true });
   }
 
-  // Total = solo ? eaterRating × 2 : myRating + partnerRating.
-  // For solo, the "eater" is whichever side has the value from the
-  // viewer's perspective (myRating if I'm the creator, partnerRating
-  // otherwise).
-  const eaterRating = isSolo
-    ? viewerIsCreator
-      ? myRating
-      : partnerRating
-    : null;
-  const total = isSolo
-    ? (eaterRating ?? 0) * 2
-    : (myRating ?? 0) + (partnerRating ?? 0);
+  // Total: 'both' = my + partner; otherwise eater × 2.
+  // For viewer perspective: when 'me' eats alone, total = myRating × 2;
+  // when 'partner' eats alone, total = partnerRating × 2.
+  const total =
+    viewerEater === "me"
+      ? (myRating ?? 0) * 2
+      : viewerEater === "partner"
+        ? (partnerRating ?? 0) * 2
+        : (myRating ?? 0) + (partnerRating ?? 0);
 
   return (
     <div>
@@ -176,30 +223,32 @@ export default function FoodFormPage() {
           )}
         </div>
 
-        {/* Solo / together toggle — gates the rating UI below.
-            New entries default to "together"; editing a solo entry
-            keeps it solo. Only the creator can flip the flag (it's
-            their meal record). */}
+        {/* Eater toggle — three options. Both partners can flip it
+            (translation handles the perspective swap on save). */}
         <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
-          <SoloSegment
-            active={!isSolo}
-            disabled={!viewerIsCreator}
-            onClick={() => setIsSolo(false)}
-            label="둘이 같이 먹었어 · 我们都吃了"
+          <EaterSegment
+            active={viewerEater === "both"}
+            onClick={() => setViewerEater("both")}
+            label="둘이 같이"
+            sub="我们都吃了"
           />
-          <SoloSegment
-            active={isSolo}
-            disabled={!viewerIsCreator}
-            onClick={() => setIsSolo(true)}
-            label="혼자 먹었어 · 自己吃的"
+          <EaterSegment
+            active={viewerEater === "me"}
+            onClick={() => setViewerEater("me")}
+            label="나만"
+            sub="我自己吃的"
+          />
+          <EaterSegment
+            active={viewerEater === "partner"}
+            onClick={() => setViewerEater("partner")}
+            label="짝꿍만"
+            sub="宝宝自己吃的"
           />
         </div>
 
         <div className="card p-4 space-y-4">
-          {/* My rating slot — visible whenever:
-              · couple food (always)
-              · solo + I'm the creator (the eater) */}
-          {(!isSolo || viewerIsCreator) && (
+          {/* My rating slot — visible when I ate ('both' or 'me'). */}
+          {viewerEater !== "partner" && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold text-ink-700">
@@ -216,13 +265,13 @@ export default function FoodFormPage() {
               />
             </div>
           )}
-          {/* Partner slot — read-only display:
-              · couple food: show partner's rating, with "still pending"
-                copy when null
-              · solo where I'm NOT the creator: show partner's rating
-                (the eater's score), since I didn't eat */}
-          {!isSolo && (
-            <div className={`${viewerIsCreator ? "border-t border-cream-100 pt-4" : ""}`}>
+          {/* Partner slot — visible when partner ate ('both' or 'partner').
+              Always read-only here; partner picks the value from their
+              own session. */}
+          {viewerEater !== "me" && (
+            <div
+              className={`${viewerEater === "both" ? "border-t border-cream-100 pt-4" : ""}`}
+            >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-bold text-ink-700">
                   짝꿍 별점 · 宝宝的评分
@@ -231,7 +280,12 @@ export default function FoodFormPage() {
                   {partnerRating ?? "-"} / 5
                 </span>
               </div>
-              {partnerRating != null ? (
+              {viewerEater === "partner" ? (
+                <p className="text-[11px] text-ink-400 mt-1">
+                  짝꿍이 혼자 먹은 메뉴 — 별점은 짝꿍 본인이 매겨요 ·
+                  宝宝自己吃的，分数等TA来打
+                </p>
+              ) : partnerRating != null ? (
                 <p className="text-[11px] text-ink-400 mt-1">
                   짝꿍이 직접 평가했어요 · 宝宝亲自打的分
                 </p>
@@ -243,28 +297,11 @@ export default function FoodFormPage() {
               )}
             </div>
           )}
-          {/* Solo + I'm not the creator → show the eater's score read-only */}
-          {isSolo && !viewerIsCreator && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-ink-700">
-                  짝꿍 별점 · 宝宝的评分
-                </span>
-                <span className="text-xs font-bold text-ink-400 font-number">
-                  {partnerRating ?? "-"} / 5
-                </span>
-              </div>
-              <p className="text-[11px] text-ink-400 mt-1">
-                짝꿍이 혼자 먹은 메뉴라 별점은 짝꿍 거예요 ·
-                宝宝自己吃的，分数也是宝宝打的
-              </p>
-            </div>
-          )}
           {total > 0 && (
             <div className="pt-3 border-t border-cream-100 flex items-center justify-between">
               <span className="text-sm font-bold text-ink-700">
                 합계 · 总分{" "}
-                {isSolo && (
+                {viewerEater !== "both" && (
                   <span className="text-[10px] font-medium text-ink-400 ml-1">
                     (혼자 먹어서 ×2)
                   </span>
@@ -314,33 +351,32 @@ export default function FoodFormPage() {
   );
 }
 
-// Compact 2-button segment used by the solo/together toggle. Disabled
-// state is for non-creators editing a solo food — the flag is locked
-// because flipping it would require swapping which slot the rating
-// lives in, which is the creator's call to make.
-function SoloSegment({
+// 3-state eater segment: 둘이 같이 / 나만 / 짝꿍만. Stacks Korean
+// label + Chinese subtitle so the option fits without truncating on
+// narrow screens.
+function EaterSegment({
   active,
   onClick,
   label,
-  disabled,
+  sub,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
-  disabled?: boolean;
+  sub: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all min-w-0 truncate ${
+      className={`flex-1 py-2 px-1 rounded-lg transition-all min-w-0 flex flex-col items-center justify-center leading-tight ${
         active
           ? "bg-white shadow-sm border border-peach-100 text-peach-500"
           : "text-ink-500 hover:text-ink-700"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+      }`}
     >
-      {label}
+      <span className="text-[12px] font-bold">{label}</span>
+      <span className="text-[10px] opacity-70 font-medium mt-0.5">{sub}</span>
     </button>
   );
 }
