@@ -830,17 +830,29 @@ function FoodCard({
   const cardCls = yyds
     ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
     : "bg-white border-cream-200 shadow-soft";
-  const badgeCls = yyds ? "bg-amber-500 text-white" : "bg-ink-900 text-white";
+  // YYDS badges live inline above the title because the absolute
+  // corner badge collided with the right-aligned 10/10 score. The
+  // taste-war "내 원픽" badge is shorter and stays in the corner.
+  const inlineBadge = yyds && badge;
+  const cornerBadge = !yyds && badge;
+  const cornerBadgeCls = "bg-ink-900 text-white";
   return (
     <Link
       to={`/places/${r.placeId}`}
       className={`block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
     >
-      {badge && (
+      {cornerBadge && (
         <div
-          className={`absolute top-0 right-0 text-[10px] font-semibold px-3 py-1 rounded-bl-xl ${badgeCls}`}
+          className={`absolute top-0 right-0 text-[10px] font-semibold px-3 py-1 rounded-bl-xl ${cornerBadgeCls}`}
         >
           {badge}
+        </div>
+      )}
+      {inlineBadge && (
+        <div className="mb-2">
+          <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">
+            {badge}
+          </span>
         </div>
       )}
       <div className="flex items-start justify-between gap-3 pr-1">

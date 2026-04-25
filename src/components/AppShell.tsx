@@ -44,7 +44,12 @@ export function AppShell() {
       >
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-md border-t border-cream-200/60 safe-bottom shadow-[0_-4px_20px_rgb(0,0,0,0.03)]">
+      {/* z-20 sits ABOVE the timeline dots (z-[1]) so they don't peek
+          through the nav, and BELOW the floating dice/add cluster
+          (z-30) so the FAB still floats above the nav. bg-white/95
+          plus the existing backdrop-blur kills the see-through bleed
+          while keeping the soft frosted feel. */}
+      <nav className="fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur-md border-t border-cream-200/60 safe-bottom shadow-[0_-4px_20px_rgb(0,0,0,0.03)]">
         <div className="max-w-md mx-auto flex">
           <NavItem to="/" icon={Home} label={t("nav.home")} />
           <NavItem to="/map" icon={Map} label={t("nav.map")} />
