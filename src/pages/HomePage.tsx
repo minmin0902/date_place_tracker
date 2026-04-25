@@ -41,8 +41,17 @@ type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
 // Extract a clean city label from a freeform address. Strips country,
 // state+zip, bare state abbreviations, and street-address-looking tails
 // so we get "Providence" instead of "214 Wickenden St" or "RI".
+
+// Country names in several locales — Google Places localizes the last
+// segment based on the viewer's language ("…, USA" / "…, 미국" / "…美国").
+// Some locales even glue the country onto the zip token without a
+// delimiter ("RI 02906美国"), which is why this pattern is used to
+// strip a trailing country from *within* a token, not just as a whole.
+const COUNTRY_SUFFIX =
+  /\s*(USA|U\.S\.A\.?|US|United States|UK|United Kingdom|Korea|Republic of Korea|South Korea|Canada|Japan|China|Taiwan|Hong Kong|HK|미국|일본|한국|중국|대만|홍콩|영국|캐나다|美国|日本|韩国|韓国|中国|台湾|台灣|香港|英国|英國|加拿大)$/i;
+// Whole-token country match (legacy/simple case).
 const COUNTRY_TOKENS =
-  /^(USA|U\.S\.A\.?|US|United States|UK|United Kingdom|Korea|Republic of Korea|South Korea|Canada|Japan|China|Taiwan|Hong Kong|HK)$/i;
+  /^(USA|U\.S\.A\.?|US|United States|UK|United Kingdom|Korea|Republic of Korea|South Korea|Canada|Japan|China|Taiwan|Hong Kong|HK|미국|일본|한국|중국|대만|홍콩|영국|캐나다|美国|日本|韩国|韓国|中国|台湾|台灣|香港|英国|英國|加拿大)$/i;
 // "NY 11377", "CA 94103-1234", or a lone zip/postcode.
 const STATE_ZIP =
   /^(?:[A-Z]{2}\s+)?\d{4,6}(?:-\d{3,4})?$|^[A-Z]{2}\s+\d{4,5}(?:-\d{4})?$/;
@@ -82,16 +91,19 @@ function inferCity(addr: string | null | undefined): string | null {
   const zh = s.match(/([一-鿿]{2,6}市)/);
   if (zh) return zh[1];
 
-  // English: split into comma-separated tokens.
+  // English: split into comma-separated tokens, then clean each token
+  // of a trailing localized country suffix that Google sometimes glues
+  // onto the zip ("RI 02906美国", "NM 87501 미국").
   const originalParts = s
     .split(",")
     .map((p) => p.trim())
+    .map((p) => p.replace(COUNTRY_SUFFIX, "").trim())
     .filter(Boolean);
   // Bare place name with no comma-delimited structure ("Amy's Restaurant",
   // "Wickenden St") is unreliable — refuse to guess a city from it.
   if (originalParts.length < 2) return null;
 
-  // Peel off trailing noise: country → state+zip → bare state.
+  // Peel off trailing noise: whole-token country → state+zip → bare state.
   let parts = [...originalParts];
   if (parts.length && COUNTRY_TOKENS.test(parts[parts.length - 1])) {
     parts = parts.slice(0, -1);
