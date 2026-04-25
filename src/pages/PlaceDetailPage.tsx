@@ -384,6 +384,17 @@ function FoodCard({
             {food.name}
           </h3>
           {food.chef && <ChefBadge chef={food.chef} />}
+          {/* "Rate this" CTA — visible only to the partner who hasn't
+              rated this dish yet. Tapping the badge jumps straight to
+              the edit form so they can drop a score in one tap. */}
+          {!myWasGiven && (
+            <Link
+              to={`/places/${placeId}/foods/${food.id}/edit`}
+              className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
+            >
+              ✏️ 내 별점 아직 안 줬어요 · 还没打分
+            </Link>
+          )}
         </div>
         {total > 0 && (
           <div className="text-2xl font-number font-bold text-peach-400 leading-none">

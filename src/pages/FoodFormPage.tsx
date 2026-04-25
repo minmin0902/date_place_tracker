@@ -158,8 +158,11 @@ export default function FoodFormPage() {
               color="peach"
             />
           </div>
+          {/* Partner's rating is read-only here — each user only edits
+              their own slot, the other half lands when the partner logs
+              in and rates from their own session. */}
           <div className="border-t border-cream-100 pt-4">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-bold text-ink-700">
                 짝꿍 별점 · 宝宝的评分
               </span>
@@ -167,11 +170,16 @@ export default function FoodFormPage() {
                 {partnerRating ?? "-"} / 5
               </span>
             </div>
-            <RatingPicker
-              value={partnerRating}
-              onChange={setPartnerRating}
-              color="rose"
-            />
+            {partnerRating != null ? (
+              <p className="text-[11px] text-ink-400 mt-1">
+                짝꿍이 직접 평가했어요 · 宝宝亲自打的分
+              </p>
+            ) : (
+              <p className="text-[11px] text-rose-400 mt-1">
+                짝꿍이 아직 평가 전이에요. 짝꿍이 자기 계정에서 평가하면
+                자동으로 떠요. · 宝宝还没打分，等TA登录后自己打。
+              </p>
+            )}
           </div>
           {total > 0 && (
             <div className="pt-3 border-t border-cream-100 flex items-center justify-between">

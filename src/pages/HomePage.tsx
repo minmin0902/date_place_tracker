@@ -34,7 +34,7 @@ import {
   isKnownPlaceCategory,
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
-import { formatDate } from "@/lib/utils";
+import { formatDate, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
@@ -221,6 +221,7 @@ function usePullToRefresh(onRefresh: () => Promise<unknown>) {
 
 export default function HomePage() {
   const { i18n, t } = useTranslation();
+  const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
@@ -252,22 +253,32 @@ export default function HomePage() {
   const [showSearch, setShowSearch] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
   const [revisitOnly, setRevisitOnly] = useState(false);
+  // "내가 아직 평가 안 한 곳만" filter — flips on/off via the chip next
+  // to revisitOnly. Hides places where the viewer has already rated
+  // every food.
+  const [unratedOnly, setUnratedOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("date");
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
-  // Category filter — "all" means no filter; otherwise the value is
-  // either a built-in PLACE_CATEGORIES key OR a freeform "기타" string
-  // typed by the user. Both are handled the same in `place.category`.
+  // Category filter — "all" means no filter; "__none__" filters to
+  // places without a category set; otherwise the value is either a
+  // built-in PLACE_CATEGORIES key OR a freeform "기타" string typed
+  // by the user. All three cases are handled in baseList below.
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
   // Build the category dropdown options dynamically: built-in list first,
   // then any custom strings the user has saved (via the "기타" input)
-  // appended in the order they appeared. This way the dropdown grows
-  // automatically without needing a schema change.
+  // appended in the order they appeared. The "__none__" sentinel
+  // surfaces places where category was never set (so the user can
+  // jump in and tag them).
   const categoryOptions = useMemo(() => {
     const out: { value: string; label: string }[] = [];
     out.push({ value: "all", label: "모든 종류 · 全部" });
+    const hasUncategorized = (places ?? []).some((p) => !p.category);
+    if (hasUncategorized) {
+      out.push({ value: "__none__", label: "❓ 카테고리 미설정 · 未分类" });
+    }
     for (const c of PLACE_CATEGORIES) {
       out.push({
         value: c,
@@ -305,10 +316,21 @@ export default function HomePage() {
     if (!places) return [];
     let list = places;
     if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
+    if (unratedOnly) {
+      // Show only places that still need *my* rating somewhere — at
+      // least one food whose viewer-side rating is null.
+      list = list.filter((p) =>
+        (p.foods ?? []).some(
+          (f) => ratingsForViewer(f, user?.id).myRating == null
+        )
+      );
+    }
     if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
     else if (diningFilter === "home")
       list = list.filter((p) => p.is_home_cooked);
-    if (categoryFilter !== "all") {
+    if (categoryFilter === "__none__") {
+      list = list.filter((p) => !p.category);
+    } else if (categoryFilter !== "all") {
       list = list.filter((p) => p.category === categoryFilter);
     }
     if (query.trim()) {
@@ -322,7 +344,15 @@ export default function HomePage() {
       });
     }
     return list;
-  }, [places, query, revisitOnly, diningFilter, categoryFilter]);
+  }, [
+    places,
+    query,
+    revisitOnly,
+    unratedOnly,
+    diningFilter,
+    categoryFilter,
+    user?.id,
+  ]);
 
   const filteredPlaces = useMemo(() => {
     const list = [...baseList];
@@ -509,6 +539,10 @@ export default function HomePage() {
                   {filteredPlaces.length}
                 </span>
               </h2>
+            </div>
+            {/* Quick toggles row — wrap so on narrow screens they fall
+                under each other instead of squishing the title. */}
+            <div className="flex flex-wrap gap-1.5 mb-3 px-1">
               <button
                 type="button"
                 onClick={() => setRevisitOnly((v) => !v)}
@@ -522,6 +556,18 @@ export default function HomePage() {
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
                 또 갈래! 맛집 · 必须二刷
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnratedOnly((v) => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                  unratedOnly
+                    ? "bg-amber-50 text-amber-700 border-amber-200/70 shadow-[0_2px_10px_rgba(217,119,6,0.15)]"
+                    : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
+                }`}
+              >
+                <span className="text-[13px] leading-none">✏️</span>
+                내 별점 안 줬어요 · 我还没打分
               </button>
             </div>
 
@@ -621,22 +667,28 @@ export default function HomePage() {
             {!placesLoading && filteredPlaces.length === 0 && (
               <EmptyState
                 emoji={
-                  revisitOnly
-                    ? "💖"
-                    : diningFilter === "home"
-                      ? "🍳"
-                      : diningFilter === "out"
-                        ? "🍽️"
-                        : "🍽️"
+                  unratedOnly
+                    ? "✏️"
+                    : categoryFilter === "__none__"
+                      ? "❓"
+                      : revisitOnly
+                        ? "💖"
+                        : diningFilter === "home"
+                          ? "🍳"
+                          : "🍽️"
                 }
                 text={
-                  revisitOnly
-                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
-                    : diningFilter === "home"
-                      ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
-                      : diningFilter === "out"
-                        ? "아직 외식 기록이 없어요 · 还没有探店记录"
-                        : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
+                  unratedOnly
+                    ? "모든 메뉴에 별점을 다 줬어요! · 所有菜都打过分啦！"
+                    : categoryFilter === "__none__"
+                      ? "카테고리 미설정 항목이 없어요 · 没有未分类的记录"
+                      : revisitOnly
+                        ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
+                        : diningFilter === "home"
+                          ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
+                          : diningFilter === "out"
+                            ? "아직 외식 기록이 없어요 · 还没有探店记录"
+                            : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
                 }
               />
             )}
@@ -664,6 +716,7 @@ export default function HomePage() {
                           place={p}
                           locale={i18n.language}
                           isLast={idx === list.length - 1}
+                          viewerId={user?.id}
                         />
                       ))}
                     </div>
@@ -678,6 +731,7 @@ export default function HomePage() {
                     place={p}
                     locale={i18n.language}
                     isLast={idx === filteredPlaces.length - 1}
+                    viewerId={user?.id}
                   />
                 ))}
               </div>
@@ -937,14 +991,23 @@ function TimelineItem({
   place,
   locale,
   isLast,
+  viewerId,
 }: {
   place: PlaceWithFoods;
   locale: string;
   isLast: boolean;
+  viewerId: string | undefined;
 }) {
   const avg = avgTotal(place);
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
+  // Count foods on this place where the *viewer* hasn't dropped a
+  // rating yet — drives the small "✏️ N 개" CTA so the user knows at
+  // a glance which entries still need their input.
+  const unratedByMe = (place.foods ?? []).filter((f) => {
+    const view = ratingsForViewer(f, viewerId);
+    return view.myRating == null;
+  }).length;
   return (
     <div className="relative pl-6 pb-6">
       {!isLast && (
@@ -1024,6 +1087,15 @@ function TimelineItem({
                 </span>{" "}
                 <span className="opacity-70">개 · 道</span>
               </span>
+              {/* "Need my rating" CTA — only shows when there's at least
+                  one food on this place that the viewer hasn't scored yet. */}
+              {unratedByMe > 0 && (
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
+                  ✏️{" "}
+                  <span className="font-number">{unratedByMe}</span>개
+                  평가 안 함
+                </span>
+              )}
             </div>
           </div>
         </div>
