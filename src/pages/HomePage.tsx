@@ -39,17 +39,20 @@ type Tab = "timeline" | "wishlist";
 type ViewMode = "date" | "scoreDesc" | "scoreAsc" | "city";
 
 // Extract a clean city label from a freeform address. Strips country,
-// state+zip, and street-address-looking tails so we get "Providence"
-// rather than "214 Wickenden St" or "RI 02906".
+// state+zip, bare state abbreviations, and street-address-looking tails
+// so we get "Providence" instead of "214 Wickenden St" or "RI".
 const COUNTRY_TOKENS =
   /^(USA|U\.S\.A\.?|US|United States|UK|United Kingdom|Korea|Republic of Korea|South Korea|Canada|Japan|China|Taiwan|Hong Kong|HK)$/i;
 // "NY 11377", "CA 94103-1234", or a lone zip/postcode.
 const STATE_ZIP =
   /^(?:[A-Z]{2}\s+)?\d{4,6}(?:-\d{3,4})?$|^[A-Z]{2}\s+\d{4,5}(?:-\d{4})?$/;
+// "NY", "RI", "CA" — a bare two-letter upper-case segment (typically a
+// US state) that slipped through because the zip wasn't attached.
+const US_STATE_BARE = /^[A-Z]{2}$/;
 // Common road-type suffix tokens — if a segment contains one of these,
 // it's a street address, not a city.
 const STREET_WORDS =
-  /\b(Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Place|Pl\.?|Square|Sq\.?|Highway|Hwy\.?|Parkway|Pkwy\.?)\b/i;
+  /\b(Street|St\.?|Avenue|Ave\.?|Road|Rd\.?|Boulevard|Blvd\.?|Lane|Ln\.?|Drive|Dr\.?|Court|Ct\.?|Place|Pl\.?|Square|Sq\.?|Highway|Hwy\.?|Parkway|Pkwy\.?|Way|Alley|Terrace|Ter\.?)\b/i;
 
 function inferCity(addr: string | null | undefined): string | null {
   if (!addr) return null;
@@ -67,18 +70,36 @@ function inferCity(addr: string | null | undefined): string | null {
     );
   }
 
+  // Korean fallback: Korean addresses conventionally start with the
+  // city/district ("서울 강남구 …") even without the 시/도 suffix.
+  // Grab the leading hangul token.
+  if (/^[가-힣]/.test(s)) {
+    const first = s.split(/\s+/)[0];
+    if (/^[가-힣]{2,6}$/.test(first)) return first;
+  }
+
   // Chinese: first X市 chunk.
   const zh = s.match(/([一-鿿]{2,6}市)/);
   if (zh) return zh[1];
 
-  // English: peel off country, then state+zip, then check the tail for
-  // street keywords. Skip when the remaining candidate still looks like
-  // a street address ("214 Wickenden St").
-  let parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  // English: split into comma-separated tokens.
+  const originalParts = s
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  // Bare place name with no comma-delimited structure ("Amy's Restaurant",
+  // "Wickenden St") is unreliable — refuse to guess a city from it.
+  if (originalParts.length < 2) return null;
+
+  // Peel off trailing noise: country → state+zip → bare state.
+  let parts = [...originalParts];
   if (parts.length && COUNTRY_TOKENS.test(parts[parts.length - 1])) {
     parts = parts.slice(0, -1);
   }
   if (parts.length && STATE_ZIP.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1);
+  }
+  if (parts.length && US_STATE_BARE.test(parts[parts.length - 1])) {
     parts = parts.slice(0, -1);
   }
   if (!parts.length) return null;
@@ -86,6 +107,7 @@ function inferCity(addr: string | null | undefined): string | null {
   const candidate = parts[parts.length - 1];
   if (/^\d/.test(candidate)) return null; // begins with a number → street
   if (STREET_WORDS.test(candidate)) return null; // obvious street segment
+  if (US_STATE_BARE.test(candidate)) return null; // "RI" etc fell through
   if (candidate.length > 40) return null; // almost always a full-address blob
   return candidate;
 }
