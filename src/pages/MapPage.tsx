@@ -202,7 +202,6 @@ export default function MapPage() {
     }
     return { total, onMap, backfillable, noAddress };
   }, [places]);
-  const missingCoords = breakdown.backfillable;
 
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
