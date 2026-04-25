@@ -20,6 +20,14 @@ import {
   PREMADE_FOOD_CATEGORIES,
   categoryEmojiOf,
 } from "@/lib/constants";
+
+// Whether any of the selected food categories is a 완제품 tag.
+// Premade items have no chef — the field gets cleared on save.
+function isPremadeFood(categories: string[]): boolean {
+  if (!categories || categories.length === 0) return false;
+  const set = new Set<string>(PREMADE_FOOD_CATEGORIES);
+  return categories.some((c) => set.has(c));
+}
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
 
@@ -258,6 +266,10 @@ export default function FoodFormPage() {
         // On insert: stamp the current user. On update: preserve the
         // existing author so swap math stays consistent forever.
         created_by: ownerId,
+        // Premade dishes (frozen / bread / etc) have no chef. Clear
+        // any leftover value when the user switches a regular dish
+        // to a 완제품 tag mid-edit.
+        ...(isPremadeFood(categories) ? { chef: null } : {}),
         eater: eaterStored,
         // Keep the legacy boolean in sync for older client builds.
         is_solo: eaterStored !== "both",

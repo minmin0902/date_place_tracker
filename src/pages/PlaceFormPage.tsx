@@ -40,6 +40,15 @@ type HomeFoodDraft = {
   photo_urls: string[];
 };
 
+// Whether any of the selected food categories is a 완제품 tag.
+// Premade items skip the "who cooked?" question — there's no chef on
+// frozen meals or bakery bread.
+function isPremadeFood(categories: string[]): boolean {
+  if (!categories || categories.length === 0) return false;
+  const set = new Set<string>(PREMADE_FOOD_CATEGORIES);
+  return categories.some((c) => set.has(c));
+}
+
 function newHomeFood(): HomeFoodDraft {
   return {
     uid: crypto.randomUUID(),
@@ -334,7 +343,9 @@ export default function PlaceFormPage() {
               // see something.
               photo_url: f.photo_urls[0] ?? null,
               photo_urls: f.photo_urls.length ? f.photo_urls : null,
-              chef: f.chef,
+              // 완제품 (냉동음식 / 빵 / 기타) → no chef. Otherwise
+              // forward whichever chef the toggle currently shows.
+              chef: isPremadeFood(f.categories) ? null : f.chef,
               created_by: user?.id ?? null,
             },
           });
@@ -779,37 +790,43 @@ function HomeFoodCard({
         )}
       </div>
 
-      <div>
-        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
-          누가 요리했나요? · 谁掌勺？
-        </p>
-        <div className="flex gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100">
-          <ChefButton
-            active={food.chef === "me"}
-            onClick={() => onChangeChef("me")}
-            tone="peach"
-            icon={<User className="w-3.5 h-3.5" />}
-            labelKo="내가!"
-            labelZh="本大厨"
-          />
-          <ChefButton
-            active={food.chef === "partner"}
-            onClick={() => onChangeChef("partner")}
-            tone="rose"
-            icon={<User className="w-3.5 h-3.5" />}
-            labelKo="짝꿍!"
-            labelZh="宝宝"
-          />
-          <ChefButton
-            active={food.chef === "together"}
-            onClick={() => onChangeChef("together")}
-            tone="amber"
-            icon={<Users className="w-3.5 h-3.5" />}
-            labelKo="같이!"
-            labelZh="一起做"
-          />
+      {/* Chef toggle is meaningless when the dish is 완제품 (frozen /
+          bread / etc) — nobody cooked it, you bought it. We hide the
+          row entirely in that case so the form doesn't ask a confusing
+          question. The submit handler sends chef=null for these. */}
+      {!isPremadeFood(food.categories) && (
+        <div>
+          <p className="text-[11px] font-bold text-ink-400 mb-1.5">
+            누가 요리했나요? · 谁掌勺？
+          </p>
+          <div className="flex gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100">
+            <ChefButton
+              active={food.chef === "me"}
+              onClick={() => onChangeChef("me")}
+              tone="peach"
+              icon={<User className="w-3.5 h-3.5" />}
+              labelKo="내가!"
+              labelZh="本大厨"
+            />
+            <ChefButton
+              active={food.chef === "partner"}
+              onClick={() => onChangeChef("partner")}
+              tone="rose"
+              icon={<User className="w-3.5 h-3.5" />}
+              labelKo="짝꿍!"
+              labelZh="宝宝"
+            />
+            <ChefButton
+              active={food.chef === "together"}
+              onClick={() => onChangeChef("together")}
+              tone="amber"
+              icon={<Users className="w-3.5 h-3.5" />}
+              labelKo="같이!"
+              labelZh="一起做"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Per-menu memo. Optional — short note about how it turned out
           ("육수 좀 더 줄였어야"). Submitted to the foods row alongside
