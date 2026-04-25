@@ -212,7 +212,7 @@ export default function PlaceDetailPage() {
                 미분류 · 未分类
                 <br />
                 <span className="text-[10px] opacity-70 font-medium">
-                  탭해서 태그하기
+                  탭해서 태그하기 · 点击分类
                 </span>
               </span>
             </Link>

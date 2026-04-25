@@ -1123,7 +1123,8 @@ function TimelineItem({
                 <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
                   ❓ 메뉴{" "}
                   <span className="font-number">{uncategorizedFoods}</span>개
-                  미분류
+                  미분류 · 菜未分类{" "}
+                  <span className="font-number">{uncategorizedFoods}</span>
                 </span>
               )}
               {/* "Need my rating" CTA — only shows when there's at least
@@ -1132,7 +1133,8 @@ function TimelineItem({
                 <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
                   ✏️{" "}
                   <span className="font-number">{unratedByMe}</span>개
-                  평가 안 함
+                  평가 안 함 · 还没打分{" "}
+                  <span className="font-number">{unratedByMe}</span>
                 </span>
               )}
             </div>
