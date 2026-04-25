@@ -9,9 +9,12 @@ import {
   useApiIsLoaded,
 } from "@vis.gl/react-google-maps";
 import { useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { PullIndicator } from "@/components/PullIndicator";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { supabase } from "@/lib/supabase";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
@@ -185,6 +188,17 @@ export default function MapPage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const qc = useQueryClient();
+  // Map cares about places (markers) + couple (home pin), so refresh
+  // invalidates both. Wrapped in useRefreshControls so the same
+  // pull-to-refresh + manual button UX as HomePage applies here.
+  const { pull, refreshing, manualRefreshing, onManualRefresh } =
+    useRefreshControls(() =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["places"] }),
+        qc.invalidateQueries({ queryKey: ["couple"] }),
+      ])
+    );
 
   // Breakdown for the debug panel: how many places are on the map vs
   // how many are stuck without coordinates and why.
@@ -259,7 +273,24 @@ export default function MapPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] flex flex-col">
-      <PageHeader title="우리의 맛집 지도 · 咱俩的美食宝藏图" />
+      <PullIndicator pull={pull} refreshing={refreshing} />
+      <PageHeader
+        title="우리의 맛집 지도 · 咱俩的美食宝藏图"
+        right={
+          <button
+            type="button"
+            onClick={() => void onManualRefresh()}
+            disabled={manualRefreshing || refreshing}
+            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
+            aria-label="refresh"
+            title="새로고침 · 刷新"
+          >
+            <RefreshCw
+              className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+            />
+          </button>
+        }
+      />
       <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
         {/* Legend overlay — lives on top of the map */}
         <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-cream-200 text-[11px] font-bold text-ink-700 flex flex-col gap-1">

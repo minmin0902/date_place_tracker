@@ -4,14 +4,18 @@ import {
   Dna,
   Frown,
   HeartHandshake,
+  RefreshCw,
   Scale,
   Swords,
   Trophy,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { PageHeader } from "@/components/PageHeader";
+import { PullIndicator } from "@/components/PullIndicator";
+import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { ratingsForViewer } from "@/lib/utils";
 
 type DiningFilter = "all" | "out" | "home";
@@ -163,6 +167,14 @@ export default function ComparePage() {
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
+  const qc = useQueryClient();
+  const { pull, refreshing, manualRefreshing, onManualRefresh } =
+    useRefreshControls(() =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["places"] }),
+        qc.invalidateQueries({ queryKey: ["couple"] }),
+      ])
+    );
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
 
@@ -239,9 +251,24 @@ export default function ComparePage() {
 
   return (
     <div>
+      <PullIndicator pull={pull} refreshing={refreshing} />
       <PageHeader
         title="우리의 취향 지도 · 我们的口味地图"
         subtitle="서로의 입맛을 한눈에 비교해봐요 · 一秒看懂咱俩的口味默契"
+        right={
+          <button
+            type="button"
+            onClick={() => void onManualRefresh()}
+            disabled={manualRefreshing || refreshing}
+            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
+            aria-label="refresh"
+            title="새로고침 · 刷新"
+          >
+            <RefreshCw
+              className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+            />
+          </button>
+        }
       />
 
       {/* 외식/집밥 필터 — HomePage 와 같은 톤으로 통일 */}
@@ -452,7 +479,12 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between text-[11px] font-bold text-ink-700 mb-1.5 gap-2">
-                  <span className="truncate">{pf.titleKo}</span>
+                  <span className="truncate">
+                    {pf.titleKo}{" "}
+                    <span className="text-ink-400 font-medium">
+                      · {pf.titleZh}
+                    </span>
+                  </span>
                   <span className="font-number flex-shrink-0">
                     {Math.round(s.percent)}%
                   </span>
@@ -525,7 +557,11 @@ function RatingStats({ rows }: { rows: Row[] }) {
             <span className="font-number font-bold text-[12px] mx-0.5">
               {diff.toFixed(2)}
             </span>
-            점 차이
+            점 차이 · 平均相差{" "}
+            <span className="font-number font-bold text-[12px] mx-0.5">
+              {diff.toFixed(2)}
+            </span>{" "}
+            分
           </>
         )}
       </p>
@@ -717,8 +753,8 @@ function FoodCard({
           <p className="font-bold text-ink-900 text-base truncate flex items-center gap-1.5 flex-wrap">
             {r.foodName}
             {r.isHomeCooked && (
-              <span className="bg-teal-50 text-teal-600 border border-teal-100 px-1 py-0.5 rounded text-[9px] font-bold leading-none shrink-0 whitespace-nowrap">
-                🍳 집밥
+              <span className="bg-teal-50 text-teal-600 border border-teal-100 px-1.5 py-0.5 rounded text-[9px] font-bold leading-none shrink-0 whitespace-nowrap">
+                🍳 집밥 · 私房菜
               </span>
             )}
           </p>
