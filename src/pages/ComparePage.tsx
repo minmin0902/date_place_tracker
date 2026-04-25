@@ -776,7 +776,7 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
 
   if (rows.length === 0 || btiStats.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[240px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[180px]">
         <Dna className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
           입맛 진단 준비 중 · 口味诊断准备中
@@ -804,18 +804,17 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
         : { gradient: "from-rose-400 to-pink-500", chip: "bg-rose-50 text-rose-500 border-rose-200" };
 
   return (
-    <div className="relative bg-white rounded-3xl p-5 border border-cream-200 shadow-airy overflow-hidden h-full min-h-[240px] flex flex-col">
+    <div className="relative bg-white rounded-3xl p-4 border border-cream-200 shadow-airy overflow-hidden h-full flex flex-col">
       <div
         className={`absolute -top-12 -right-12 w-44 h-44 rounded-full bg-gradient-to-br ${topProfile.gradient} opacity-[0.08] blur-2xl pointer-events-none`}
       />
-      <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-cream-100 pb-3 break-keep">
+      <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-2 border-b border-cream-100 pb-2 break-keep">
         <Dna className="w-4 h-4 text-ink-700 flex-shrink-0" />
         우리의 입맛 진단 · 口味诊断
       </h3>
 
-      {/* Compact BTI verdict — kept smaller than the old hero so the
-          breakdown below has room without making the card huge. */}
-      <div className="relative z-10 flex flex-col items-center text-center pb-3">
+      {/* BTI verdict — 큰 이모지 + 그라데이션 타이틀 + 인용구. */}
+      <div className="relative z-10 flex flex-col items-center text-center pb-2">
         <div className="text-4xl drop-shadow-sm leading-none mb-1">
           {topProfile.emoji}
         </div>
@@ -832,10 +831,8 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
         </p>
       </div>
 
-      {/* Compact stat row: sync % + sample size. Replaces the standalone
-          sync card by letting the verdict and the sync number sit
-          shoulder-to-shoulder. */}
-      <div className="relative z-10 grid grid-cols-2 gap-2 mb-3">
+      {/* Compact stat row: sync % + sample size. */}
+      <div className="relative z-10 grid grid-cols-2 gap-2 mb-2">
         <div
           className={`rounded-xl px-2 py-1.5 border text-center ${syncTone.chip}`}
         >
@@ -858,15 +855,17 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
       </div>
 
       {/* Tabs — switch between BTI bucket view (broad couple-type
-          stripes) and category view (granular per-cuisine PK). */}
-      <div className="relative z-10 flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
+          stripes) and category view (granular per-cuisine PK).
+          Tabs are intentionally smaller / muted vs the BTI verdict
+          above so the verdict stays the headline. */}
+      <div className="relative z-10 flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60 mb-2">
         <button
           type="button"
           onClick={() => {
             setBreakdownTab("bti");
             setExpandedKey(null);
           }}
-          className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition ${
+          className={`flex-1 py-1 text-[10px] font-bold rounded-md transition ${
             breakdownTab === "bti"
               ? "bg-white shadow-sm text-ink-900 border border-cream-100"
               : "text-ink-500"
@@ -880,7 +879,7 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
             setBreakdownTab("category");
             setExpandedKey(null);
           }}
-          className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition ${
+          className={`flex-1 py-1 text-[10px] font-bold rounded-md transition ${
             breakdownTab === "category"
               ? "bg-white shadow-sm text-ink-900 border border-cream-100"
               : "text-ink-500"
@@ -890,12 +889,13 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
         </button>
       </div>
 
-      {/* Breakdown body — capped height + scroll so the card itself
-          stays a consistent size in the carousel even when there are
-          lots of buckets / categories. */}
-      <div className="relative z-10 flex-1 overflow-y-auto -mx-1 px-1 hide-scrollbar max-h-[260px]">
+      {/* Breakdown body — fixed-height "rectangle" that exposes ~2 rows
+          and scrolls internally for the rest. Keeps the diagnosis card
+          short while still letting the user dig into every bucket /
+          category if they want. */}
+      <div className="relative z-10 h-[88px] overflow-y-auto hide-scrollbar text-ink-500 border border-cream-100 rounded-lg bg-cream-50/40 px-2 py-1.5">
         {breakdownTab === "bti" ? (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {btiStats.map((s) => {
               const pf = BTI_PROFILES[s.key];
               const isExpanded = expandedKey === s.key;
@@ -906,13 +906,13 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
                     onClick={() =>
                       setExpandedKey(isExpanded ? null : s.key)
                     }
-                    className="w-full flex items-center gap-2 text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
+                    className="w-full flex items-center gap-1.5 text-left hover:bg-cream-50 -mx-1 px-1 py-0.5 rounded-lg transition"
                   >
-                    <div className="w-6 flex-shrink-0 text-base text-center">
+                    <div className="w-5 flex-shrink-0 text-sm text-center">
                       {pf.emoji}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center text-[11px] font-bold text-ink-700 mb-1 gap-2">
+                      <div className="flex justify-between items-center text-[10px] font-bold text-ink-600 mb-0.5 gap-2">
                         <span className="truncate break-keep">
                           {pf.titleKo}{" "}
                           <span className="text-ink-400 font-medium">
@@ -920,18 +920,22 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
                           </span>
                         </span>
                         <span className="flex items-center gap-1 flex-shrink-0">
-                          <span className="text-[10px] text-ink-400 font-number">
-                            {s.count}
+                          {/* Bilingual unit suffix — 곳 (Korean
+                              place counter) + 家 (Chinese restaurant
+                              counter) so the raw number doesn't read
+                              as just "3". */}
+                          <span className="text-[9px] text-ink-400 font-number">
+                            {s.count}곳·家
                           </span>
                           <span className="font-number">
                             {Math.round(s.percent)}%
                           </span>
                           <ChevronDown
-                            className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                            className={`w-3 h-3 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                           />
                         </span>
                       </div>
-                      <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-cream-100 rounded-full overflow-hidden">
                         <div
                           className={`h-full ${pf.bar} rounded-full transition-all duration-700 ease-out`}
                           style={{ width: `${s.percent}%` }}
@@ -984,7 +988,7 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
                               <span>{categoryEmojiOf(cat)}</span>
                               <span className="truncate">{label}</span>
                               <span className="text-[10px] text-ink-400 font-number ml-1 flex-shrink-0">
-                                ({b.count})
+                                ({b.count}곳·家)
                               </span>
                             </span>
                             <span className="flex items-center gap-1 flex-shrink-0">
@@ -1138,15 +1142,15 @@ function HomeChefCard({
   const togetherShare = total ? (togetherCount / total) * 100 : 0;
 
   return (
-    <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-5 border border-teal-200 shadow-airy h-full flex flex-col min-h-[240px]">
-      <h3 className="font-sans font-bold text-teal-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-teal-200/50 pb-3 break-keep">
-        <ChefHat className="w-4 h-4 text-teal-600 flex-shrink-0" />
+    <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-4 border border-teal-200 shadow-airy h-full flex flex-col">
+      <h3 className="font-sans font-bold text-teal-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-teal-200/50 pb-2 break-keep">
+        <ChefHat className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
         우리집 미슐랭 · 家庭米其林
       </h3>
 
       {/* Chef share — stacked horizontal bar + counts */}
-      <div className="mb-4 bg-white/70 p-3 rounded-2xl border border-teal-100/50 shadow-sm">
-        <p className="text-[11px] font-bold text-teal-800 mb-2">
+      <div className="mb-2.5 bg-white/70 p-2.5 rounded-xl border border-teal-100/50 shadow-sm">
+        <p className="text-[10px] font-bold text-teal-800 mb-1.5">
           요리 지분율 · 掌勺比例
         </p>
         <div className="w-full h-3.5 flex rounded-full overflow-hidden mb-2 border border-white shadow-inner">
@@ -1189,34 +1193,45 @@ function HomeChefCard({
       </div>
 
       {/* Whose cooking scores higher — per-chef avg of couple averages.
-          Each tile is tappable; tapping shows that chef's foods sorted
-          by couple-avg desc so the user can see why the score is high
-          (or low). */}
-      <div className="flex-1 flex flex-col">
-        <p className="text-[11px] font-bold text-teal-800 mb-2">
+          Tiles vertically center until tapped, so the card never reads
+          empty. Active tile pops forward with scale + ring; sibling
+          fades back. Smooth transition-all so it feels like a single
+          motion when toggling. */}
+      <div
+        className={`flex-1 flex flex-col ${
+          expanded ? "" : "justify-center"
+        }`}
+      >
+        <p className="text-[10px] font-bold text-teal-800 mb-1.5">
           누가 했을 때 더 맛있었지? · 谁做饭更好吃？
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() =>
               setExpanded(expanded === "me" ? null : "me")
             }
             disabled={myCount === 0}
-            className={`bg-white rounded-2xl p-3 border flex flex-col items-center justify-center text-center shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
+            className={`bg-white rounded-xl p-2 border flex flex-col items-center justify-center text-center shadow-sm transition-all duration-300 ease-out disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
               expanded === "me"
-                ? "border-peach-300 ring-2 ring-peach-200"
-                : "border-teal-100"
-            } ${myAvg >= partnerAvg && myCount > 0 ? "" : "opacity-70"}`}
+                ? "border-peach-300 ring-2 ring-peach-200 scale-[1.04] shadow-md z-10"
+                : expanded === "partner"
+                  ? "border-teal-100 scale-95 opacity-60"
+                  : "border-teal-100"
+            } ${
+              expanded === null && myAvg < partnerAvg && myCount > 0
+                ? "opacity-70"
+                : ""
+            }`}
           >
-            <span className="text-[11px] font-bold text-peach-500 mb-1">
+            <span className="text-[10px] font-bold text-peach-500 mb-0.5">
               내 요리 · 我做的
             </span>
-            <span className="text-2xl font-number font-bold text-ink-900">
+            <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {myAvg > 0 ? myAvg.toFixed(2) : "-"}
             </span>
             <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
-              ({myCount})
+              {myCount}개·道
             </span>
           </button>
           <button
@@ -1225,20 +1240,26 @@ function HomeChefCard({
               setExpanded(expanded === "partner" ? null : "partner")
             }
             disabled={partnerCount === 0}
-            className={`bg-white rounded-2xl p-3 border flex flex-col items-center justify-center text-center shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
+            className={`bg-white rounded-xl p-2 border flex flex-col items-center justify-center text-center shadow-sm transition-all duration-300 ease-out disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
               expanded === "partner"
-                ? "border-rose-300 ring-2 ring-rose-200"
-                : "border-teal-100"
-            } ${partnerAvg >= myAvg && partnerCount > 0 ? "" : "opacity-70"}`}
+                ? "border-rose-300 ring-2 ring-rose-200 scale-[1.04] shadow-md z-10"
+                : expanded === "me"
+                  ? "border-teal-100 scale-95 opacity-60"
+                  : "border-teal-100"
+            } ${
+              expanded === null && partnerAvg < myAvg && partnerCount > 0
+                ? "opacity-70"
+                : ""
+            }`}
           >
-            <span className="text-[11px] font-bold text-rose-500 mb-1">
+            <span className="text-[10px] font-bold text-rose-500 mb-0.5">
               짝꿍 요리 · 宝宝做的
             </span>
-            <span className="text-2xl font-number font-bold text-ink-900">
+            <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {partnerAvg > 0 ? partnerAvg.toFixed(2) : "-"}
             </span>
             <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
-              ({partnerCount})
+              {partnerCount}개·道
             </span>
           </button>
         </div>
@@ -1278,7 +1299,7 @@ function RatingStats({ rows }: { rows: Row[] }) {
 
   if (rows.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[240px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[180px]">
         <Scale className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
           별점 요정은 누구? · 谁是打分小天使？
@@ -1307,72 +1328,80 @@ function RatingStats({ rows }: { rows: Row[] }) {
       : "fairy";
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-5 border border-indigo-100 shadow-airy h-full flex flex-col min-h-[240px]">
-      <h3 className="font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-indigo-100 pb-3 break-keep">
-        <Scale className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-4 border border-indigo-100 shadow-airy h-full flex flex-col">
+      <h3 className="font-sans font-bold text-ink-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-indigo-100 pb-2 break-keep">
+        <Scale className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
         별점 요정 vs 깐깐징어 · 打分天使PK
       </h3>
 
-      <div className="grid grid-cols-2 gap-3">
-        <PersonStatTile
-          person="나 · 我"
-          tone="peach"
-          avg={avgMine}
-          role={myRole}
-          expanded={expanded === "me"}
-          onToggle={() => setExpanded(expanded === "me" ? null : "me")}
-        />
-        <PersonStatTile
-          person="짝꿍 · 宝宝"
-          tone="rose"
-          avg={avgPartner}
-          role={partnerRole}
-          expanded={expanded === "partner"}
-          onToggle={() =>
-            setExpanded(expanded === "partner" ? null : "partner")
-          }
-        />
-      </div>
-
-      <p className="text-[11px] text-center text-indigo-600 font-medium mt-3">
-        {isTie ? (
-          "비슷비슷 · 不分上下"
-        ) : (
-          <>
-            평균{" "}
-            <span className="font-number font-bold text-[12px] mx-0.5">
-              {diff.toFixed(2)}
-            </span>
-            점 차이 · 平均相差{" "}
-            <span className="font-number font-bold text-[12px] mx-0.5">
-              {diff.toFixed(2)}
-            </span>{" "}
-            分
-          </>
-        )}
-      </p>
-      <p className="text-[11px] text-ink-500 font-medium mt-1 px-1 text-center">
-        총{" "}
-        <span className="font-number font-bold text-ink-700">
-          {rows.length}
-        </span>{" "}
-        개 메뉴 기준 · 共{" "}
-        <span className="font-number font-bold text-ink-700">{rows.length}</span>{" "}
-        道菜
-      </p>
-
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-indigo-100 space-y-1.5 max-h-[220px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
-          <p className="text-[10px] font-bold text-indigo-500 tracking-wider uppercase mb-1">
-            {expanded === "me"
-              ? "내가 후하게 준 순 · 我打分高→低"
-              : "짝꿍이 후하게 준 순 · 宝宝打分高→低"}
-          </p>
-          {(expanded === "me" ? sortedByMine : sortedByPartner).map((r) => (
-            <ContributingFoodRow key={r.foodId} r={r} />
-          ))}
+      {/* Center the tiles vertically when nothing is expanded so the
+          card never looks empty. When the user taps a tile we drop the
+          centering so the expand list has room to flow downward. */}
+      <div
+        className={`flex-1 flex flex-col ${
+          expanded ? "" : "justify-center"
+        }`}
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <PersonStatTile
+            person="나 · 我"
+            tone="peach"
+            avg={avgMine}
+            role={myRole}
+            expanded={expanded === "me"}
+            dimmed={expanded === "partner"}
+            onToggle={() => setExpanded(expanded === "me" ? null : "me")}
+          />
+          <PersonStatTile
+            person="짝꿍 · 宝宝"
+            tone="rose"
+            avg={avgPartner}
+            role={partnerRole}
+            expanded={expanded === "partner"}
+            dimmed={expanded === "me"}
+            onToggle={() =>
+              setExpanded(expanded === "partner" ? null : "partner")
+            }
+          />
         </div>
-      )}
+
+        {/* Diff + sample-size on one row. Hidden when a tile is open
+            because the expand list takes over the space. */}
+        {!expanded && (
+          <p className="text-[10px] text-center text-indigo-600 font-medium mt-2 break-keep">
+            {isTie ? (
+              <>
+                비슷비슷 · 不分上下{" · "}
+                <span className="text-ink-500">{rows.length}개·道</span>
+              </>
+            ) : (
+              <>
+                평균{" "}
+                <span className="font-number font-bold mx-0.5">
+                  {diff.toFixed(2)}
+                </span>
+                점 차이 · 相差 {diff.toFixed(2)} 分{" · "}
+                <span className="text-ink-500">{rows.length}개·道</span>
+              </>
+            )}
+          </p>
+        )}
+
+        {expanded && (
+          <div className="mt-3 pt-3 border-t border-indigo-100 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+            <p className="text-[10px] font-bold text-indigo-500 tracking-wider uppercase mb-1">
+              {expanded === "me"
+                ? "내가 후하게 준 순 · 我打分高→低"
+                : "짝꿍이 후하게 준 순 · 宝宝打分高→低"}
+            </p>
+            {(expanded === "me" ? sortedByMine : sortedByPartner).map(
+              (r) => (
+                <ContributingFoodRow key={r.foodId} r={r} />
+              )
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1383,6 +1412,7 @@ function PersonStatTile({
   avg,
   role,
   expanded,
+  dimmed,
   onToggle,
 }: {
   person: string;
@@ -1390,6 +1420,9 @@ function PersonStatTile({
   avg: number;
   role: "fairy" | "strict" | "tie";
   expanded: boolean;
+  // Sibling tile is the one currently expanded — fade & shrink THIS
+  // tile so the active tile reads as the foreground element.
+  dimmed?: boolean;
   onToggle: () => void;
 }) {
   const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
@@ -1413,29 +1446,39 @@ function PersonStatTile({
       : role === "strict"
         ? "bg-indigo-50 text-indigo-600 border-indigo-200"
         : "bg-ink-100 text-ink-500 border-cream-200";
+  // Tap interaction: active tile pops forward (scale up + ring),
+  // sibling fades back (scale down + opacity). Smooth `transition-all`
+  // so the swap reads as a single motion instead of a hard flip.
+  const interactCls = expanded
+    ? `${ringCls} scale-[1.04] shadow-md z-10`
+    : dimmed
+      ? "scale-95 opacity-60"
+      : "";
   return (
     <button
       type="button"
       onClick={onToggle}
-      className={`rounded-2xl p-3 border ${accentCls} ${expanded ? ringCls : ""} flex flex-col items-center text-center shadow-sm hover:shadow transition w-full`}
+      className={`rounded-xl p-2 border ${accentCls} ${interactCls} flex flex-col items-center text-center shadow-sm hover:shadow transition-all duration-300 ease-out w-full`}
     >
-      <div className={`text-[12px] font-bold ${personCls} mb-1`}>{person}</div>
-      <div className="text-3xl font-number font-bold text-ink-900 leading-none my-1">
-        {avg.toFixed(2)}
+      <div className={`text-[11px] font-bold ${personCls} mb-0.5`}>
+        {person}
       </div>
-      <div className="text-[9px] text-ink-400 font-bold font-number mb-1.5 tracking-wider">
-        / 5.00
+      <div className="text-2xl font-number font-bold text-ink-900 leading-none">
+        {avg.toFixed(2)}
+        <span className="text-[9px] text-ink-400 font-bold ml-0.5 tracking-wider">
+          /5
+        </span>
       </div>
       <div
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleBadgeCls}`}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 mt-1 rounded-full text-[9px] font-bold border ${roleBadgeCls}`}
       >
         <span>{roleEmoji}</span>
-        <span>
+        <span className="break-keep">
           {roleKo} · {roleZh}
         </span>
       </div>
       <ChevronDown
-        className={`w-3 h-3 mt-1 text-ink-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+        className={`w-3 h-3 mt-0.5 text-ink-400 transition-transform ${expanded ? "rotate-180" : ""}`}
       />
     </button>
   );
