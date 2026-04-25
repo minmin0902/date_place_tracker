@@ -261,19 +261,19 @@ export default function FoodFormPage() {
             active={viewerEater === "both"}
             onClick={() => setViewerEater("both")}
             label="둘이 같이"
-            sub="我们都吃了"
+            sub="一起吃"
           />
           <EaterSegment
             active={viewerEater === "me"}
             onClick={() => setViewerEater("me")}
             label="나만"
-            sub="我自己吃的"
+            sub="我独享"
           />
           <EaterSegment
             active={viewerEater === "partner"}
             onClick={() => setViewerEater("partner")}
             label="짝꿍만"
-            sub="宝宝自己吃的"
+            sub="宝宝独享"
           />
         </div>
 

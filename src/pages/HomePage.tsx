@@ -52,8 +52,8 @@ type Tab = "timeline" | "wishlist";
 type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc";
 
 const SORT_OPTIONS: GroupedMultiSelectEntry[] = [
-  { value: "date", label: "최근순 · 最新到旧", emoji: "🕘" },
-  { value: "dateAsc", label: "오래된순 · 最旧到新", emoji: "📅" },
+  { value: "date", label: "최근순 · 最新打卡", emoji: "🕘" },
+  { value: "dateAsc", label: "오래된순 · 最早打卡", emoji: "📅" },
   { value: "scoreDesc", label: "별점 높은순 · 评分高到低", emoji: "⭐" },
   { value: "scoreAsc", label: "별점 낮은순 · 评分低到高", emoji: "🥄" },
 ];
@@ -664,7 +664,7 @@ export default function HomePage() {
                 }`}
               >
                 <span className="text-[13px] leading-none">✏️</span>
-                내 별점 안 줬어요 · 我还没打分
+                평가 안 한 메뉴 · 我还没打分
               </button>
             </div>
 
@@ -1858,7 +1858,7 @@ function RouletteModal({
           )}
           {sourceButton(
             "both",
-            "다 돌려! · 全都要",
+            "다 돌려! · 交给天意",
             <Dice5 className="w-3.5 h-3.5" />
           )}
         </div>

@@ -40,7 +40,7 @@ export default function CoupleSetupPage() {
       <div className="max-w-md mx-auto pt-4">
         <PageHeader
           title="우리만의 다이어리 · 我们的日记"
-          subtitle="초대 코드로 연결을 시작하세요 · 通过邀请码与另一半连接"
+          subtitle="초대 코드로 연결을 시작하세요 · 通过邀请码绑定另一半"
         />
 
         <div className="px-5 space-y-4">
@@ -105,7 +105,7 @@ export default function CoupleSetupPage() {
                   onClick={() => void onJoin()}
                   disabled={!code || joinCouple.isPending}
                 >
-                  연결하기 · 甜蜜连接
+                  연결하기 · 甜蜜绑定
                 </button>
               </div>
             </>

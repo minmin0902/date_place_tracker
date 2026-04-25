@@ -48,7 +48,11 @@ const CARD_META: Record<
   { emoji: string; ko: string; zh: string }
 > = {
   diagnosis: { emoji: "🧬", ko: "우리의 입맛 진단", zh: "口味诊断" },
-  rating: { emoji: "🧚", ko: "별점 요정 vs 깐깐징어", zh: "打分天使PK" },
+  rating: {
+    emoji: "🧚",
+    ko: "별점 요정 vs 깐깐징어",
+    zh: "打分天使 vs 严格考官",
+  },
   chef: { emoji: "👨‍🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
 };
 
@@ -169,7 +173,7 @@ const BTI_PROFILES: Record<
 > = {
   korean: {
     emoji: "🥘",
-    titleKo: "뼛속까지 국밥충",
+    titleKo: "뼛속까지 국밥부장관",
     titleZh: "韩食胃",
     descKo: "결국 돌고 돌아 든든한 한식이 최고!",
     descZh: "走到哪都忘不了那一碗汤饭！",
@@ -178,7 +182,7 @@ const BTI_PROFILES: Record<
   },
   western: {
     emoji: "🍝",
-    titleKo: "분위기 킬러 커플",
+    titleKo: "감성 사냥꾼",
     titleZh: "西餐死忠粉",
     descKo: "기념일엔 무조건 양식 핫플!",
     descZh: "约会必吃西餐，氛围感拉满！",
@@ -223,7 +227,7 @@ const BTI_PROFILES: Record<
   },
   cafe: {
     emoji: "☕",
-    titleKo: "카페 죽돌이",
+    titleKo: "프로 카페투어러",
     titleZh: "咖啡控",
     descKo: "카페 투어가 데이트의 정석!",
     descZh: "约会必须打卡咖啡店！",
@@ -837,7 +841,7 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
           className={`rounded-xl px-2 py-1.5 border text-center ${syncTone.chip}`}
         >
           <div className="text-[9px] font-bold tracking-wider uppercase opacity-70">
-            싱크 · 同步
+            싱크 · 默契度
           </div>
           <div className="font-number font-black text-[18px] leading-none mt-0.5">
             {syncPercent.toFixed(0)}
@@ -846,7 +850,7 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
         </div>
         <div className="rounded-xl px-2 py-1.5 border bg-cream-50 border-cream-200 text-ink-700 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-ink-400">
-            메뉴 · 菜数
+            메뉴 · 评价数
           </div>
           <div className="font-number font-black text-[18px] leading-none mt-0.5 text-ink-900">
             {rows.length}
@@ -1331,7 +1335,7 @@ function RatingStats({ rows }: { rows: Row[] }) {
     <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-4 border border-indigo-100 shadow-airy h-full flex flex-col">
       <h3 className="font-sans font-bold text-ink-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-indigo-100 pb-2 break-keep">
         <Scale className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-        별점 요정 vs 깐깐징어 · 打分天使PK
+        별점 요정 vs 깐깐징어 · 打分天使 vs 严格考官
       </h3>
 
       {/* Center the tiles vertically when nothing is expanded so the
@@ -1934,7 +1938,7 @@ function CardEditorModal({
             onClick={reset}
             className="text-[11px] font-bold text-ink-500 hover:text-ink-700 transition"
           >
-            기본값 복원 · 重置默认
+            기본값 복원 · 恢复默认
           </button>
           <button
             type="button"
