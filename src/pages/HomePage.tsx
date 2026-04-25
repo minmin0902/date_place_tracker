@@ -537,7 +537,11 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="px-5 py-5">
+      {/* pt-5 = page top breathing room. The big bottom padding clears
+          the floating dice/add FAB cluster (≈10rem from screen bottom)
+          PLUS the AppShell-level nav reservation, so the last timeline
+          card doesn't peek up under the FAB. */}
+      <main className="px-5 pt-5 pb-32">
         {tab === "timeline" && (
           <>
             <StatsDashboard stats={stats} />
