@@ -123,6 +123,26 @@ export async function uploadAvatar(
   return data.publicUrl;
 }
 
+// Convenience selector: resolved display labels for the current
+// viewer ("me") and the partner. Used everywhere a UI label says
+// "나" / "我" / "짝꿍" / "宝宝" so those placeholders flip to the
+// actual names the couple has set.
+//   me — my own nickname → "나"
+//   partner — partner_nickname I set on my row → partner's own
+//             nickname → "짝꿍"
+export function useDisplayNames(): {
+  myDisplay: string;
+  partnerDisplay: string;
+} {
+  const { me, partner } = useCoupleProfiles();
+  const myDisplay = me.data?.nickname?.trim() || "나";
+  const partnerDisplay =
+    me.data?.partner_nickname?.trim() ||
+    partner.data?.nickname?.trim() ||
+    "짝꿍";
+  return { myDisplay, partnerDisplay };
+}
+
 export function useUpsertProfile() {
   const qc = useQueryClient();
   const { user } = useAuth();

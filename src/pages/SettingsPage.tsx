@@ -342,13 +342,23 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-2">
               <PersonStatCell
                 tone="peach"
-                label="내 평균 · 我的平均"
+                label={(() => {
+                  const me =
+                    meProfileQuery.data?.nickname?.trim() || "나";
+                  return `${me} 평균 · ${me}的平均`;
+                })()}
                 avg={tasteStats.myAvg}
                 role={tasteStats.myRole}
               />
               <PersonStatCell
                 tone="rose"
-                label="짝꿍 평균 · 宝宝平均"
+                label={(() => {
+                  const partner =
+                    meProfileQuery.data?.partner_nickname?.trim() ||
+                    partnerProfileQuery.data?.nickname?.trim() ||
+                    "짝꿍";
+                  return `${partner} 평균 · ${partner}的平均`;
+                })()}
                 avg={tasteStats.partnerAvg}
                 role={tasteStats.partnerRole}
               />

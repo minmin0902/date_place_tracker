@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
+import { useCoupleProfiles } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
@@ -299,6 +300,19 @@ export default function ComparePage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
+  // Resolved nicknames flow into every "나 / 我 / 짝꿍 / 宝宝" label
+  // on this page (chef share, person stats, vs badges, etc.) so the
+  // labels reflect whatever names the couple set in their profiles
+  // instead of the generic placeholders. Both Korean and Chinese
+  // sides of "·" get replaced with the same nickname.
+  const { me: meProfileQuery, partner: partnerProfileQuery } =
+    useCoupleProfiles();
+  const myDisplay =
+    meProfileQuery.data?.nickname?.trim() || "나";
+  const partnerDisplay =
+    meProfileQuery.data?.partner_nickname?.trim() ||
+    partnerProfileQuery.data?.nickname?.trim() ||
+    "짝꿍";
   const qc = useQueryClient();
   const { pull, refreshing, manualRefreshing, onManualRefresh } =
     useRefreshControls(() =>
@@ -493,7 +507,12 @@ export default function ComparePage() {
                     key={id}
                     className="snap-center shrink-0 w-[85%] max-w-[24rem]"
                   >
-                    <HomeChefCard rows={homeRows} viewerId={user?.id} />
+                    <HomeChefCard
+                      rows={homeRows}
+                      viewerId={user?.id}
+                      myDisplay={myDisplay}
+                      partnerDisplay={partnerDisplay}
+                    />
                   </div>
                 );
               }
@@ -503,9 +522,19 @@ export default function ComparePage() {
                   className="snap-center shrink-0 w-[85%] max-w-[24rem]"
                 >
                   {id === "diagnosis" && (
-                    <TasteDiagnosisCard rows={filteredRows} />
+                    <TasteDiagnosisCard
+                      rows={filteredRows}
+                      myDisplay={myDisplay}
+                      partnerDisplay={partnerDisplay}
+                    />
                   )}
-                  {id === "rating" && <RatingStats rows={filteredRows} />}
+                  {id === "rating" && (
+                    <RatingStats
+                      rows={filteredRows}
+                      myDisplay={myDisplay}
+                      partnerDisplay={partnerDisplay}
+                    />
+                  )}
                   {id === "roulette" && (
                     <RouletteCard
                       onSpin={() => setRouletteOpen(true)}
@@ -644,6 +673,8 @@ export default function ComparePage() {
                     showTotal
                     yyds
                     badge={`🏆 TOP ${idx + 1}`}
+                    myDisplay={myDisplay}
+                    partnerDisplay={partnerDisplay}
                   />
                 ))}
                 {fameRest.length > 0 && (
@@ -659,7 +690,13 @@ export default function ComparePage() {
                     </div>
                     <ExpandableList items={fameRest} initial={5}>
                       {(r) => (
-                        <FoodCard key={r.foodId} r={r} showTotal />
+                        <FoodCard
+                          key={r.foodId}
+                          r={r}
+                          showTotal
+                          myDisplay={myDisplay}
+                          partnerDisplay={partnerDisplay}
+                        />
                       )}
                     </ExpandableList>
                   </div>
@@ -677,14 +714,16 @@ export default function ComparePage() {
                   {(r) => {
                     const myFav = r.mine > r.partner;
                     const badge = myFav
-                      ? "🙋‍♂️ 내 원픽! · 我的本命"
-                      : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
+                      ? `🙋‍♂️ ${myDisplay} 원픽! · ${myDisplay}的本命`
+                      : `🙋‍♀️ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
                     return (
                       <FoodCard
                         key={r.foodId}
                         r={r}
                         badge={badge}
                         showBalance
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
                       />
                     );
                   }}
@@ -699,7 +738,14 @@ export default function ComparePage() {
                 emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
               >
                 <ExpandableList items={neverAgain} initial={5}>
-                  {(r) => <FoodCard key={r.foodId} r={r} />}
+                  {(r) => (
+                    <FoodCard
+                      key={r.foodId}
+                      r={r}
+                      myDisplay={myDisplay}
+                      partnerDisplay={partnerDisplay}
+                    />
+                  )}
                 </ExpandableList>
               </ListPanel>
             )}
@@ -719,7 +765,15 @@ export default function ComparePage() {
 // previous three separate cards (TasteSync / CategoryBattle / FoodBti)
 // because they were really different views of the same data.
 
-function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
+function TasteDiagnosisCard({
+  rows,
+  myDisplay,
+  partnerDisplay,
+}: {
+  rows: Row[];
+  myDisplay: string;
+  partnerDisplay: string;
+}) {
   const { t } = useTranslation();
   const [breakdownTab, setBreakdownTab] = useState<"bti" | "category">("bti");
   // One shared expanded-key for both tabs since only one row at a time
@@ -1056,8 +1110,12 @@ function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
         ) : (
           <div className="space-y-3">
             <div className="flex justify-between text-[10px] font-bold px-1">
-              <span className="text-peach-500">나 · 我</span>
-              <span className="text-rose-500">짝꿍 · 宝宝</span>
+              <span className="text-peach-500 truncate max-w-[45%]">
+                {myDisplay}
+              </span>
+              <span className="text-rose-500 truncate max-w-[45%]">
+                {partnerDisplay}
+              </span>
             </div>
             {categorySections.map((section) => (
               <div key={section.headerKo}>
@@ -1167,9 +1225,15 @@ function ContributingFoodRow({ r }: { r: Row }) {
 function HomeChefCard({
   rows,
   viewerId,
+  myDisplay,
+  partnerDisplay,
 }: {
   rows: Row[];
   viewerId: string | undefined;
+  // Resolved nicknames piped from ComparePage so chef share + tile
+  // labels show the actual names instead of "나 · 我" / "짝꿍 · 宝宝".
+  myDisplay: string;
+  partnerDisplay: string;
 }) {
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
 
@@ -1271,20 +1335,20 @@ function HomeChefCard({
         </div>
         <div className="grid grid-cols-3 gap-1 text-[10px] font-bold text-ink-700 text-center">
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
-            <span>🙋‍♂️</span>
-            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+            <span className="truncate">{myDisplay}</span>
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
               {myCount}
             </span>
           </span>
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
             <span>🤝</span>
-            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
               {togetherCount}
             </span>
           </span>
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
-            <span>🙋‍♀️</span>
-            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+            <span className="truncate">{partnerDisplay}</span>
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
               {partnerCount}
             </span>
           </span>
@@ -1324,7 +1388,7 @@ function HomeChefCard({
             }`}
           >
             <span className="text-[10px] font-bold text-peach-500 mb-0.5">
-              내 요리 · 我做的
+              {myDisplay} 요리 · {myDisplay}做的
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {myAvg > 0 ? myAvg.toFixed(2) : "-"}
@@ -1352,7 +1416,7 @@ function HomeChefCard({
             }`}
           >
             <span className="text-[10px] font-bold text-rose-500 mb-0.5">
-              짝꿍 요리 · 宝宝做的
+              {partnerDisplay} 요리 · {partnerDisplay}做的
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {partnerAvg > 0 ? partnerAvg.toFixed(2) : "-"}
@@ -1367,8 +1431,8 @@ function HomeChefCard({
           <div className="mt-3 pt-3 border-t border-teal-200/50 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-[10px] font-bold text-teal-700 tracking-wider uppercase mb-1">
               {expanded === "me"
-                ? "내가 한 메뉴 · 我掌勺的"
-                : "짝꿍이 한 메뉴 · 宝宝掌勺的"}
+                ? `${myDisplay}이 한 메뉴 · ${myDisplay}掌勺的`
+                : `${partnerDisplay}이 한 메뉴 · ${partnerDisplay}掌勺的`}
             </p>
             {(expanded === "me" ? myRows : partnerRows).map((r) => (
               <ContributingFoodRow key={r.foodId} r={r} />
@@ -1382,7 +1446,15 @@ function HomeChefCard({
 
 // ---------- 별점 요정 vs 깐깐징어 통계 카드 ----------
 
-function RatingStats({ rows }: { rows: Row[] }) {
+function RatingStats({
+  rows,
+  myDisplay,
+  partnerDisplay,
+}: {
+  rows: Row[];
+  myDisplay: string;
+  partnerDisplay: string;
+}) {
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
 
   // Pre-sort once per side; toggling between tiles just flips which
@@ -1443,7 +1515,7 @@ function RatingStats({ rows }: { rows: Row[] }) {
       >
         <div className="grid grid-cols-2 gap-2">
           <PersonStatTile
-            person="나 · 我"
+            person={myDisplay}
             tone="peach"
             avg={avgMine}
             role={myRole}
@@ -1452,7 +1524,7 @@ function RatingStats({ rows }: { rows: Row[] }) {
             onToggle={() => setExpanded(expanded === "me" ? null : "me")}
           />
           <PersonStatTile
-            person="짝꿍 · 宝宝"
+            person={partnerDisplay}
             tone="rose"
             avg={avgPartner}
             role={partnerRole}
@@ -1490,8 +1562,8 @@ function RatingStats({ rows }: { rows: Row[] }) {
           <div className="mt-3 pt-3 border-t border-indigo-100 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-[10px] font-bold text-indigo-500 tracking-wider uppercase mb-1">
               {expanded === "me"
-                ? "내가 후하게 준 순 · 我打分高→低"
-                : "짝꿍이 후하게 준 순 · 宝宝打分高→低"}
+                ? `${myDisplay}이 후하게 준 순 · ${myDisplay}打分高→低`
+                : `${partnerDisplay}이 후하게 준 순 · ${partnerDisplay}打分高→低`}
             </p>
             {(expanded === "me" ? sortedByMine : sortedByPartner).map(
               (r) => (
@@ -1752,12 +1824,16 @@ function FoodCard({
   showBalance,
   badge,
   yyds,
+  myDisplay,
+  partnerDisplay,
 }: {
   r: Row;
   showTotal?: boolean;
   showBalance?: boolean;
   badge?: string;
   yyds?: boolean;
+  myDisplay: string;
+  partnerDisplay: string;
 }) {
   const total = r.mine + r.partner;
   const cardCls = yyds
@@ -1813,17 +1889,22 @@ function FoodCard({
       </div>
 
       {showBalance ? (
-        <BalanceBar mine={r.mine} partner={r.partner} />
+        <BalanceBar
+          mine={r.mine}
+          partner={r.partner}
+          myDisplay={myDisplay}
+          partnerDisplay={partnerDisplay}
+        />
       ) : (
         <div className="flex gap-3 mt-3">
           <RatingTile
-            label="나 · 我"
+            label={myDisplay}
             value={r.mine}
             tone="peach"
             leading={r.mine >= r.partner}
           />
           <RatingTile
-            label="짝꿍 · 宝宝"
+            label={partnerDisplay}
             value={r.partner}
             tone="rose"
             leading={r.partner >= r.mine}
@@ -1865,19 +1946,33 @@ function RatingTile({
   );
 }
 
-function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
+function BalanceBar({
+  mine,
+  partner,
+  myDisplay,
+  partnerDisplay,
+}: {
+  mine: number;
+  partner: number;
+  myDisplay: string;
+  partnerDisplay: string;
+}) {
   const total = mine + partner;
   const myPct = total === 0 ? 50 : (mine / total) * 100;
   const partnerPct = total === 0 ? 50 : (partner / total) * 100;
   return (
     <div className="mt-3">
-      <div className="flex justify-between text-xs font-medium mb-1.5 px-1">
-        <span className={mine > partner ? "text-peach-500" : "text-ink-400"}>
-          나 · 我 (
+      <div className="flex justify-between text-xs font-medium mb-1.5 px-1 gap-2">
+        <span
+          className={`${mine > partner ? "text-peach-500" : "text-ink-400"} truncate`}
+        >
+          {myDisplay} (
           <span className="font-number font-bold">{mine.toFixed(1)}</span>)
         </span>
-        <span className={partner > mine ? "text-rose-500" : "text-ink-400"}>
-          짝꿍 · 宝宝 (
+        <span
+          className={`${partner > mine ? "text-rose-500" : "text-ink-400"} truncate`}
+        >
+          {partnerDisplay} (
           <span className="font-number font-bold">{partner.toFixed(1)}</span>)
         </span>
       </div>

@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlace, useUpsertFood } from "@/hooks/usePlaces";
 import { useFormDraft } from "@/hooks/useDraft";
+import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import {
   GroupedMultiSelect,
@@ -49,6 +50,7 @@ export default function FoodFormPage() {
   const { data: couple } = useCouple();
   const { data: place } = usePlace(placeId);
   const upsert = useUpsertFood();
+  const { myDisplay, partnerDisplay } = useDisplayNames();
   const { t } = useTranslation();
 
   // Food categories are a flat 5-item list (메인 / 사이드 / 디저트 /
@@ -283,14 +285,14 @@ export default function FoodFormPage() {
           <EaterSegment
             active={viewerEater === "me"}
             onClick={() => setViewerEater("me")}
-            label="나만"
-            sub="我独享"
+            label={`${myDisplay}만`}
+            sub={`${myDisplay}独享`}
           />
           <EaterSegment
             active={viewerEater === "partner"}
             onClick={() => setViewerEater("partner")}
-            label="짝꿍만"
-            sub="宝宝独享"
+            label={`${partnerDisplay}만`}
+            sub={`${partnerDisplay}独享`}
           />
         </div>
 
@@ -300,7 +302,7 @@ export default function FoodFormPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold text-ink-700">
-                  나의 별점 · 我的评分
+                  {myDisplay}의 별점 · {myDisplay}的评分
                 </span>
                 <span className="text-xs font-bold text-ink-400 font-number">
                   {myRating ?? "-"} / 5
@@ -322,7 +324,7 @@ export default function FoodFormPage() {
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-bold text-ink-700">
-                  짝꿍 별점 · 宝宝的评分
+                  {partnerDisplay} 별점 · {partnerDisplay}的评分
                 </span>
                 <span className="text-xs font-bold text-ink-400 font-number">
                   {partnerRating ?? "-"} / 5
@@ -330,17 +332,17 @@ export default function FoodFormPage() {
               </div>
               {viewerEater === "partner" ? (
                 <p className="text-[11px] text-ink-400 mt-1">
-                  짝꿍이 혼자 먹은 메뉴 — 별점은 짝꿍 본인이 매겨요 ·
-                  宝宝自己吃的，分数等TA来打
+                  {partnerDisplay}이 혼자 먹은 메뉴 — 별점은 본인이 매겨요
+                  · {partnerDisplay}自己吃的，分数等TA来打
                 </p>
               ) : partnerRating != null ? (
                 <p className="text-[11px] text-ink-400 mt-1">
-                  짝꿍이 직접 평가했어요 · 宝宝亲自打的分
+                  {partnerDisplay}이 직접 평가했어요 · {partnerDisplay}亲自打的分
                 </p>
               ) : (
                 <p className="text-[11px] text-rose-400 mt-1">
-                  짝꿍이 아직 평가 전이에요. 짝꿍이 자기 계정에서 평가하면
-                  자동으로 떠요. · 宝宝还没打分，等TA登录后自己打。
+                  {partnerDisplay}이 아직 평가 전이에요. 자기 계정에서
+                  평가하면 자동으로 떠요. · {partnerDisplay}还没打分，等TA登录后自己打。
                 </p>
               )}
             </div>

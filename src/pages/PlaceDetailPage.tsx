@@ -9,6 +9,7 @@ import {
 } from "@/hooks/usePlaces";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
+import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
@@ -396,8 +397,9 @@ function FoodCard({
   onDelete: (id: string) => void;
 }) {
   const { user } = useAuth();
+  const { myDisplay, partnerDisplay } = useDisplayNames();
   // Swap "my" / "partner" so the current viewer always sees their own
-  // score in the "나 · 我" slot. Diff and total are perspective-free
+  // score in the myDisplay slot. Diff and total are perspective-free
   // (|a-b|, a+b), so the section header classification still works
   // off the raw fields upstream.
   const view = ratingsForViewer(food, user?.id);
@@ -475,8 +477,8 @@ function FoodCard({
             {isSolo && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-indigo-200 bg-indigo-50 text-indigo-600">
                 {viewerIsEater
-                  ? "🍽️ 내가 혼자 먹음 · 我自己吃的"
-                  : "🍽️ 짝꿍이 혼자 먹음 · 宝宝自己吃的"}
+                  ? `🍽️ ${myDisplay}이 혼자 먹음 · ${myDisplay}自己吃的`
+                  : `🍽️ ${partnerDisplay}이 혼자 먹음 · ${partnerDisplay}自己吃的`}
               </span>
             )}
             {/* "Rate this" CTA — only when the viewer is the eater
@@ -487,7 +489,7 @@ function FoodCard({
                 to={`/places/${placeId}/foods/${food.id}/edit`}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
               >
-                ✏️ 내 별점 아직 안 줬어요 · 还没打分
+                ✏️ {myDisplay} 별점 아직 안 줬어요 · 还没打分
               </Link>
             )}
             {isSolo && viewerIsEater && view.myRating == null && (
@@ -495,7 +497,7 @@ function FoodCard({
                 to={`/places/${placeId}/foods/${food.id}/edit`}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
               >
-                ✏️ 내 별점 아직 안 줬어요 · 还没打分
+                ✏️ {myDisplay} 별점 아직 안 줬어요 · 还没打分
               </Link>
             )}
           </div>
@@ -528,7 +530,7 @@ function FoodCard({
               <span
                 className={`w-1.5 h-1.5 rounded-full ${viewerIsEater ? "bg-peach-400" : "bg-rose-400"}`}
               />
-              {viewerIsEater ? "나 · 我" : "짝꿍 · 宝宝"}{" "}
+              {viewerIsEater ? myDisplay : partnerDisplay}{" "}
               <span className="font-number font-bold">
                 {eaterRating.toFixed(1)}
               </span>
@@ -543,19 +545,19 @@ function FoodCard({
       {!isSolo && (myWasGiven || partnerWasGiven) && (
         <>
           <div className="flex justify-between text-xs text-ink-500 mb-1 px-0.5">
-            <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-peach-400" />
-              나 · 我{" "}
-              <span className="font-number font-bold">
+            <span className="flex items-center gap-1 truncate max-w-[45%]">
+              <span className="w-1.5 h-1.5 rounded-full bg-peach-400 flex-shrink-0" />
+              <span className="truncate">{myDisplay}</span>{" "}
+              <span className="font-number font-bold flex-shrink-0">
                 {myWasGiven ? my.toFixed(1) : "-"}
               </span>
             </span>
-            <span className="flex items-center gap-1">
-              짝꿍 · 宝宝{" "}
-              <span className="font-number font-bold">
+            <span className="flex items-center gap-1 truncate max-w-[45%]">
+              <span className="truncate">{partnerDisplay}</span>{" "}
+              <span className="font-number font-bold flex-shrink-0">
                 {partnerWasGiven ? partner.toFixed(1) : "-"}
               </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0" />
             </span>
           </div>
           <CoupleBar mine={my} partner={partner} />
