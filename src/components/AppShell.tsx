@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Home, Map, Scale, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { useAppBadge } from "@/hooks/useAppBadge";
 
 function NavItem({
   to,
@@ -31,6 +32,9 @@ function NavItem({
 
 export function AppShell() {
   const { t } = useTranslation();
+  // Sync the OS home-screen icon badge with the unread count so the
+  // red dot clears immediately when the user marks notifications read.
+  useAppBadge();
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
       {/* pb reserves room for the fixed bottom nav (~64px) PLUS the device

@@ -21,7 +21,7 @@ self.addEventListener("activate", (event) => {
 });
 
 // Push payload shape (sent by the send-push Edge Function):
-//   { title, body, url, tag }
+//   { title, body, url, tag, unread }
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
@@ -39,7 +39,19 @@ self.addEventListener("push", (event) => {
     tag: payload.tag || "ourtable",
     data: { url: payload.url || "/notifications" },
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+
+  // Update the home-screen icon badge in addition to showing the
+  // banner. iOS 16.4+ PWAs and Chromium browsers expose this; older
+  // engines just throw, hence the try/catch wrapper.
+  const tasks = [self.registration.showNotification(title, options)];
+  if (typeof payload.unread === "number" && "setAppBadge" in self.navigator) {
+    tasks.push(
+      self.navigator
+        .setAppBadge(payload.unread)
+        .catch(() => {})
+    );
+  }
+  event.waitUntil(Promise.all(tasks));
 });
 
 // Tap handler: focus an existing tab if the app is already open;

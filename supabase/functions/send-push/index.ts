@@ -103,7 +103,19 @@ Deno.serve(async (req) => {
     .eq("user_id", n.actor_id)
     .maybeSingle();
   const actorName = actor?.nickname?.trim() || "짝꿍";
-  const payload = JSON.stringify(renderPayload(n, actorName));
+
+  // Total unread count for the recipient — drives the app icon badge
+  // on the receiving device. Includes the just-inserted row.
+  const { count: unreadCount } = await sb
+    .from("notifications")
+    .select("*", { count: "exact", head: true })
+    .eq("recipient_id", n.recipient_id)
+    .is("read_at", null);
+
+  const payload = JSON.stringify({
+    ...renderPayload(n, actorName),
+    unread: unreadCount ?? 1,
+  });
 
   // Pull every active subscription for the recipient.
   const { data: subs, error } = await sb
