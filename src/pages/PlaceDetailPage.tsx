@@ -287,19 +287,20 @@ export default function PlaceDetailPage() {
 
         {/* Foods */}
         <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-sans font-bold text-lg flex items-baseline gap-2">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <h2 className="font-sans font-bold text-lg flex items-baseline gap-2 min-w-0 flex-1 break-keep">
               우리가 먹은 메뉴 · 我们吃过的
-              <span className="text-peach-400 text-sm font-number">
+              <span className="text-peach-400 text-sm font-number flex-shrink-0">
                 {foods.length}
               </span>
             </h2>
             <Link
               to={`/places/${place.id}/foods/new`}
-              className="flex items-center gap-1 px-3 py-1.5 bg-peach-100 text-peach-500 rounded-full text-sm font-medium hover:bg-peach-200 transition"
+              className="flex items-center gap-1 px-3 py-1.5 bg-peach-100 text-peach-500 rounded-full text-xs sm:text-sm font-medium hover:bg-peach-200 transition flex-shrink-0 whitespace-nowrap"
+              aria-label="메뉴 추가 · 添加"
             >
               <Plus className="w-4 h-4" />
-              메뉴 추가 · 记一笔
+              추가 · 添加
             </Link>
           </div>
 

@@ -344,7 +344,18 @@ export default function MapPage() {
               defaultCenter={initialCenter}
               defaultZoom={14}
               gestureHandling="greedy"
+              // Top-right of the map houses our own counter chip + the
+              // legend hugs top-left, so we disable Google's defaults
+              // that paint over those zones (2D/3D map-type toggle,
+              // fullscreen button) and the vector-mode camera/tilt
+              // controls. Zoom + pegman stay since they live
+              // bottom-right and don't collide with our overlays.
               disableDefaultUI={false}
+              mapTypeControl={false}
+              fullscreenControl={false}
+              cameraControl={false}
+              rotateControl={false}
+              keyboardShortcuts={false}
             >
               {userLoc !== "denied" && userLoc && (
                 <AdvancedMarker position={userLoc} title="현재 위치 · 当前位置">

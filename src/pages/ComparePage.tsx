@@ -1,14 +1,25 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
+  CATEGORY_GROUPS,
+  categoryEmojiOf,
+  isKnownPlaceCategory,
+} from "@/lib/constants";
+import {
+  Activity,
+  ChefHat,
   ChevronDown,
   Dna,
+  Flame,
   Frown,
   HeartHandshake,
   RefreshCw,
   Scale,
+  Settings2,
   Swords,
   Trophy,
+  X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +35,94 @@ type DiningFilter = "all" | "out" | "home";
 // stack four full lists vertically.
 type TabId = "top3" | "match" | "clash" | "pass";
 
+// Carousel cards are user-configurable: the user can reorder them and
+// hide ones they don't care about. State lives in sessionStorage so
+// it survives reloads within the session but doesn't bleed across
+// devices/installs (intentionally lightweight — not worth a server
+// round-trip).
+type CardId = "diagnosis" | "rating" | "chef";
+
+const DEFAULT_CARD_ORDER: CardId[] = ["diagnosis", "rating", "chef"];
+
+const CARD_META: Record<
+  CardId,
+  { emoji: string; ko: string; zh: string }
+> = {
+  diagnosis: { emoji: "🧬", ko: "우리의 입맛 진단", zh: "口味诊断" },
+  rating: { emoji: "🧚", ko: "별점 요정 vs 깐깐징어", zh: "打分天使PK" },
+  chef: { emoji: "👨‍🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
+};
+
+// Old configs (sessionStorage) saved before the merge had separate
+// sync/battle/bti card ids; map any of those onto the new diagnosis
+// card so a returning user sees one unified card instead of nothing.
+const LEGACY_CARD_IDS = new Set(["sync", "battle", "bti"]);
+
+const CARD_CONFIG_KEY = "compare:cardConfig:v1";
+
+type CardConfig = { order: CardId[]; hidden: CardId[] };
+
+const DEFAULT_CONFIG: CardConfig = {
+  order: DEFAULT_CARD_ORDER,
+  hidden: [],
+};
+
+// Load + sanitize: drop unknown ids, ensure every known id appears in
+// order exactly once (so adding a new card later auto-shows for
+// existing users).
+function loadCardConfig(): CardConfig {
+  if (typeof window === "undefined") return DEFAULT_CONFIG;
+  try {
+    const raw = window.sessionStorage.getItem(CARD_CONFIG_KEY);
+    if (!raw) return DEFAULT_CONFIG;
+    const parsed = JSON.parse(raw) as Partial<CardConfig>;
+    const known = new Set<CardId>(DEFAULT_CARD_ORDER);
+    const order: CardId[] = [];
+    const seen = new Set<CardId>();
+    let sawLegacyDiagnosis = false;
+    for (const id of parsed.order ?? []) {
+      // Legacy ids (sync/battle/bti) all collapse into the new
+      // diagnosis card. We insert it once at the position of the
+      // first legacy id so the user's relative ordering is preserved.
+      if (LEGACY_CARD_IDS.has(id as string)) {
+        if (!sawLegacyDiagnosis && !seen.has("diagnosis")) {
+          order.push("diagnosis");
+          seen.add("diagnosis");
+          sawLegacyDiagnosis = true;
+        }
+        continue;
+      }
+      if (known.has(id as CardId) && !seen.has(id as CardId)) {
+        order.push(id as CardId);
+        seen.add(id as CardId);
+      }
+    }
+    for (const id of DEFAULT_CARD_ORDER) {
+      if (!seen.has(id)) order.push(id);
+    }
+    const hidden = (parsed.hidden ?? [])
+      .map((id) => (LEGACY_CARD_IDS.has(id as string) ? "diagnosis" : id))
+      .filter((id, idx, arr): id is CardId => {
+        if (!known.has(id as CardId)) return false;
+        // Dedupe (multiple legacy hidden ids → diagnosis once).
+        return arr.indexOf(id) === idx;
+      });
+    return { order, hidden };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+function saveCardConfig(cfg: CardConfig) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(CARD_CONFIG_KEY, JSON.stringify(cfg));
+  } catch {
+    // sessionStorage can throw in private mode — config is non-critical
+    // so silently skip persistence.
+  }
+}
+
 type Row = {
   foodId: string;
   placeId: string;
@@ -33,6 +132,10 @@ type Row = {
   placeCategories: string[];
   mine: number;
   partner: number;
+  // Stored from the food creator's perspective. ChefHat / chef-share
+  // calculations swap to viewer perspective at render time.
+  chef: "me" | "partner" | "together" | null;
+  createdBy: string | null;
 };
 
 // ---------- 푸드 BTI ----------
@@ -191,6 +294,13 @@ export default function ComparePage() {
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("top3");
+  const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
+  const [cardEditorOpen, setCardEditorOpen] = useState(false);
+
+  const updateCardConfig = (next: CardConfig) => {
+    setCardConfig(next);
+    saveCardConfig(next);
+  };
 
   const rows: Row[] = useMemo(() => {
     if (!places) return [];
@@ -213,6 +323,8 @@ export default function ComparePage() {
           placeCategories: getCategories(p),
           mine: view.myRating ?? 0,
           partner: view.partnerRating ?? 0,
+          chef: f.chef ?? null,
+          createdBy: f.created_by ?? null,
         });
       }
     }
@@ -226,6 +338,11 @@ export default function ComparePage() {
     if (diningFilter === "home") return rows.filter((r) => r.isHomeCooked);
     return rows;
   }, [rows, diningFilter]);
+
+  // Home-cooked subset for the "우리집 미슐랭" card. Lives outside the
+  // dining filter so the card still works in "all" mode (since home
+  // chef stats only make sense for home rows).
+  const homeRows = useMemo(() => rows.filter((r) => r.isHomeCooked), [rows]);
 
   const yyds = [...filteredRows]
     .filter((r) => r.mine >= YYDS && r.partner >= YYDS)
@@ -302,27 +419,71 @@ export default function ComparePage() {
         </div>
       </div>
 
-      {/* Stats carousel — BTI + Rating cards swipe horizontally instead
-          of stacking, saving a full screen of vertical space. CSS scroll
-          snap handles the gesture; the dot indicator below shows the
-          active card. The negative margins let cards bleed to the
-          screen edge while content stays inside the safe gutter. */}
+      {/* Stats carousel — cards swipe horizontally instead of stacking,
+          saving a full screen of vertical space. CSS scroll snap handles
+          the gesture. Card visibility + order is fully user-controlled
+          via the ⚙️ button below the carousel. */}
       <div className="pt-5 pb-4">
-        <p className="text-[10px] font-bold text-ink-400 tracking-wider mb-2 uppercase px-6">
-          가로로 스와이프 · 滑动查看
-        </p>
+        <div className="flex items-center justify-between mb-2 px-6">
+          <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase">
+            👉 가로로 스와이프 · 滑动查看
+          </p>
+          <button
+            type="button"
+            onClick={() => setCardEditorOpen(true)}
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-ink-500 bg-cream-100/80 border border-cream-200/60 px-2 py-1 rounded-full hover:bg-cream-200 transition"
+          >
+            <Settings2 className="w-3 h-3" />
+            카드 관리 · 卡片管理
+          </button>
+        </div>
         <div
-          className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5"
+          className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5 pb-2"
           style={{ scrollPaddingInline: "1.25rem" }}
         >
-          <div className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[calc(28rem-2.5rem)]">
-            <FoodBtiCard rows={filteredRows} />
-          </div>
-          <div className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[calc(28rem-2.5rem)]">
-            <RatingStats rows={filteredRows} />
-          </div>
+          {cardConfig.order
+            .filter((id) => !cardConfig.hidden.includes(id))
+            .map((id) => {
+              // Chef card is home-only; under "외식" filter or with
+              // zero home rows it has nothing meaningful to show, so
+              // hide it from the carousel rather than render an empty
+              // placeholder. The user can still un-hide it from the
+              // editor — it just won't appear until rows exist.
+              if (id === "chef") {
+                if (diningFilter === "out" || homeRows.length === 0) {
+                  return null;
+                }
+                return (
+                  <div
+                    key={id}
+                    className="snap-center shrink-0 w-[85%] max-w-[24rem]"
+                  >
+                    <HomeChefCard rows={homeRows} viewerId={user?.id} />
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={id}
+                  className="snap-center shrink-0 w-[85%] max-w-[24rem]"
+                >
+                  {id === "diagnosis" && (
+                    <TasteDiagnosisCard rows={filteredRows} />
+                  )}
+                  {id === "rating" && <RatingStats rows={filteredRows} />}
+                </div>
+              );
+            })}
         </div>
       </div>
+
+      {cardEditorOpen && (
+        <CardEditorModal
+          config={cardConfig}
+          onChange={updateCardConfig}
+          onClose={() => setCardEditorOpen(false)}
+        />
+      )}
 
       {/* List section tabs — 4 categories collapse into one tab strip
           + one rendered list, instead of 4 vertically-stacked sections.
@@ -448,18 +609,36 @@ export default function ComparePage() {
   );
 }
 
-// ---------- 푸드 BTI 카드 ----------
+// ---------- 입맛 진단 카드 (통합) ----------
 //
-// Aggregates couple-average scores per BTI bucket using the parent
-// place's categories array. Top bucket → big "current type" hero.
-// Other non-zero buckets → percentage breakdown bars under it.
+// One card that answers three nested questions about the couple in
+// order: WHO are we (BTI verdict at the top) → HOW aligned are we
+// (sync %) → WHERE do we agree/disagree (segmented breakdown that
+// switches between BTI buckets and category groups). Replaces the
+// previous three separate cards (TasteSync / CategoryBattle / FoodBti)
+// because they were really different views of the same data.
 
-function FoodBtiCard({ rows }: { rows: Row[] }) {
-  // Track which rows fed each BTI bucket so the user can tap a bar and
-  // see the foods that drove that BTI's score.
-  const [expandedBti, setExpandedBti] = useState<BtiKey | null>(null);
+function TasteDiagnosisCard({ rows }: { rows: Row[] }) {
+  const { t } = useTranslation();
+  const [breakdownTab, setBreakdownTab] = useState<"bti" | "category">("bti");
+  // One shared expanded-key for both tabs since only one row at a time
+  // is open. Switching tabs clears the expansion implicitly because
+  // the keys (BtiKey vs cat string) don't collide in practice.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
-  const stats = useMemo(() => {
+  // ----- sync % -----
+  const syncPercent = useMemo(() => {
+    if (!rows.length) return 0;
+    const totalDiff = rows.reduce(
+      (acc, r) => acc + Math.abs(r.mine - r.partner),
+      0
+    );
+    const avgDiff = totalDiff / rows.length;
+    return Math.max(0, 100 - (avgDiff / 5) * 100);
+  }, [rows]);
+
+  // ----- BTI buckets -----
+  const btiStats = useMemo(() => {
     const totals = new Map<
       BtiKey,
       { sum: number; count: number; rows: Row[] }
@@ -467,9 +646,6 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
     for (const r of rows) {
       if (r.placeCategories.length === 0) continue;
       const coupleAvg = (r.mine + r.partner) / 2;
-      // Multi-cat places feed every BTI bucket their tags map to.
-      // Dedupe inside the loop so e.g. "italian + western" doesn't
-      // double-credit "western" twice for one row.
       const fed = new Set<BtiKey>();
       for (const cat of r.placeCategories) {
         const buckets = CATEGORY_TO_BTI[cat];
@@ -477,11 +653,11 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
         for (const k of buckets) {
           if (fed.has(k)) continue;
           fed.add(k);
-          const t = totals.get(k) ?? { sum: 0, count: 0, rows: [] };
-          t.sum += coupleAvg;
-          t.count += 1;
-          t.rows.push(r);
-          totals.set(k, t);
+          const tt = totals.get(k) ?? { sum: 0, count: 0, rows: [] };
+          tt.sum += coupleAvg;
+          tt.count += 1;
+          tt.rows.push(r);
+          totals.set(k, tt);
         }
       }
     }
@@ -492,19 +668,17 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
       count: number;
       rows: Row[];
     }[] = [];
-    for (const [key, t] of totals) {
-      if (t.count === 0) continue;
-      const avg = t.sum / t.count;
-      // Sort the contributors highest-couple-avg first so when users
-      // expand they see the top reasons that BTI scored well.
-      const sortedRows = [...t.rows].sort(
+    for (const [key, tt] of totals) {
+      if (tt.count === 0) continue;
+      const avg = tt.sum / tt.count;
+      const sortedRows = [...tt.rows].sort(
         (a, b) => b.mine + b.partner - (a.mine + a.partner)
       );
       out.push({
         key,
         avg,
         percent: (avg / 5) * 100,
-        count: t.count,
+        count: tt.count,
         rows: sortedRows,
       });
     }
@@ -512,14 +686,100 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
     return out;
   }, [rows]);
 
-  if (stats.length === 0) {
+  // ----- per-category battle (grouped by hierarchy) -----
+  const categorySections = useMemo(() => {
+    const map = new Map<
+      string,
+      { mine: number; partner: number; count: number; rows: Row[] }
+    >();
+    for (const r of rows) {
+      if (r.placeCategories.length === 0) continue;
+      for (const cat of r.placeCategories) {
+        const cur = map.get(cat) ?? {
+          mine: 0,
+          partner: 0,
+          count: 0,
+          rows: [],
+        };
+        cur.mine += r.mine;
+        cur.partner += r.partner;
+        cur.count += 1;
+        cur.rows.push(r);
+        map.set(cat, cur);
+      }
+    }
+    const battle = new Map<
+      string,
+      {
+        myAvg: number;
+        partnerAvg: number;
+        diff: number;
+        count: number;
+        rows: Row[];
+      }
+    >();
+    for (const [cat, v] of map) {
+      const myAvg = v.mine / v.count;
+      const partnerAvg = v.partner / v.count;
+      const sortedRows = [...v.rows].sort(
+        (a, b) =>
+          Math.abs(b.mine - b.partner) - Math.abs(a.mine - a.partner)
+      );
+      battle.set(cat, {
+        myAvg,
+        partnerAvg,
+        diff: Math.abs(myAvg - partnerAvg),
+        count: v.count,
+        rows: sortedRows,
+      });
+    }
+    type Section = {
+      headerKo: string;
+      headerZh: string;
+      rows: { cat: string; battle: NonNullable<ReturnType<typeof battle.get>> }[];
+    };
+    const sections: Section[] = [];
+    const seen = new Set<string>();
+    for (const g of CATEGORY_GROUPS) {
+      const groupBattles: Section["rows"] = [];
+      for (const c of g.keys) {
+        const b = battle.get(c);
+        if (b) {
+          groupBattles.push({ cat: c, battle: b });
+          seen.add(c);
+        }
+      }
+      if (groupBattles.length > 0) {
+        sections.push({
+          headerKo: g.ko,
+          headerZh: g.zh,
+          rows: groupBattles,
+        });
+      }
+    }
+    const customRows: Section["rows"] = [];
+    for (const [cat, b] of battle) {
+      if (!seen.has(cat)) customRows.push({ cat, battle: b });
+    }
+    if (customRows.length > 0) {
+      customRows.sort((a, b) => b.battle.diff - a.battle.diff);
+      sections.push({
+        headerKo: "✏️ 직접 입력",
+        headerZh: "自定义",
+        rows: customRows,
+      });
+    }
+    return sections;
+  }, [rows]);
+
+  if (rows.length === 0 || btiStats.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-6 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[280px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[240px]">
         <Dna className="w-8 h-8 text-ink-300 mb-3" />
-        <h3 className="font-bold text-ink-700 text-base mb-1">
-          푸드 BTI 분석 중 · 口味DNA 分析中
+        <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
+          입맛 진단 준비 중 · 口味诊断准备中
         </h3>
-        <p className="text-xs text-ink-500 max-w-[220px]">
+        <p className="text-xs text-ink-500 max-w-[220px] break-keep">
           둘 다 별점 매긴 메뉴가 모이면 우리 커플 입맛을 진단해드려요!
           <br />
           多打分就能看到你们的口味DNA啦！
@@ -528,118 +788,471 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
     );
   }
 
-  const top = stats[0];
+  const top = btiStats[0];
   const topProfile = BTI_PROFILES[top.key];
 
+  // Sync palette mirrors the old standalone card so the % still pops
+  // at a glance. The thresholds (60/80) are tuned so most couples land
+  // in the green zone with light banter copy.
+  const syncTone =
+    syncPercent < 60
+      ? { gradient: "from-amber-400 to-orange-400", chip: "bg-amber-50 text-amber-600 border-amber-200" }
+      : syncPercent < 80
+        ? { gradient: "from-teal-400 to-emerald-500", chip: "bg-teal-50 text-teal-600 border-teal-200" }
+        : { gradient: "from-rose-400 to-pink-500", chip: "bg-rose-50 text-rose-500 border-rose-200" };
+
   return (
-    <div className="relative bg-white rounded-3xl p-5 border border-cream-200 shadow-airy overflow-hidden h-full">
+    <div className="relative bg-white rounded-3xl p-5 border border-cream-200 shadow-airy overflow-hidden h-full min-h-[240px] flex flex-col">
       <div
         className={`absolute -top-12 -right-12 w-44 h-44 rounded-full bg-gradient-to-br ${topProfile.gradient} opacity-[0.08] blur-2xl pointer-events-none`}
       />
-      <div className="relative z-10 flex flex-col items-center text-center border-b border-cream-100 pb-4 mb-4">
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-ink-900 text-white rounded-full text-[10px] font-bold tracking-wider mb-3 shadow-sm font-number">
-          <Dna className="w-3.5 h-3.5" /> FOOD BTI
+      <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-cream-100 pb-3 break-keep">
+        <Dna className="w-4 h-4 text-ink-700 flex-shrink-0" />
+        우리의 입맛 진단 · 口味诊断
+      </h3>
+
+      {/* Compact BTI verdict — kept smaller than the old hero so the
+          breakdown below has room without making the card huge. */}
+      <div className="relative z-10 flex flex-col items-center text-center pb-3">
+        <div className="text-4xl drop-shadow-sm leading-none mb-1">
+          {topProfile.emoji}
         </div>
-        <div className="text-5xl drop-shadow-md mb-2">{topProfile.emoji}</div>
         <h2
-          className={`text-[20px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight mb-1`}
+          className={`text-[17px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight break-keep leading-tight`}
         >
-          {topProfile.titleKo}
+          {topProfile.titleKo}{" "}
+          <span className="text-ink-400 text-[11px] font-bold align-middle">
+            · {topProfile.titleZh}
+          </span>
         </h2>
-        <p className="text-[11px] font-bold text-ink-400">
-          {topProfile.titleZh}
-        </p>
-        <p className="text-[12px] font-medium text-ink-700 mt-2 bg-cream-50 px-3 py-1.5 rounded-xl">
-          “{topProfile.descKo} · {topProfile.descZh}”
+        <p className="text-[11px] font-medium text-ink-500 mt-1 break-keep leading-snug px-1">
+          “{topProfile.descKo}”
         </p>
       </div>
 
-      <div className="relative z-10 space-y-2.5">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[11px] font-bold text-ink-900">
-            섹션별 입맛 분석
-          </p>
-          <p className="text-[10px] text-ink-400 font-medium">
-            各口味契合度
-          </p>
+      {/* Compact stat row: sync % + sample size. Replaces the standalone
+          sync card by letting the verdict and the sync number sit
+          shoulder-to-shoulder. */}
+      <div className="relative z-10 grid grid-cols-2 gap-2 mb-3">
+        <div
+          className={`rounded-xl px-2 py-1.5 border text-center ${syncTone.chip}`}
+        >
+          <div className="text-[9px] font-bold tracking-wider uppercase opacity-70">
+            싱크 · 同步
+          </div>
+          <div className="font-number font-black text-[18px] leading-none mt-0.5">
+            {syncPercent.toFixed(0)}
+            <span className="text-[12px]">%</span>
+          </div>
         </div>
-        {stats.slice(0, 4).map((s) => {
-          const pf = BTI_PROFILES[s.key];
-          const isExpanded = expandedBti === s.key;
-          return (
-            <div key={s.key}>
-              <button
-                type="button"
-                onClick={() =>
-                  setExpandedBti(isExpanded ? null : s.key)
-                }
-                className="w-full flex items-center gap-2 text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
-              >
-                <div className="w-7 flex-shrink-0 text-base text-center">
-                  {pf.emoji}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center text-[11px] font-bold text-ink-700 mb-1 gap-2">
-                    <span className="truncate">
-                      {pf.titleKo}{" "}
-                      <span className="text-ink-400 font-medium">
-                        · {pf.titleZh}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-[10px] text-ink-400 font-number">
-                        {s.count}곳
-                      </span>
-                      <span className="font-number">
-                        {Math.round(s.percent)}%
-                      </span>
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                      />
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${pf.bar} rounded-full transition-all duration-1000 ease-out`}
-                      style={{ width: `${s.percent}%` }}
-                    />
-                  </div>
-                </div>
-              </button>
-              {/* Contributing menus — sorted highest couple-avg first
-                  so the user sees what drove this BTI to the top. */}
-              {isExpanded && (
-                <div className="ml-9 mt-2 mb-1 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                  {s.rows.map((r) => {
-                    const total = r.mine + r.partner;
-                    return (
-                      <Link
-                        key={r.foodId}
-                        to={`/places/${r.placeId}`}
-                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-cream-50 hover:bg-cream-100 border border-cream-200/60 text-[11px] transition"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-ink-900 truncate">
-                            {r.foodName}
-                          </p>
-                          <p className="text-ink-400 truncate text-[10px]">
-                            @ {r.placeName}
-                          </p>
-                        </div>
-                        <span className="font-number font-bold text-peach-500 flex-shrink-0 text-[12px]">
-                          {total.toFixed(1)}
-                          <span className="text-ink-400 text-[9px] ml-0.5">
-                            /10
+        <div className="rounded-xl px-2 py-1.5 border bg-cream-50 border-cream-200 text-ink-700 text-center">
+          <div className="text-[9px] font-bold tracking-wider uppercase text-ink-400">
+            메뉴 · 菜数
+          </div>
+          <div className="font-number font-black text-[18px] leading-none mt-0.5 text-ink-900">
+            {rows.length}
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs — switch between BTI bucket view (broad couple-type
+          stripes) and category view (granular per-cuisine PK). */}
+      <div className="relative z-10 flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
+        <button
+          type="button"
+          onClick={() => {
+            setBreakdownTab("bti");
+            setExpandedKey(null);
+          }}
+          className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition ${
+            breakdownTab === "bti"
+              ? "bg-white shadow-sm text-ink-900 border border-cream-100"
+              : "text-ink-500"
+          }`}
+        >
+          🧬 BTI별 · 类型
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setBreakdownTab("category");
+            setExpandedKey(null);
+          }}
+          className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition ${
+            breakdownTab === "category"
+              ? "bg-white shadow-sm text-ink-900 border border-cream-100"
+              : "text-ink-500"
+          }`}
+        >
+          🔥 카테고리별 · 类别
+        </button>
+      </div>
+
+      {/* Breakdown body — capped height + scroll so the card itself
+          stays a consistent size in the carousel even when there are
+          lots of buckets / categories. */}
+      <div className="relative z-10 flex-1 overflow-y-auto -mx-1 px-1 hide-scrollbar max-h-[260px]">
+        {breakdownTab === "bti" ? (
+          <div className="space-y-2.5">
+            {btiStats.map((s) => {
+              const pf = BTI_PROFILES[s.key];
+              const isExpanded = expandedKey === s.key;
+              return (
+                <div key={s.key}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedKey(isExpanded ? null : s.key)
+                    }
+                    className="w-full flex items-center gap-2 text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
+                  >
+                    <div className="w-6 flex-shrink-0 text-base text-center">
+                      {pf.emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center text-[11px] font-bold text-ink-700 mb-1 gap-2">
+                        <span className="truncate break-keep">
+                          {pf.titleKo}{" "}
+                          <span className="text-ink-400 font-medium">
+                            · {pf.titleZh}
                           </span>
                         </span>
-                      </Link>
+                        <span className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {s.count}
+                          </span>
+                          <span className="font-number">
+                            {Math.round(s.percent)}%
+                          </span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                          />
+                        </span>
+                      </div>
+                      <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${pf.bar} rounded-full transition-all duration-700 ease-out`}
+                          style={{ width: `${s.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-8 mt-2 mb-1 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                      {s.rows.map((r) => (
+                        <ContributingFoodRow key={r.foodId} r={r} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex justify-between text-[10px] font-bold px-1">
+              <span className="text-peach-500">나 · 我</span>
+              <span className="text-rose-500">짝꿍 · 宝宝</span>
+            </div>
+            {categorySections.map((section) => (
+              <div key={section.headerKo}>
+                <p className="text-[10px] font-bold text-ink-400 tracking-wider mb-1.5 uppercase">
+                  {section.headerKo} · {section.headerZh}
+                </p>
+                <div className="space-y-2">
+                  {section.rows.map(({ cat, battle: b }) => {
+                    const total = b.myAvg + b.partnerAvg || 1;
+                    const myW = (b.myAvg / total) * 100;
+                    const partnerW = (b.partnerAvg / total) * 100;
+                    const label = isKnownPlaceCategory(cat)
+                      ? t(`category.${cat}`)
+                      : cat;
+                    const isExpanded = expandedKey === cat;
+                    return (
+                      <div key={cat}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedKey(isExpanded ? null : cat)
+                          }
+                          className="w-full text-left hover:bg-cream-50 -mx-1 px-1 py-1 rounded-lg transition"
+                        >
+                          <div className="flex items-center justify-between mb-1 px-0.5 gap-2">
+                            <span className="text-[11px] font-bold text-ink-700 flex items-center gap-1 min-w-0 truncate">
+                              <span>{categoryEmojiOf(cat)}</span>
+                              <span className="truncate">{label}</span>
+                              <span className="text-[10px] text-ink-400 font-number ml-1 flex-shrink-0">
+                                ({b.count})
+                              </span>
+                            </span>
+                            <span className="flex items-center gap-1 flex-shrink-0">
+                              <span className="text-[10px] font-number font-bold text-ink-500 bg-cream-100 px-1.5 py-0.5 rounded-md">
+                                Δ {b.diff.toFixed(1)}
+                              </span>
+                              <ChevronDown
+                                className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              />
+                            </span>
+                          </div>
+                          <div className="w-full h-4 flex rounded-full overflow-hidden border border-cream-200">
+                            <div
+                              className="bg-peach-400 flex items-center justify-start px-1.5 text-[9px] font-number font-bold text-white transition-all"
+                              style={{ width: `${myW}%` }}
+                            >
+                              {b.myAvg.toFixed(1)}
+                            </div>
+                            <div className="w-px h-full bg-white" />
+                            <div
+                              className="bg-rose-400 flex items-center justify-end px-1.5 text-[9px] font-number font-bold text-white transition-all"
+                              style={{ width: `${partnerW}%` }}
+                            >
+                              {b.partnerAvg.toFixed(1)}
+                            </div>
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="ml-3 mt-2 mb-1 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                            {b.rows.map((r) => (
+                              <ContributingFoodRow key={r.foodId} r={r} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Compact contributing-food row used by every card's drill-down.
+// Shows food name + place + both partners' ratings, links to the
+// place detail.
+function ContributingFoodRow({ r }: { r: Row }) {
+  return (
+    <Link
+      to={`/places/${r.placeId}`}
+      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-cream-50 hover:bg-cream-100 border border-cream-200/60 text-[11px] transition"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-ink-900 truncate">{r.foodName}</p>
+        <p className="text-ink-400 truncate text-[10px]">@ {r.placeName}</p>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0 text-[10px] font-number font-bold">
+        <span className="text-peach-500">{r.mine.toFixed(1)}</span>
+        <span className="text-ink-300">/</span>
+        <span className="text-rose-500">{r.partner.toFixed(1)}</span>
+      </div>
+    </Link>
+  );
+}
+
+// ---------- 우리집 미슐랭 카드 ----------
+//
+// Home-cooked-only stats: chef share (who cooked how often) +
+// per-chef avg score (whose cooking scores higher overall).
+// chef enum is stored from the food creator's perspective, so we
+// swap to viewer perspective per row before tallying.
+
+function HomeChefCard({
+  rows,
+  viewerId,
+}: {
+  rows: Row[];
+  viewerId: string | undefined;
+}) {
+  const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
+
+  const stats = useMemo(() => {
+    const myRows: Row[] = [];
+    const partnerRows: Row[] = [];
+    let togetherCount = 0;
+    let myScoreSum = 0;
+    let partnerScoreSum = 0;
+
+    for (const r of rows) {
+      // Storage→viewer chef swap. created_by null → fall back to
+      // viewer-is-creator (for legacy rows).
+      let chefViewer: "me" | "partner" | "together" = "together";
+      if (r.chef === "me" || r.chef === "partner") {
+        const viewerIsCreator = !r.createdBy || r.createdBy === viewerId;
+        chefViewer =
+          r.chef === "me"
+            ? viewerIsCreator
+              ? "me"
+              : "partner"
+            : viewerIsCreator
+              ? "partner"
+              : "me";
+      }
+
+      const coupleAvg = (r.mine + r.partner) / 2;
+      if (chefViewer === "me") {
+        myRows.push(r);
+        myScoreSum += coupleAvg;
+      } else if (chefViewer === "partner") {
+        partnerRows.push(r);
+        partnerScoreSum += coupleAvg;
+      } else {
+        togetherCount++;
+      }
+    }
+    // Sort each chef's foods by couple-avg desc so when expanded the
+    // user sees their chef's best dishes first.
+    myRows.sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+    partnerRows.sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+    const myCount = myRows.length;
+    const partnerCount = partnerRows.length;
+    const total = myCount + partnerCount + togetherCount;
+    return {
+      myCount,
+      partnerCount,
+      togetherCount,
+      total,
+      myAvg: myCount > 0 ? myScoreSum / myCount : 0,
+      partnerAvg: partnerCount > 0 ? partnerScoreSum / partnerCount : 0,
+      myRows,
+      partnerRows,
+    };
+  }, [rows, viewerId]);
+
+  const {
+    myCount,
+    partnerCount,
+    togetherCount,
+    total,
+    myAvg,
+    partnerAvg,
+    myRows,
+    partnerRows,
+  } = stats;
+  const myShare = total ? (myCount / total) * 100 : 0;
+  const partnerShare = total ? (partnerCount / total) * 100 : 0;
+  const togetherShare = total ? (togetherCount / total) * 100 : 0;
+
+  return (
+    <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-5 border border-teal-200 shadow-airy h-full flex flex-col min-h-[240px]">
+      <h3 className="font-sans font-bold text-teal-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-teal-200/50 pb-3 break-keep">
+        <ChefHat className="w-4 h-4 text-teal-600 flex-shrink-0" />
+        우리집 미슐랭 · 家庭米其林
+      </h3>
+
+      {/* Chef share — stacked horizontal bar + counts */}
+      <div className="mb-4 bg-white/70 p-3 rounded-2xl border border-teal-100/50 shadow-sm">
+        <p className="text-[11px] font-bold text-teal-800 mb-2">
+          요리 지분율 · 掌勺比例
+        </p>
+        <div className="w-full h-3.5 flex rounded-full overflow-hidden mb-2 border border-white shadow-inner">
+          {myShare > 0 && (
+            <div className="bg-peach-400" style={{ width: `${myShare}%` }} />
+          )}
+          {togetherShare > 0 && (
+            <div
+              className="bg-amber-400"
+              style={{ width: `${togetherShare}%` }}
+            />
+          )}
+          {partnerShare > 0 && (
+            <div
+              className="bg-rose-400"
+              style={{ width: `${partnerShare}%` }}
+            />
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-1 text-[10px] font-bold text-ink-700 text-center">
+          <span className="inline-flex items-center justify-center gap-1 min-w-0">
+            <span>🙋‍♂️</span>
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+              {myCount}
+            </span>
+          </span>
+          <span className="inline-flex items-center justify-center gap-1 min-w-0">
+            <span>🤝</span>
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+              {togetherCount}
+            </span>
+          </span>
+          <span className="inline-flex items-center justify-center gap-1 min-w-0">
+            <span>🙋‍♀️</span>
+            <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm">
+              {partnerCount}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Whose cooking scores higher — per-chef avg of couple averages.
+          Each tile is tappable; tapping shows that chef's foods sorted
+          by couple-avg desc so the user can see why the score is high
+          (or low). */}
+      <div className="flex-1 flex flex-col">
+        <p className="text-[11px] font-bold text-teal-800 mb-2">
+          누가 했을 때 더 맛있었지? · 谁做饭更好吃？
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              setExpanded(expanded === "me" ? null : "me")
+            }
+            disabled={myCount === 0}
+            className={`bg-white rounded-2xl p-3 border flex flex-col items-center justify-center text-center shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
+              expanded === "me"
+                ? "border-peach-300 ring-2 ring-peach-200"
+                : "border-teal-100"
+            } ${myAvg >= partnerAvg && myCount > 0 ? "" : "opacity-70"}`}
+          >
+            <span className="text-[11px] font-bold text-peach-500 mb-1">
+              내 요리 · 我做的
+            </span>
+            <span className="text-2xl font-number font-bold text-ink-900">
+              {myAvg > 0 ? myAvg.toFixed(2) : "-"}
+            </span>
+            <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
+              ({myCount})
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setExpanded(expanded === "partner" ? null : "partner")
+            }
+            disabled={partnerCount === 0}
+            className={`bg-white rounded-2xl p-3 border flex flex-col items-center justify-center text-center shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow ${
+              expanded === "partner"
+                ? "border-rose-300 ring-2 ring-rose-200"
+                : "border-teal-100"
+            } ${partnerAvg >= myAvg && partnerCount > 0 ? "" : "opacity-70"}`}
+          >
+            <span className="text-[11px] font-bold text-rose-500 mb-1">
+              짝꿍 요리 · 宝宝做的
+            </span>
+            <span className="text-2xl font-number font-bold text-ink-900">
+              {partnerAvg > 0 ? partnerAvg.toFixed(2) : "-"}
+            </span>
+            <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
+              ({partnerCount})
+            </span>
+          </button>
+        </div>
+
+        {expanded && (
+          <div className="mt-3 pt-3 border-t border-teal-200/50 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+            <p className="text-[10px] font-bold text-teal-700 tracking-wider uppercase mb-1">
+              {expanded === "me"
+                ? "내가 한 메뉴 · 我掌勺的"
+                : "짝꿍이 한 메뉴 · 宝宝掌勺的"}
+            </p>
+            {(expanded === "me" ? myRows : partnerRows).map((r) => (
+              <ContributingFoodRow key={r.foodId} r={r} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -648,14 +1261,27 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
 // ---------- 별점 요정 vs 깐깐징어 통계 카드 ----------
 
 function RatingStats({ rows }: { rows: Row[] }) {
+  const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
+
+  // Pre-sort once per side; toggling between tiles just flips which
+  // ordering is shown.
+  const sortedByMine = useMemo(
+    () => [...rows].sort((a, b) => b.mine - a.mine),
+    [rows]
+  );
+  const sortedByPartner = useMemo(
+    () => [...rows].sort((a, b) => b.partner - a.partner),
+    [rows]
+  );
+
   if (rows.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-6 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[280px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[240px]">
         <Scale className="w-8 h-8 text-ink-300 mb-3" />
-        <h3 className="font-bold text-ink-700 text-base mb-1">
+        <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
           별점 요정은 누구? · 谁是打分小天使？
         </h3>
-        <p className="text-xs text-ink-500 max-w-[220px]">
+        <p className="text-xs text-ink-500 max-w-[220px] break-keep">
           둘이 별점을 더 매겨주세요. 평균이 모이면 비교가 시작돼요!
           <br />
           多打分就知道谁更大方啦！
@@ -679,10 +1305,10 @@ function RatingStats({ rows }: { rows: Row[] }) {
       : "fairy";
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-5 border border-indigo-100 shadow-airy h-full">
-      <h3 className="font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-4">
-        <Scale className="w-4 h-4 text-indigo-500" />
-        누가 더 후할까? · 谁是打分小天使？
+    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-5 border border-indigo-100 shadow-airy h-full flex flex-col min-h-[240px]">
+      <h3 className="font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-indigo-100 pb-3 break-keep">
+        <Scale className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+        별점 요정 vs 깐깐징어 · 打分天使PK
       </h3>
 
       <div className="grid grid-cols-2 gap-3">
@@ -691,12 +1317,18 @@ function RatingStats({ rows }: { rows: Row[] }) {
           tone="peach"
           avg={avgMine}
           role={myRole}
+          expanded={expanded === "me"}
+          onToggle={() => setExpanded(expanded === "me" ? null : "me")}
         />
         <PersonStatTile
           person="짝꿍 · 宝宝"
           tone="rose"
           avg={avgPartner}
           role={partnerRole}
+          expanded={expanded === "partner"}
+          onToggle={() =>
+            setExpanded(expanded === "partner" ? null : "partner")
+          }
         />
       </div>
 
@@ -726,6 +1358,19 @@ function RatingStats({ rows }: { rows: Row[] }) {
         <span className="font-number font-bold text-ink-700">{rows.length}</span>{" "}
         道菜
       </p>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-indigo-100 space-y-1.5 max-h-[220px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
+          <p className="text-[10px] font-bold text-indigo-500 tracking-wider uppercase mb-1">
+            {expanded === "me"
+              ? "내가 후하게 준 순 · 我打分高→低"
+              : "짝꿍이 후하게 준 순 · 宝宝打分高→低"}
+          </p>
+          {(expanded === "me" ? sortedByMine : sortedByPartner).map((r) => (
+            <ContributingFoodRow key={r.foodId} r={r} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -735,17 +1380,25 @@ function PersonStatTile({
   tone,
   avg,
   role,
+  expanded,
+  onToggle,
 }: {
   person: string;
   tone: "peach" | "rose";
   avg: number;
   role: "fairy" | "strict" | "tie";
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
   const accentCls =
     tone === "peach"
       ? "bg-peach-50 border-peach-200"
       : "bg-rose-50 border-rose-200";
+  const ringCls =
+    tone === "peach"
+      ? "ring-2 ring-peach-300"
+      : "ring-2 ring-rose-300";
   const roleEmoji =
     role === "fairy" ? "🧚‍♀️" : role === "strict" ? "🧐" : "🤝";
   const roleKo =
@@ -759,8 +1412,10 @@ function PersonStatTile({
         ? "bg-indigo-50 text-indigo-600 border-indigo-200"
         : "bg-ink-100 text-ink-500 border-cream-200";
   return (
-    <div
-      className={`rounded-2xl p-3 border ${accentCls} flex flex-col items-center text-center shadow-sm`}
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`rounded-2xl p-3 border ${accentCls} ${expanded ? ringCls : ""} flex flex-col items-center text-center shadow-sm hover:shadow transition w-full`}
     >
       <div className={`text-[12px] font-bold ${personCls} mb-1`}>{person}</div>
       <div className="text-3xl font-number font-bold text-ink-900 leading-none my-1">
@@ -777,7 +1432,10 @@ function PersonStatTile({
           {roleKo} · {roleZh}
         </span>
       </div>
-    </div>
+      <ChevronDown
+        className={`w-3 h-3 mt-1 text-ink-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+      />
+    </button>
   );
 }
 
@@ -1046,6 +1704,158 @@ function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
           className="h-full bg-rose-400 transition-all duration-700"
           style={{ width: `${partnerPct}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+// ---------- card editor modal ----------
+//
+// Lets the user reorder + show/hide carousel cards. Renders cards in
+// their current `order`, with checkbox for visibility and ↑/↓ buttons
+// for swapping with neighbors. Changes flow up via `onChange`; parent
+// owns the persistence so this stays purely presentational.
+
+function CardEditorModal({
+  config,
+  onChange,
+  onClose,
+}: {
+  config: CardConfig;
+  onChange: (next: CardConfig) => void;
+  onClose: () => void;
+}) {
+  const toggleHidden = (id: CardId) => {
+    const isHidden = config.hidden.includes(id);
+    onChange({
+      ...config,
+      hidden: isHidden
+        ? config.hidden.filter((x) => x !== id)
+        : [...config.hidden, id],
+    });
+  };
+
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...config.order];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    onChange({ ...config, order: next });
+  };
+
+  const reset = () => onChange(DEFAULT_CONFIG);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-cream-200 animate-in slide-in-from-bottom-2 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-cream-200">
+          <div>
+            <h3 className="font-bold text-ink-900 text-base">
+              카드 관리 · 卡片管理
+            </h3>
+            <p className="text-[11px] text-ink-500 mt-0.5">
+              순서 바꾸거나 숨길 카드를 골라요 · 调整顺序或隐藏卡片
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-cream-100 transition"
+            aria-label="close"
+          >
+            <X className="w-4 h-4 text-ink-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {config.order.map((id, idx) => {
+            const meta = CARD_META[id];
+            const isHidden = config.hidden.includes(id);
+            return (
+              <div
+                key={id}
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 transition ${
+                  isHidden
+                    ? "bg-cream-50 border-cream-200 opacity-70"
+                    : "bg-white border-cream-200"
+                }`}
+              >
+                <span className="text-2xl flex-shrink-0">{meta.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-[13px] font-bold truncate ${
+                      isHidden ? "text-ink-400 line-through" : "text-ink-900"
+                    }`}
+                  >
+                    {meta.ko}
+                  </p>
+                  <p className="text-[10px] text-ink-400 truncate">
+                    {meta.zh}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => move(idx, -1)}
+                    disabled={idx === 0}
+                    className="w-7 h-7 rounded-lg border border-cream-200 bg-white flex items-center justify-center text-ink-700 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cream-100 transition text-[13px] font-bold"
+                    aria-label="move up"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(idx, 1)}
+                    disabled={idx === config.order.length - 1}
+                    className="w-7 h-7 rounded-lg border border-cream-200 bg-white flex items-center justify-center text-ink-700 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-cream-100 transition text-[13px] font-bold"
+                    aria-label="move down"
+                  >
+                    ↓
+                  </button>
+                  <label className="ml-1 inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!isHidden}
+                      onChange={() => toggleHidden(id)}
+                      className="sr-only peer"
+                    />
+                    <span className="w-9 h-5 bg-cream-200 rounded-full relative peer-checked:bg-peach-400 transition">
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                          !isHidden ? "translate-x-4" : ""
+                        }`}
+                      />
+                    </span>
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-cream-200 px-4 py-3 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={reset}
+            className="text-[11px] font-bold text-ink-500 hover:text-ink-700 transition"
+          >
+            기본값 복원 · 重置默认
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-ink-900 text-white rounded-xl text-[12px] font-bold hover:bg-ink-700 transition"
+          >
+            완료 · 完成
+          </button>
+        </div>
       </div>
     </div>
   );

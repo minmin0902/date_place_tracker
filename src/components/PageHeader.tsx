@@ -25,11 +25,18 @@ export function PageHeader({
         </button>
       )}
       <div className="flex-1 min-w-0">
-        <h1 className="text-2xl font-sans font-black text-ink-900 truncate tracking-tight">
+        {/* Matches the HomePage hero so all top-level pages share the
+            same brand wordmark. break-keep prevents Korean from
+            mid-word breaking; allowing wrap (instead of truncate) is
+            what keeps long bilingual titles from getting clipped on
+            narrow phones. */}
+        <h1 className="text-[20px] sm:text-[24px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 tracking-tight leading-tight break-keep mb-1">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-ink-500 mt-0.5 font-medium">{subtitle}</p>
+          <p className="text-[11px] sm:text-xs text-ink-400 font-bold leading-snug break-keep">
+            {subtitle}
+          </p>
         )}
       </div>
       {right}
