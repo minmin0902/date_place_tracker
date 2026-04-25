@@ -113,6 +113,11 @@ export default {
     main: "메인",
     side: "사이드",
     drink: "음료",
+    by_me: "내가 만든거",
+    by_partner: "짝꿍이 만든거",
+    frozen: "냉동음식",
+    bread: "빵",
+    premade_other: "완제품 기타",
   },
   settings: {
     title: "설정",

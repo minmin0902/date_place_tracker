@@ -4,10 +4,10 @@ import { uploadPhoto } from "@/hooks/usePlaces";
 import { isVideoUrl } from "@/lib/utils";
 
 // Hard cap to keep storage costs manageable on Supabase free tier and
-// to honor the user's "15-second clip" decision. Browser-side check
+// to honor the user's "30-second clip" decision. Browser-side check
 // before upload — server-side enforcement would need a Supabase Edge
 // Function, future work.
-const MAX_VIDEO_SECONDS = 15;
+const MAX_VIDEO_SECONDS = 30;
 
 // Read video metadata client-side to check duration. Returns null on
 // browsers that can't decode, in which case we let the upload through
@@ -145,7 +145,7 @@ export function PhotoUploader({
         />
       </div>
       <p className="text-[10px] text-ink-400 px-1">
-        사진 + 동영상 (15초 이내) · 照片 + 视频(15秒以内)
+        사진 + 동영상 (30초 이내) · 照片 + 视频(30秒以内)
       </p>
       {error && (
         <div className="flex items-start gap-2 text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">

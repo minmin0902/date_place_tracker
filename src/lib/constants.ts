@@ -90,6 +90,12 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   main: "🍽️",
   side: "🥗",
   drink: "🥤",
+  // home-cooking-only food categories (set under HomeFoodCard's picker)
+  by_me: "🧑‍🍳",
+  by_partner: "👩‍🍳",
+  frozen: "🧊",
+  bread: "🥖",
+  premade_other: "📦",
 };
 
 export function categoryEmojiOf(key: string | null | undefined): string {
@@ -110,3 +116,25 @@ export const FOOD_CATEGORIES = [
 ] as const;
 
 export type FoodCategory = (typeof FOOD_CATEGORIES)[number];
+
+// Extra food categories surfaced ONLY in home-cooking flow (집밥). They
+// don't apply to restaurant menus — "by_me / by_partner" is moot at a
+// restaurant, and 완제품 (frozen / bread / etc) is a home-pantry concept.
+// Kept separate from FOOD_CATEGORIES so the regular food picker stays
+// short.
+export const HOME_FOOD_AUTHOR_CATEGORIES = ["by_me", "by_partner"] as const;
+export const PREMADE_FOOD_CATEGORIES = [
+  "frozen",
+  "bread",
+  "premade_other",
+] as const;
+
+// Tells whether a category key is a home-cooking-only one. Used by the
+// food category chip renderer so it doesn't mis-i18n keys that don't
+// exist in the regular `category.*` namespace.
+export function isHomeOnlyFoodCategory(key: string): boolean {
+  return (
+    (HOME_FOOD_AUTHOR_CATEGORIES as readonly string[]).includes(key) ||
+    (PREMADE_FOOD_CATEGORIES as readonly string[]).includes(key)
+  );
+}

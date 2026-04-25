@@ -14,7 +14,12 @@ import {
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
-import { FOOD_CATEGORIES, categoryEmojiOf } from "@/lib/constants";
+import {
+  FOOD_CATEGORIES,
+  HOME_FOOD_AUTHOR_CATEGORIES,
+  PREMADE_FOOD_CATEGORIES,
+  categoryEmojiOf,
+} from "@/lib/constants";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
 
@@ -54,19 +59,39 @@ export default function FoodFormPage() {
   const { myDisplay, partnerDisplay } = useDisplayNames();
   const { t } = useTranslation();
 
-  // Food categories are a flat 5-item list (메인 / 사이드 / 디저트 /
-  // 드링크 / 기타) so the dropdown shows them as plain rows — no
-  // groups needed. Same widget as the place form keeps the picker UX
-  // consistent across the app.
-  const foodCategoryOptions = useMemo<GroupedMultiSelectEntry[]>(
-    () =>
-      FOOD_CATEGORIES.map((c) => ({
-        value: c,
-        label: t(`category.${c}`),
-        emoji: categoryEmojiOf(c),
-      })),
-    [t]
-  );
+  // Food categories: the regular 5-item list lives at the top
+  // (메인 / 사이드 / 디저트 / 드링크 / 기타). For foods on a home-cooked
+  // place we surface two extra clusters — 누가 만들었어 + 완제품 —
+  // matching the picker shown on the home-mode form. Restaurant foods
+  // skip them (no chef, no frozen/bread/etc concept).
+  const isHomeCookedPlace = !!place?.is_home_cooked;
+  const foodCategoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
+    const base: GroupedMultiSelectEntry[] = FOOD_CATEGORIES.map((c) => ({
+      value: c,
+      label: t(`category.${c}`),
+      emoji: categoryEmojiOf(c),
+    }));
+    if (!isHomeCookedPlace) return base;
+    return [
+      ...base,
+      {
+        groupLabel: "🧑‍🍳 누가 만들었어 · 谁做的",
+        options: HOME_FOOD_AUTHOR_CATEGORIES.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      },
+      {
+        groupLabel: "📦 완제품 · 成品",
+        options: PREMADE_FOOD_CATEGORIES.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      },
+    ];
+  }, [t, isHomeCookedPlace]);
 
   const existing = place?.foods.find((f) => f.id === foodId);
 

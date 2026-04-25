@@ -113,6 +113,11 @@ export default {
     main: "主菜",
     side: "配菜",
     drink: "饮品",
+    by_me: "我做的",
+    by_partner: "宝宝做的",
+    frozen: "冷冻食品",
+    bread: "面包",
+    premade_other: "成品其他",
   },
   settings: {
     title: "设置",

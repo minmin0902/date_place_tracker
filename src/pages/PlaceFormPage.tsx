@@ -14,9 +14,14 @@ import {
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
 import { LocationPicker } from "@/components/LocationPicker";
-import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
+import {
+  CATEGORY_GROUPS,
+  categoryEmojiOf,
+  FOOD_CATEGORIES,
+  HOME_FOOD_AUTHOR_CATEGORIES,
+  PREMADE_FOOD_CATEGORIES,
+} from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
-import { FOOD_CATEGORIES } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
 import { getCategories } from "@/lib/utils";
 
@@ -1031,6 +1036,14 @@ function CategoryChipLabel({
 // Inline food-category dropdown used by the home-mode HomeFoodCard.
 // Shares the same widget as the standalone FoodFormPage so the picker
 // looks identical wherever the user is logging a dish.
+//
+// Home mode adds two extra clusters on top of the default food types:
+//   - 누가 만들었어 / 谁做的: by_me, by_partner
+//   - 완제품 / 成品: frozen, bread, premade_other
+// The chef toggle still lives separately on HomeFoodCard for the
+// my/partner/together rating split — these category tags exist so a
+// dish can also be filed by source (homemade vs ready-made) on the
+// timeline filter.
 function FoodCategoryDropdown({
   value,
   onChange,
@@ -1040,12 +1053,31 @@ function FoodCategoryDropdown({
 }) {
   const { t } = useTranslation();
   const options = useMemo<GroupedMultiSelectEntry[]>(
-    () =>
-      FOOD_CATEGORIES.map((c) => ({
+    () => [
+      // Default food types render flat at the top so the most common
+      // taps (메인 / 사이드 / 디저트…) stay one click away.
+      ...FOOD_CATEGORIES.map((c) => ({
         value: c,
         label: t(`category.${c}`),
         emoji: categoryEmojiOf(c),
       })),
+      {
+        groupLabel: "🧑‍🍳 누가 만들었어 · 谁做的",
+        options: HOME_FOOD_AUTHOR_CATEGORIES.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      },
+      {
+        groupLabel: "📦 완제품 · 成品",
+        options: PREMADE_FOOD_CATEGORIES.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      },
+    ],
     [t]
   );
   return (
