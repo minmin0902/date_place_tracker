@@ -94,6 +94,35 @@ export function useCoupleProfiles() {
   };
 }
 
+// Upload an avatar image into the 'avatars' bucket under the caller's
+// own user_id folder (matching the RLS policy in the migration), and
+// return the public URL the profile row should store. Reads as a tiny
+// data URL in ALLOW_NO_AUTH mode so local-dev demos don't need the
+// real storage bucket configured.
+export async function uploadAvatar(
+  file: File,
+  userId: string
+): Promise<string> {
+  if (ALLOW_NO_AUTH) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+  const ext = file.name.split(".").pop() ?? "jpg";
+  // Store under user_id/<random>.ext so the RLS folder check
+  // ((storage.foldername(name))[1] = auth.uid()::text) holds.
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export function useUpsertProfile() {
   const qc = useQueryClient();
   const { user } = useAuth();

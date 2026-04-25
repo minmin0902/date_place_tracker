@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Heart, Sparkles, X } from "lucide-react";
+import {
+  AlertCircle,
+  Camera,
+  Heart,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
+  uploadAvatar,
   useCoupleProfiles,
   useProfile,
   useUpsertProfile,
@@ -34,8 +42,15 @@ export default function ProfileEditPage() {
   const [bio, setBio] = useState("");
   const [hates, setHates] = useState<string[]>([]);
   const [hateDraft, setHateDraft] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   // Form state for the "edit partner nickname" path.
   const [partnerNickname, setPartnerNickname] = useState("");
+
+  // Avatar upload local UI state — separate from the form so the
+  // pending state shows even before the parent form submits.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   useEffect(() => {
     const me = myProfileQuery.data;
@@ -44,7 +59,33 @@ export default function ProfileEditPage() {
     setBio(me.bio ?? "");
     setHates(me.hate_ingredients ?? []);
     setPartnerNickname(me.partner_nickname ?? "");
+    setAvatarUrl(me.avatar_url ?? null);
   }, [myProfileQuery.data]);
+
+  async function handleAvatarFile(file: File | undefined) {
+    if (!file || !user?.id) return;
+    setAvatarBusy(true);
+    setAvatarError(null);
+    try {
+      const url = await uploadAvatar(file, user.id);
+      setAvatarUrl(url);
+      // Persist immediately — the form's main "save" button is for
+      // the text fields. Users expect a chosen avatar to stick even
+      // if they back out without tapping save.
+      await upsert.mutateAsync({ avatar_url: url });
+    } catch (e) {
+      console.error("[ProfileEditPage] avatar upload failed:", e);
+      setAvatarError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAvatarBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleAvatarRemove() {
+    setAvatarUrl(null);
+    await upsert.mutateAsync({ avatar_url: null });
+  }
 
   function addHate() {
     const t = hateDraft.trim();
@@ -62,6 +103,10 @@ export default function ProfileEditPage() {
         nickname: nickname.trim() || null,
         bio: bio.trim() || null,
         hate_ingredients: hates.length ? hates : [],
+        // avatar_url already persisted by handleAvatarFile / Remove
+        // — including it here too keeps the row consistent if some
+        // future flow lets the user revert via the form.
+        avatar_url: avatarUrl,
       });
     } else {
       await upsert.mutateAsync({
@@ -96,18 +141,77 @@ export default function ProfileEditPage() {
       >
         {variant === "me" ? (
           <>
+            {/* Avatar picker — uploads to the 'avatars' bucket
+                immediately on file pick and persists the URL. Skips
+                waiting for the bottom save so the picture is "sticky"
+                even if the user dismisses without saving the rest. */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={avatarBusy}
+                className="relative w-24 h-24 rounded-full border-2 border-peach-200 bg-gradient-to-br from-peach-100 to-rose-100 text-peach-500 overflow-hidden flex items-center justify-center disabled:opacity-60"
+                aria-label="upload avatar"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-[32px] font-sans font-black">
+                    {Array.from(nickname.trim() || user?.email || "?")[0] ?? "?"}
+                  </span>
+                )}
+                <span className="absolute bottom-0 right-0 p-1.5 bg-white rounded-full shadow-sm border border-cream-200">
+                  <Camera className="w-3.5 h-3.5 text-ink-500" />
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) =>
+                  void handleAvatarFile(e.target.files?.[0])
+                }
+              />
+              {avatarUrl && !avatarBusy && (
+                <button
+                  type="button"
+                  onClick={() => void handleAvatarRemove()}
+                  className="inline-flex items-center gap-1 text-[11px] text-ink-500 hover:text-rose-500 transition"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  사진 제거 · 删除照片
+                </button>
+              )}
+              {avatarBusy && (
+                <p className="text-[11px] text-ink-400">
+                  업로드 중… · 上传中…
+                </p>
+              )}
+              {avatarError && (
+                <div className="flex items-start gap-2 text-xs text-rose-500 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 max-w-full">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span className="break-words">{avatarError}</span>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-bold mb-1.5 text-ink-700">
                 닉네임 · 昵称
-                <span className="text-[10px] text-ink-400 font-normal ml-1">
-                  · 앱 전체에서 보이는 이름
+                <span className="text-[10px] text-ink-400 font-normal ml-1 break-keep">
+                  · 앱 전체에서 보이는 이름 · 全应用显示的名字
                 </span>
               </label>
               <input
                 className="input-base"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                placeholder="예) 민쥬 · 例：minjoo"
+                placeholder="예) 민쥬 · 例：小敏"
                 maxLength={30}
               />
             </div>
@@ -121,7 +225,7 @@ export default function ProfileEditPage() {
                 className="input-base min-h-[64px]"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="예) 매운맛 처돌이, 디저트 배는 따로 있음"
+                placeholder="예) 매운맛 처돌이, 디저트 배는 따로 있음 · 例：嗜辣狂魔，甜品胃单独"
                 maxLength={120}
               />
               <p className="text-[10px] text-ink-400 mt-1 text-right font-number">
@@ -132,8 +236,8 @@ export default function ProfileEditPage() {
             <div>
               <label className="block text-sm font-bold mb-1.5 text-ink-700">
                 🚫 못 먹는 거 · 不能吃的
-                <span className="text-[10px] text-ink-400 font-normal ml-1">
-                  · 메뉴 고를 때 참고
+                <span className="text-[10px] text-ink-400 font-normal ml-1 break-keep">
+                  · 메뉴 고를 때 참고 · 点单时参考
                 </span>
               </label>
               {hates.length > 0 && (
@@ -164,7 +268,7 @@ export default function ProfileEditPage() {
                       addHate();
                     }
                   }}
-                  placeholder="예) 오이, 고수, 민트초코"
+                  placeholder="예) 오이, 고수 · 例：黄瓜、香菜"
                   maxLength={30}
                 />
                 <button
@@ -188,7 +292,7 @@ export default function ProfileEditPage() {
               className="input-base bg-white border-rose-200 focus:border-rose-400"
               value={partnerNickname}
               onChange={(e) => setPartnerNickname(e.target.value)}
-              placeholder="예) 공주님, 자기야, 남편 · 例：宝宝"
+              placeholder="예) 공주님, 자기야 · 例：宝宝、亲爱的"
               maxLength={30}
             />
             <p className="text-[10px] text-ink-400">
