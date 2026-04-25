@@ -9,6 +9,7 @@ import {
 import {
   ChefHat,
   ChevronDown,
+  Dice5,
   Dna,
   Frown,
   HeartHandshake,
@@ -23,10 +24,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
+import { useWishlist } from "@/hooks/useWishlist";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
+import { RouletteModal } from "@/pages/HomePage";
 
 type DiningFilter = "all" | "out" | "home";
 // 명예의 전당 흡수 후 3-tab 구성: fame(명예의 전당, top 3 + 그 외 4.5+
@@ -39,9 +42,14 @@ type TabId = "fame" | "clash" | "pass";
 // it survives reloads within the session but doesn't bleed across
 // devices/installs (intentionally lightweight — not worth a server
 // round-trip).
-type CardId = "diagnosis" | "rating" | "chef";
+type CardId = "diagnosis" | "rating" | "chef" | "roulette";
 
-const DEFAULT_CARD_ORDER: CardId[] = ["diagnosis", "rating", "chef"];
+const DEFAULT_CARD_ORDER: CardId[] = [
+  "diagnosis",
+  "rating",
+  "chef",
+  "roulette",
+];
 
 const CARD_META: Record<
   CardId,
@@ -54,6 +62,7 @@ const CARD_META: Record<
     zh: "打分天使 vs 严格考官",
   },
   chef: { emoji: "👨‍🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
+  roulette: { emoji: "🎲", ko: "운명의 룰렛", zh: "听天由命" },
 };
 
 // Old configs (sessionStorage) saved before the merge had separate
@@ -289,6 +298,7 @@ export default function ComparePage() {
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
+  const { data: wishlist } = useWishlist(couple?.id);
   const qc = useQueryClient();
   const { pull, refreshing, manualRefreshing, onManualRefresh } =
     useRefreshControls(() =>
@@ -307,6 +317,11 @@ export default function ComparePage() {
   // ever read this from the cards themselves — it's purely an indicator.
   const carouselRef = useRef<HTMLDivElement>(null);
   const [activeCardIdx, setActiveCardIdx] = useState(0);
+  // Roulette modal lives here (instead of HomePage) because the
+  // entry-point card sits in this carousel. Definition is still in
+  // HomePage and imported as a named export — see CardId === "roulette"
+  // render branch below.
+  const [rouletteOpen, setRouletteOpen] = useState(false);
 
   const updateCardConfig = (next: CardConfig) => {
     setCardConfig(next);
@@ -499,6 +514,16 @@ export default function ComparePage() {
                     <TasteDiagnosisCard rows={filteredRows} />
                   )}
                   {id === "rating" && <RatingStats rows={filteredRows} />}
+                  {id === "roulette" && (
+                    <RouletteCard
+                      onSpin={() => setRouletteOpen(true)}
+                      revisitCount={
+                        (places ?? []).filter((p) => p.want_to_revisit)
+                          .length
+                      }
+                      wishlistCount={(wishlist ?? []).length}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -543,6 +568,13 @@ export default function ComparePage() {
           onClose={() => setCardEditorOpen(false)}
         />
       )}
+
+      <RouletteModal
+        open={rouletteOpen}
+        onClose={() => setRouletteOpen(false)}
+        places={places ?? []}
+        wishlist={wishlist ?? []}
+      />
 
       {/* List section tabs — 4 categories collapse into one tab strip
           + one rendered list, instead of 4 vertically-stacked sections.
@@ -2006,6 +2038,75 @@ function CardEditorModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------- 운명의 룰렛 카드 ----------
+//
+// Action card for the carousel — entry-point to the RouletteModal that
+// used to be triggered from a HomePage chip. Lives in ComparePage so
+// the bottom of the home timeline doesn't sprout yet another floating
+// button. Tone: peach→rose gradient since this is a "decide" moment,
+// not a stat readout.
+function RouletteCard({
+  onSpin,
+  revisitCount,
+  wishlistCount,
+}: {
+  onSpin: () => void;
+  revisitCount: number;
+  wishlistCount: number;
+}) {
+  const total = revisitCount + wishlistCount;
+  return (
+    <div className="relative bg-gradient-to-br from-peach-50 to-rose-50 rounded-3xl p-5 border border-peach-200/70 shadow-airy h-full flex flex-col min-h-[240px] overflow-hidden">
+      <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-gradient-to-br from-peach-300 to-rose-300 opacity-25 blur-2xl pointer-events-none" />
+
+      <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-peach-200/60 pb-3 break-keep">
+        <Dice5 className="w-4 h-4 text-peach-500 flex-shrink-0" />
+        운명의 룰렛 · 听天由命
+      </h3>
+
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-3">
+        <div className="text-5xl drop-shadow-sm">🎲</div>
+        <p className="text-[13px] font-bold text-ink-900 break-keep">
+          오늘 뭐 먹지? · 今天吃啥？
+        </p>
+        <p className="text-[11px] font-medium text-ink-500 break-keep px-2">
+          또갈래·가볼래에서 한 곳을 운명이 골라드림 ·
+          二刷·种草里随机抽一家
+        </p>
+      </div>
+
+      <div className="relative z-10 mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl px-2 py-1.5 border border-rose-200/60 bg-white/70 text-center">
+          <div className="text-[9px] font-bold tracking-wider uppercase text-rose-400">
+            또 갈래 · 二刷
+          </div>
+          <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
+            {revisitCount}
+          </div>
+        </div>
+        <div className="rounded-xl px-2 py-1.5 border border-amber-200/60 bg-white/70 text-center">
+          <div className="text-[9px] font-bold tracking-wider uppercase text-amber-500">
+            가볼래 · 种草
+          </div>
+          <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
+            {wishlistCount}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSpin}
+        disabled={total === 0}
+        className="relative z-10 mt-3 w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-peach-400 to-rose-400 text-white text-[13px] font-bold shadow-soft hover:from-peach-500 hover:to-rose-500 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Dice5 className="w-4 h-4" />
+        {total === 0 ? "후보가 없어요 · 暂无候选" : "룰렛 돌리기 · 抽签"}
+      </button>
     </div>
   );
 }

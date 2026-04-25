@@ -7,6 +7,7 @@ import { PullIndicator } from "@/components/PullIndicator";
 import {
   BookmarkPlus,
   CheckCircle2,
+  ChevronDown,
   Dice5,
   Grid3x3,
   Heart,
@@ -15,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
@@ -38,28 +40,29 @@ import {
   isKnownPlaceCategory,
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
-import {
-  GroupedMultiSelect,
-  type GroupedMultiSelectEntry,
-} from "@/components/GroupedMultiSelect";
+import { FilterSheet, type SortValue } from "@/components/FilterSheet";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
 // Sort modes only — "도시별" used to live here as a 5th option but
-// graduated to its own standalone filter (selectedCity) so the sort
-// picker stays a clean "pick one of four orderings".
-type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc";
-
-const SORT_OPTIONS: GroupedMultiSelectEntry[] = [
-  { value: "date", label: "최근순 · 最新打卡", emoji: "🕘" },
-  { value: "dateAsc", label: "오래된순 · 最早打卡", emoji: "📅" },
-  { value: "scoreDesc", label: "별점 높은순 · 评分高到低", emoji: "⭐" },
-  { value: "scoreAsc", label: "별점 낮은순 · 评分低到高", emoji: "🥄" },
-];
+// graduated into the unified FilterSheet's standalone city section so
+// this picker stays a clean "pick one of four orderings".
+type ViewMode = SortValue;
 // Type filter — works alongside ViewMode so users can combine
 // "집밥만 보기" with "별점 높은순".
 type DiningFilter = "all" | "out" | "home";
+
+// Mutually-exclusive chip group above the 식사 모드 segments. Tapping
+// a chip raises its filter; tapping the active chip clears (back to
+// "none"). Replaces four independent boolean toggles so the row never
+// shows more than one filter active.
+type ListFilter =
+  | "none"
+  | "revisit"
+  | "unrated"
+  | "myOnly"
+  | "partnerOnly";
 // Visual layout for the timeline list. "list" is the original timeline
 // card; "grid" is a 2-col photo-first feed. Independent from ViewMode.
 type ListLayout = "list" | "grid";
@@ -72,8 +75,15 @@ const FILTER_STORAGE_KEY = "homepage:filters:v1";
 
 type StoredFilters = {
   tab?: Tab;
+  // Legacy independent toggles (v1) — kept on the type so old saved
+  // sessions can be migrated on read into the new unified listFilter.
   revisitOnly?: boolean;
   unratedOnly?: boolean;
+  myOnlyEaten?: boolean;
+  partnerOnlyEaten?: boolean;
+  // v2: mutually exclusive single-pick chip group (또갈래 / 평가 안한
+  // 메뉴 / 나만 먹음 / 짝꿍만 먹음). Default = "none".
+  listFilter?: ListFilter;
   diningFilter?: DiningFilter;
   // string (not ViewMode) so legacy sessions with a now-removed
   // value like "city" don't widen the live ViewMode union.
@@ -217,8 +227,26 @@ function avgTotal(p: PlaceWithFoods): number | null {
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
+// Resolve a food's eater field into the *viewer's* perspective.
+// Returns "both" / "me" / "partner" — used by the 나만/짝꿍만 toggle
+// chips on the timeline. Mirrors the swap logic FoodFormPage uses on
+// save, but simplified to a read-only one-way mapping.
+type ViewerEater = "both" | "me" | "partner";
+function viewerOnlyEater(
+  f: PlaceWithFoods["foods"][number],
+  viewerId: string | undefined
+): ViewerEater {
+  const stored = f.eater ?? (f.is_solo ? "creator" : "both");
+  if (stored === "both") return "both";
+  // No created_by → legacy row, treat viewer as the creator.
+  const viewerIsCreator = !f.created_by || f.created_by === viewerId;
+  if (stored === "creator") return viewerIsCreator ? "me" : "partner";
+  // stored === "partner"
+  return viewerIsCreator ? "partner" : "me";
+}
+
 export default function HomePage() {
-  const { i18n, t } = useTranslation();
+  const { i18n } = useTranslation();
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
@@ -246,16 +274,25 @@ export default function HomePage() {
   const [showSearch, setShowSearch] = useState(
     initialFilters.current.showSearch ?? false
   );
-  const [rouletteOpen, setRouletteOpen] = useState(false);
-  const [revisitOnly, setRevisitOnly] = useState(
-    initialFilters.current.revisitOnly ?? false
-  );
-  // "내가 아직 평가 안 한 곳만" filter — flips on/off via the chip next
-  // to revisitOnly. Hides places where the viewer has already rated
-  // every food.
-  const [unratedOnly, setUnratedOnly] = useState(
-    initialFilters.current.unratedOnly ?? false
-  );
+  // Roulette state retired from HomePage — the dice card lives in
+  // ComparePage's carousel now (it's analytics-flavored, fits the
+  // "what should we eat" decision-helper bucket). Modal definition
+  // stays in this file as a named export so ComparePage can mount it.
+  // Single-pick filter for the chip row above the 식사 모드 segments.
+  // Migrates v1 sessions that stored four independent booleans by
+  // picking the first true one in priority order.
+  const [listFilter, setListFilter] = useState<ListFilter>(() => {
+    const stored = initialFilters.current;
+    if (stored.listFilter) return stored.listFilter;
+    if (stored.revisitOnly) return "revisit";
+    if (stored.unratedOnly) return "unrated";
+    if (stored.myOnlyEaten) return "myOnly";
+    if (stored.partnerOnlyEaten) return "partnerOnly";
+    return "none";
+  });
+  // Helper: pick a chip if not active, otherwise clear it.
+  const toggleListFilter = (next: Exclude<ListFilter, "none">) =>
+    setListFilter((prev) => (prev === next ? "none" : next));
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     // Migrate v1 saved "city" mode (when sort + 도시별 lived in the
@@ -299,6 +336,11 @@ export default function HomePage() {
   const [listLayout, setListLayout] = useState<ListLayout>(
     initialFilters.current.listLayout ?? "list"
   );
+  // Unified filter sheet — opens from the bottom and hosts every
+  // filter (정렬·도시·카테고리) in one panel. Replaces the 3-up
+  // dropdown grid that used to clip text and force three separate
+  // open-then-close cycles.
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   // Persist filters every time one changes — picked up on the next
   // mount of HomePage so users return to the same view after diving
@@ -308,8 +350,7 @@ export default function HomePage() {
       tab,
       query,
       showSearch,
-      revisitOnly,
-      unratedOnly,
+      listFilter,
       viewMode,
       diningFilter,
       categoryFilters: categoryFilter,
@@ -320,8 +361,7 @@ export default function HomePage() {
     tab,
     query,
     showSearch,
-    revisitOnly,
-    unratedOnly,
+    listFilter,
     viewMode,
     diningFilter,
     categoryFilter,
@@ -338,51 +378,24 @@ export default function HomePage() {
     getCategories(p).length === 0 ||
     (p.foods ?? []).some((f) => getCategories(f).length === 0);
 
-  // Build the native dropdown options. "전체" + "미분류" sit at the
-  // top; built-in categories are bucketed via <optgroup>. Each group
-  // also gets a "그룹 전체" rollup option as the FIRST entry inside
-  // the optgroup, so picking it filters by every child of that group
-  // (e.g. 🌏 아시안 전체 → 한식·일식·중식·... all match).
-  const categoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
-    const out: GroupedMultiSelectEntry[] = [];
-    const hasUncategorized = (places ?? []).some(isPlaceUncategorized);
-    if (hasUncategorized) {
-      out.push({
-        value: "__none__",
-        label: "카테고리 미설정 · 未分类",
-        emoji: "❓",
-      });
-    }
-    for (const g of CATEGORY_GROUPS) {
-      out.push({
-        groupLabel: `${g.ko} · ${g.zh}`,
-        options: g.keys.map((c) => ({
-          value: c,
-          label: t(`category.${c}`),
-          emoji: categoryEmojiOf(c),
-        })),
-      });
-    }
-    // Custom — collect unique non-built-in category strings from
-    // every category attached to every place. Tucked into a single
-    // "✏️ 직접 입력 · 自定义" group at the end.
-    const customs = new Set<string>();
+  // Pieces FilterSheet needs: whether any place lacks a category (so
+  // it can show the ❓ 미분류 chip), and the unique freeform user-typed
+  // category strings (so prior custom selections stay visible /
+  // deselectable inside the sheet).
+  const hasUncategorized = useMemo(
+    () => (places ?? []).some(isPlaceUncategorized),
+    [places]
+  );
+  const customCategoryStrings = useMemo(() => {
+    const set = new Set<string>();
     for (const p of places ?? []) {
       for (const c of getCategories(p)) {
         if (!c || isKnownPlaceCategory(c)) continue;
-        customs.add(c);
+        set.add(c);
       }
     }
-    if (customs.size > 0) {
-      out.push({
-        groupLabel: "✏️ 직접 입력 · 自定义",
-        options: [...customs]
-          .sort()
-          .map((c) => ({ value: c, label: c, emoji: categoryEmojiOf(c) })),
-      });
-    }
-    return out;
-  }, [places, t]);
+    return [...set].sort();
+  }, [places]);
 
   // Drop any selected category that no longer exists (e.g. user
   // deleted every place tagged with a custom string). Otherwise the
@@ -390,23 +403,24 @@ export default function HomePage() {
   useEffect(() => {
     if (categoryFilter.length === 0) return;
     const known = new Set<string>();
-    for (const entry of categoryOptions) {
-      if ("groupLabel" in entry) {
-        for (const o of entry.options) known.add(o.value);
-      } else {
-        known.add(entry.value);
-      }
+    for (const g of CATEGORY_GROUPS) {
+      for (const k of g.keys) known.add(k);
     }
+    if (hasUncategorized) known.add("__none__");
+    for (const c of customCategoryStrings) known.add(c);
     const cleaned = categoryFilter.filter((v) => known.has(v));
     if (cleaned.length !== categoryFilter.length) setCategoryFilter(cleaned);
-  }, [categoryOptions, categoryFilter]);
+  }, [hasUncategorized, customCategoryStrings, categoryFilter]);
 
   // Base list: filter first, then sort per viewMode below.
   const baseList = useMemo(() => {
     if (!places) return [];
     let list = places;
-    if (revisitOnly) list = list.filter((p) => p.want_to_revisit);
-    if (unratedOnly) {
+    // Single-pick chip group above the diningFilter — only one of the
+    // four predicates ever applies.
+    if (listFilter === "revisit") {
+      list = list.filter((p) => p.want_to_revisit);
+    } else if (listFilter === "unrated") {
       // Show only places that still need *my* rating somewhere — at
       // least one food whose viewer-side rating is null AND I'm
       // expected to rate. Foods marked as "partner only" or "creator
@@ -423,6 +437,18 @@ export default function HomePage() {
           }
           return ratingsForViewer(f, user?.id).myRating == null;
         })
+      );
+    } else if (listFilter === "myOnly") {
+      list = list.filter((p) =>
+        (p.foods ?? []).some(
+          (f) => viewerOnlyEater(f, user?.id) === "me"
+        )
+      );
+    } else if (listFilter === "partnerOnly") {
+      list = list.filter((p) =>
+        (p.foods ?? []).some(
+          (f) => viewerOnlyEater(f, user?.id) === "partner"
+        )
       );
     }
     if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
@@ -464,8 +490,7 @@ export default function HomePage() {
   }, [
     places,
     query,
-    revisitOnly,
-    unratedOnly,
+    listFilter,
     diningFilter,
     categoryFilter,
     selectedCities,
@@ -515,17 +540,6 @@ export default function HomePage() {
     const cleaned = selectedCities.filter((c) => known.has(c));
     if (cleaned.length !== selectedCities.length) setSelectedCities(cleaned);
   }, [allCities, selectedCities]);
-
-  // City filter as a flat option list for the dropdown picker.
-  const cityOptions = useMemo<GroupedMultiSelectEntry[]>(
-    () =>
-      allCities.map((c) => ({
-        value: c,
-        label: c,
-        emoji: "📍",
-      })),
-    [allCities]
-  );
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -656,29 +670,29 @@ export default function HomePage() {
                   />
               </div>
             </div>
-            {/* Quick toggles row — single horizontal scroll line so the
-                two pills never wrap and stack the title down. Narrow
-                screens scroll the row sideways instead. */}
+            {/* Single-pick chip group: one of {revisit, unrated, myOnly,
+                partnerOnly} or none. Tapping the active chip clears
+                back to "none". Horizontal scroll on narrow screens. */}
             <div className="flex gap-1.5 mb-3 px-1 overflow-x-auto hide-scrollbar">
               <button
                 type="button"
-                onClick={() => setRevisitOnly((v) => !v)}
+                onClick={() => toggleListFilter("revisit")}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
-                  revisitOnly
+                  listFilter === "revisit"
                     ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
                 <Heart
-                  className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
+                  className={`w-3.5 h-3.5 ${listFilter === "revisit" ? "fill-rose-500" : ""}`}
                 />
                 또 갈래! · 必须二刷
               </button>
               <button
                 type="button"
-                onClick={() => setUnratedOnly((v) => !v)}
+                onClick={() => toggleListFilter("unrated")}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
-                  unratedOnly
+                  listFilter === "unrated"
                     ? "bg-amber-50 text-amber-700 border-amber-200/70 shadow-[0_2px_10px_rgba(217,119,6,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
@@ -686,17 +700,27 @@ export default function HomePage() {
                 <span className="text-[13px] leading-none">✏️</span>
                 평가 안 한 메뉴 · 我还没打分
               </button>
-              {/* 룰렛 — 헤더 아이콘 자리에 두면 그라데이션 타이틀이
-                  잘려서 toggles row 끝에 액션 칩으로 옮김. peach
-                  배경으로 토글 칩들과 톤 분리해서 "필터" 아니라
-                  "액션"임을 시각적으로 구분. */}
               <button
                 type="button"
-                onClick={() => setRouletteOpen(true)}
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap bg-gradient-to-r from-peach-100 to-rose-100 text-peach-700 border-peach-200/70 shadow-sm hover:from-peach-200 hover:to-rose-200"
+                onClick={() => toggleListFilter("myOnly")}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                  listFilter === "myOnly"
+                    ? "bg-peach-50 text-peach-600 border-peach-200/70 shadow-[0_2px_10px_rgba(248,149,112,0.15)]"
+                    : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
+                }`}
               >
-                <Dice5 className="w-3.5 h-3.5" />
-                운명의 룰렛 · 听天由命
+                🙋‍♂️ 나만 먹음 · 我独享
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleListFilter("partnerOnly")}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                  listFilter === "partnerOnly"
+                    ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
+                    : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
+                }`}
+              >
+                🙋‍♀️ 짝꿍만 먹음 · 宝宝独享
               </button>
             </div>
 
@@ -725,60 +749,43 @@ export default function HomePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <GroupedMultiSelect
-                  title="정렬 · 排序"
-                  placeholder="최근순 · 最新"
-                  singleSelect
-                  options={SORT_OPTIONS}
-                  value={[viewMode]}
-                  onChange={(next) => {
-                    if (next.length > 0) setViewMode(next[0] as ViewMode);
-                  }}
-                />
-                <GroupedMultiSelect
-                  title="도시 · 城市"
-                  placeholder="모든 도시 · 全部"
-                  options={cityOptions}
-                  value={selectedCities}
-                  onChange={setSelectedCities}
-                />
-                <GroupedMultiSelect
-                  title="카테고리 · 类别"
-                  placeholder="모든 종류 · 全部"
-                  options={categoryOptions}
-                  value={categoryFilter}
-                  onChange={setCategoryFilter}
-                />
-              </div>
-
-              {/* Single-shot reset for everything in this filter strip
-                  — only renders when at least one filter is non-default
-                  so the row stays clean otherwise. */}
-              {(viewMode !== "date" ||
-                selectedCities.length > 0 ||
-                categoryFilter.length > 0 ||
-                diningFilter !== "all" ||
-                revisitOnly ||
-                unratedOnly ||
-                query.trim() !== "") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode("date");
-                    setSelectedCities([]);
-                    setCategoryFilter([]);
-                    setDiningFilter("all");
-                    setRevisitOnly(false);
-                    setUnratedOnly(false);
-                    setQuery("");
-                  }}
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-ink-500 hover:text-ink-700 transition px-2 py-1 rounded-full bg-cream-50 border border-cream-200/60"
-                >
-                  <X className="w-3 h-3" />
-                  필터 전체 초기화 · 重置全部筛选
-                </button>
-              )}
+              {/* Single unified trigger — replaces the 3-up grid where
+                  each dropdown opened its own modal and labels got
+                  truncated in narrow cells. Tap → bottom sheet with
+                  every filter in one place. Active-filter count rides
+                  on the right as a peach badge. */}
+              {(() => {
+                const sortActive = viewMode !== "date";
+                const activeCount =
+                  (sortActive ? 1 : 0) +
+                  selectedCities.length +
+                  categoryFilter.length;
+                const isActive = activeCount > 0;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setFilterSheetOpen(true)}
+                    className={`w-full inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep ${
+                      isActive
+                        ? "bg-peach-50 border-peach-200 text-peach-700"
+                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0 truncate">
+                      <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
+                      상세 필터 · 详细筛选
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 flex-shrink-0">
+                      {isActive && (
+                        <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
+                          {activeCount}
+                        </span>
+                      )}
+                      <ChevronDown className="w-4 h-4 text-ink-400" />
+                    </span>
+                  </button>
+                );
+              })()}
             </div>
 
             {/* Old "도시별" chip strip retired — selectedCity now lives
@@ -797,28 +804,36 @@ export default function HomePage() {
               return (
                 <EmptyState
                   emoji={
-                    unratedOnly
+                    listFilter === "unrated"
                       ? "✏️"
                       : onlyUncategorized
                         ? "❓"
-                        : revisitOnly
+                        : listFilter === "revisit"
                           ? "💖"
-                          : diningFilter === "home"
-                            ? "🍳"
-                            : "🍽️"
+                          : listFilter === "myOnly"
+                            ? "🙋‍♂️"
+                            : listFilter === "partnerOnly"
+                              ? "🙋‍♀️"
+                              : diningFilter === "home"
+                                ? "🍳"
+                                : "🍽️"
                   }
                   text={
-                    unratedOnly
+                    listFilter === "unrated"
                       ? "모든 메뉴에 별점을 다 줬어요! · 所有菜都打过分啦！"
                       : onlyUncategorized
                         ? "카테고리 미설정 항목이 없어요 · 没有未分类的记录"
-                        : revisitOnly
+                        : listFilter === "revisit"
                           ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
-                          : diningFilter === "home"
-                            ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
-                            : diningFilter === "out"
-                              ? "아직 외식 기록이 없어요 · 还没有探店记录"
-                              : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
+                          : listFilter === "myOnly"
+                            ? "혼자 먹은 메뉴가 아직 없어요 · 还没有我独享的菜"
+                            : listFilter === "partnerOnly"
+                              ? "짝꿍이 혼자 먹은 메뉴가 아직 없어요 · 还没有宝宝独享的菜"
+                              : diningFilter === "home"
+                                ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
+                                : diningFilter === "out"
+                                  ? "아직 외식 기록이 없어요 · 还没有探店记录"
+                                  : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
                   }
                 />
               );
@@ -888,11 +903,38 @@ export default function HomePage() {
         </div>
       </div>
 
-      <RouletteModal
-        open={rouletteOpen}
-        onClose={() => setRouletteOpen(false)}
-        places={places ?? []}
-        wishlist={wishlist ?? []}
+      {/* RouletteModal moved to ComparePage carousel — see
+          TasteDiagnosisCard / RouletteCard. The modal definition still
+          lives below so ComparePage can import it. */}
+
+      <FilterSheet
+        open={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
+        allCities={allCities}
+        selectedCities={selectedCities}
+        onChangeSelectedCities={setSelectedCities}
+        categoryFilter={categoryFilter}
+        onChangeCategoryFilter={setCategoryFilter}
+        customCategoryStrings={customCategoryStrings}
+        hasUncategorized={hasUncategorized}
+        // hasAnyActive includes the single-pick top-level chip too
+        // so the sheet's "전체 초기화" knows there's something to
+        // clear even when the user hasn't touched anything inside the
+        // sheet.
+        hasAnyActive={
+          viewMode !== "date" ||
+          selectedCities.length > 0 ||
+          categoryFilter.length > 0 ||
+          listFilter !== "none"
+        }
+        onResetAll={() => {
+          setViewMode("date");
+          setSelectedCities([]);
+          setCategoryFilter([]);
+          setListFilter("none");
+        }}
       />
 
       {addWishlistOpen && couple && (
@@ -1691,7 +1733,11 @@ function EmptyState({ emoji, text }: { emoji: string; text: string }) {
 
 // ---------- roulette ----------
 
-function RouletteModal({
+// Named export so ComparePage can mount this modal without redefining
+// it. Lives here because it depends on inferCity / avgTotal which are
+// defined at the top of this file; moving everything to its own
+// component file is a future refactor.
+export function RouletteModal({
   open,
   onClose,
   places,

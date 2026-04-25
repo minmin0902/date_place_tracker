@@ -211,7 +211,7 @@ export default function ProfileEditPage() {
                 className="input-base"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                placeholder="예) 민쥬 · 例：小敏"
+                placeholder="예) 민쥬 · 例：Judy"
                 maxLength={30}
               />
             </div>
@@ -292,7 +292,7 @@ export default function ProfileEditPage() {
               className="input-base bg-white border-rose-200 focus:border-rose-400"
               value={partnerNickname}
               onChange={(e) => setPartnerNickname(e.target.value)}
-              placeholder="예) 공주님, 자기야 · 例：宝宝、亲爱的"
+              placeholder="예) 공주님, 자기야 · 例：宝宝、小狗狗"
               maxLength={30}
             />
             <p className="text-[10px] text-ink-400">

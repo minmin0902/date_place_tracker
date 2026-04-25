@@ -1,0 +1,386 @@
+import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { RotateCcw, X } from "lucide-react";
+import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
+
+// One unified bottom-sheet that hosts all three timeline filters
+// (정렬 / 도시 / 카테고리). Replaces the previous 3-trigger grid where
+// each dropdown opened its own modal — users had to tap "open / pick /
+// close" three times. This sheet shows every section at once and
+// commits state on tap so the parent can react instantly.
+//
+// Picker UX is chip-based (taps toggle) per the spec, with category
+// group headers acting as bulk-select for their child cuisines.
+
+export type SortValue =
+  | "date"
+  | "dateAsc"
+  | "scoreDesc"
+  | "scoreAsc";
+
+const SORT_CHIPS: { value: SortValue; ko: string; zh: string; emoji: string }[] = [
+  { value: "date", emoji: "🕘", ko: "최근순", zh: "最新打卡" },
+  { value: "dateAsc", emoji: "📅", ko: "오래된순", zh: "最早打卡" },
+  { value: "scoreDesc", emoji: "⭐", ko: "별점 높은순", zh: "评分高到低" },
+  { value: "scoreAsc", emoji: "🥄", ko: "별점 낮은순", zh: "评分低到高" },
+];
+
+export function FilterSheet({
+  open,
+  onClose,
+  viewMode,
+  onChangeViewMode,
+  allCities,
+  selectedCities,
+  onChangeSelectedCities,
+  categoryFilter,
+  onChangeCategoryFilter,
+  customCategoryStrings,
+  hasUncategorized,
+  onResetAll,
+  hasAnyActive,
+}: {
+  open: boolean;
+  onClose: () => void;
+  viewMode: SortValue;
+  onChangeViewMode: (v: SortValue) => void;
+  allCities: string[];
+  selectedCities: string[];
+  onChangeSelectedCities: (v: string[]) => void;
+  categoryFilter: string[];
+  onChangeCategoryFilter: (v: string[]) => void;
+  // Freeform user-typed categories collected from places, shown in
+  // their own trailing group inside the sheet.
+  customCategoryStrings: string[];
+  // Whether the timeline has any uncategorized place — toggles the
+  // "❓ 미분류" sentinel chip on the category row.
+  hasUncategorized: boolean;
+  onResetAll: () => void;
+  // Lets the parent disable the reset link when no filter is set.
+  hasAnyActive: boolean;
+}) {
+  const { t } = useTranslation();
+  // Lock body scroll while open so swiping inside the sheet doesn't
+  // accidentally scroll the timeline behind it.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  function toggleCity(city: string) {
+    if (selectedCities.includes(city)) {
+      onChangeSelectedCities(selectedCities.filter((c) => c !== city));
+    } else {
+      onChangeSelectedCities([...selectedCities, city]);
+    }
+  }
+
+  function toggleCategory(value: string) {
+    if (categoryFilter.includes(value)) {
+      onChangeCategoryFilter(categoryFilter.filter((c) => c !== value));
+    } else {
+      onChangeCategoryFilter([...categoryFilter, value]);
+    }
+  }
+
+  function toggleCategoryGroup(keys: readonly string[]) {
+    const set = new Set(keys);
+    const allOn = keys.every((k) => categoryFilter.includes(k));
+    if (allOn) {
+      // Drop every member of the group from the selection.
+      onChangeCategoryFilter(categoryFilter.filter((c) => !set.has(c)));
+    } else {
+      const merged = new Set(categoryFilter);
+      for (const k of keys) merged.add(k);
+      onChangeCategoryFilter([...merged]);
+    }
+  }
+
+  // Pre-compute which built-in keys are covered by the dropdown so we
+  // can find any leftover freeform tags from prior selections (kept
+  // visible in 직접 입력 group so the user can deselect them).
+  const knownBuiltInKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const g of CATEGORY_GROUPS) {
+      for (const k of g.keys) set.add(k);
+    }
+    return set;
+  }, []);
+
+  const customsToShow = useMemo(() => {
+    const set = new Set<string>(customCategoryStrings);
+    for (const v of categoryFilter) {
+      if (
+        v !== "__none__" &&
+        !knownBuiltInKeys.has(v as never)
+      ) {
+        set.add(v);
+      }
+    }
+    return [...set].sort();
+  }, [customCategoryStrings, categoryFilter, knownBuiltInKeys]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-end justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl border-t border-cream-200 animate-in slide-in-from-bottom-2 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle — purely visual, signals "this slides up". */}
+        <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0">
+          <span className="block w-10 h-1 rounded-full bg-cream-200" />
+        </div>
+
+        <div className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-cream-200 flex-shrink-0">
+          <div className="min-w-0">
+            <h3 className="font-bold text-ink-900 text-base break-keep">
+              상세 필터 · 详细筛选
+            </h3>
+            <p className="text-[11px] text-ink-500 break-keep">
+              정렬·도시·카테고리 한 번에 · 一处搞定
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-cream-100 transition flex-shrink-0"
+            aria-label="close"
+          >
+            <X className="w-4 h-4 text-ink-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {/* ----- 정렬 (single-select chips) ----- */}
+          <section>
+            <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5">
+              <span>🔀</span>정렬 · 排序
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
+              {SORT_CHIPS.map((c) => {
+                const active = viewMode === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => onChangeViewMode(c.value)}
+                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
+                      active
+                        ? "bg-peach-100 text-peach-600 border-peach-300 shadow-sm"
+                        : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                    }`}
+                  >
+                    <span>{c.emoji}</span>
+                    {c.ko} · {c.zh}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ----- 도시 (multi-select chips) ----- */}
+          <section>
+            <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5 justify-between">
+              <span className="inline-flex items-center gap-1.5">
+                <span>📍</span>도시 · 城市
+              </span>
+              {selectedCities.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onChangeSelectedCities([])}
+                  className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
+                >
+                  전체 해제 · 清空
+                </button>
+              )}
+            </h4>
+            {allCities.length === 0 ? (
+              <p className="text-[11px] text-ink-400 px-1">
+                아직 도시가 없어요 · 还没有可选城市
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {allCities.map((city) => {
+                  const active = selectedCities.includes(city);
+                  return (
+                    <button
+                      key={city}
+                      type="button"
+                      onClick={() => toggleCity(city)}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
+                        active
+                          ? "bg-peach-100 text-peach-600 border-peach-300 shadow-sm"
+                          : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                      }`}
+                    >
+                      📍 {city}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* ----- 카테고리 (multi-select w/ group rollup) ----- */}
+          <section>
+            <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5 justify-between">
+              <span className="inline-flex items-center gap-1.5">
+                <span>🍽️</span>카테고리 · 类别
+              </span>
+              {categoryFilter.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onChangeCategoryFilter([])}
+                  className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
+                >
+                  전체 해제 · 清空
+                </button>
+              )}
+            </h4>
+
+            {hasUncategorized && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory("__none__")}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
+                    categoryFilter.includes("__none__")
+                      ? "bg-amber-100 text-amber-700 border-amber-300 shadow-sm"
+                      : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                  }`}
+                >
+                  ❓ 카테고리 미설정 · 未分类
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {CATEGORY_GROUPS.map((g) => {
+                const allOn = g.keys.every((k) =>
+                  categoryFilter.includes(k)
+                );
+                const anyOn = g.keys.some((k) => categoryFilter.includes(k));
+                const headerState: "on" | "partial" | "off" = allOn
+                  ? "on"
+                  : anyOn
+                    ? "partial"
+                    : "off";
+                return (
+                  <div
+                    key={g.ko}
+                    className="rounded-2xl border border-cream-200 bg-cream-50/40 px-3 py-2.5"
+                  >
+                    {/* Group header doubles as a bulk-toggle. tri-
+                        state visualization lets the user see "some of
+                        my asian options are picked, tap to fill". */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryGroup(g.keys)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition border break-keep mb-2 ${
+                        headerState === "on"
+                          ? "bg-peach-100 text-peach-600 border-peach-300"
+                          : headerState === "partial"
+                            ? "bg-peach-50 text-peach-500 border-peach-200"
+                            : "bg-white text-ink-700 border-cream-200/80 hover:bg-cream-50"
+                      }`}
+                    >
+                      <span className="w-3.5 h-3.5 rounded-full border-[1.5px] inline-flex items-center justify-center text-[9px] font-bold leading-none">
+                        {headerState === "on"
+                          ? "✓"
+                          : headerState === "partial"
+                            ? "−"
+                            : ""}
+                      </span>
+                      {g.ko} · {g.zh}
+                    </button>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.keys.map((k) => {
+                        const active = categoryFilter.includes(k);
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => toggleCategory(k)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition border break-keep ${
+                              active
+                                ? "bg-rose-100 text-rose-600 border-rose-300 shadow-sm"
+                                : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                            }`}
+                          >
+                            <span>{categoryEmojiOf(k)}</span>
+                            {/* i18n returns the active-locale label.
+                                Group header right above already shows
+                                the bilingual context (e.g. "🌏 아시안 ·
+                                亚洲"), so the chip can stay compact. */}
+                            {t(`category.${k}`)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Custom user-typed categories — kept visible so the
+                  user can deselect freeform tags they no longer want. */}
+              {customsToShow.length > 0 && (
+                <div className="rounded-2xl border border-cream-200 bg-cream-50/40 px-3 py-2.5">
+                  <p className="text-[11px] font-bold text-ink-700 mb-2 break-keep">
+                    ✏️ 직접 입력 · 自定义
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {customsToShow.map((c) => {
+                      const active = categoryFilter.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleCategory(c)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition border break-keep ${
+                            active
+                              ? "bg-rose-100 text-rose-600 border-rose-300 shadow-sm"
+                              : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                          }`}
+                        >
+                          {categoryEmojiOf(c)} {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div className="border-t border-cream-200 px-5 py-3 flex items-center justify-between gap-3 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onResetAll}
+            disabled={!hasAnyActive}
+            className="inline-flex items-center gap-1.5 text-[12px] font-bold text-ink-500 hover:text-ink-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            전체 초기화 · 重置全部
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 bg-ink-900 text-white rounded-xl text-[13px] font-bold hover:bg-ink-700 transition"
+          >
+            완료 · 完成
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
