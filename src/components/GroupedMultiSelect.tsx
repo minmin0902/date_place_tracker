@@ -118,6 +118,13 @@ export function GroupedMultiSelect({
 
   // Trigger summary: show a compact label that gives the user a sense
   // of the active selection without overflowing on narrow screens.
+  // The Chinese half (after "·") is stripped so single-pick triggers
+  // fit in the narrow grid cell. Full bilingual label is still visible
+  // inside the modal.
+  function shortenLabel(l: string): string {
+    const dot = l.indexOf(" · ");
+    return dot > 0 ? l.slice(0, dot) : l;
+  }
   let summary: string;
   if (value.length === 0) {
     summary = placeholder;
@@ -135,14 +142,16 @@ export function GroupedMultiSelect({
       }
     }
     if (groupHits.length === 1) {
-      summary = groupHits[0].groupLabel;
+      summary = shortenLabel(groupHits[0].groupLabel);
     } else if (value.length === 1) {
       const o = labelByValue.get(value[0]);
-      summary = o ? `${o.emoji ?? ""}${o.emoji ? " " : ""}${o.label}` : value[0];
+      summary = o
+        ? `${o.emoji ?? ""}${o.emoji ? " " : ""}${shortenLabel(o.label)}`
+        : value[0];
     } else {
       const first = labelByValue.get(value[0]);
       const firstLabel = first
-        ? `${first.emoji ?? ""}${first.emoji ? " " : ""}${first.label}`
+        ? `${first.emoji ?? ""}${first.emoji ? " " : ""}${shortenLabel(first.label)}`
         : value[0];
       summary = `${firstLabel} 외 ${value.length - 1}`;
     }
@@ -155,16 +164,25 @@ export function GroupedMultiSelect({
         onClick={() => setOpen(true)}
         className={
           triggerClassName ??
-          "w-full bg-white border border-cream-200/80 rounded-xl pl-3 pr-8 py-2.5 text-[12px] font-bold text-ink-700 shadow-sm focus:outline-none transition appearance-none truncate text-left relative"
+          // Active state: peach tint + border so users see at a glance
+          // which filters are non-default — replaces the floating count
+          // badge that used to clip on the screen edge.
+          `w-full border rounded-xl pl-3 pr-7 py-2.5 text-[12px] font-bold shadow-sm focus:outline-none transition appearance-none text-left relative ${
+            value.length > 0 && !singleSelect
+              ? "bg-peach-50 border-peach-200 text-peach-700"
+              : "bg-white border-cream-200/80 text-ink-700"
+          }`
         }
       >
-        <span className="block truncate">{summary}</span>
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 pointer-events-none" />
-        {value.length > 0 && (
-          <span className="absolute -top-1 -right-1 bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center shadow-sm">
-            {value.length}
-          </span>
-        )}
+        <span className="block truncate">
+          {summary}
+          {!singleSelect && value.length > 1 && (
+            <span className="ml-1 inline-block bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[16px] px-1 py-0 align-middle">
+              {value.length}
+            </span>
+          )}
+        </span>
+        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
       </button>
 
       {open && (

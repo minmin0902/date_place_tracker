@@ -84,7 +84,9 @@ type StoredFilters = {
   // children selected at once).
   categoryFilter?: string;
   categoryFilters?: string[];
+  // v1: single string. v2: array. We migrate v1 transparently on read.
   selectedCity?: string | null;
+  selectedCities?: string[];
   query?: string;
   showSearch?: boolean;
   listLayout?: ListLayout;
@@ -283,9 +285,17 @@ export default function HomePage() {
     if (!legacy || legacy === "all") return [];
     return [legacy];
   });
-  const [selectedCity, setSelectedCity] = useState<string | null>(
-    initialFilters.current.selectedCity ?? null
-  );
+  // Multi-select cities — empty array = all. Same modal UX as the
+  // category filter so the two read consistently to the user.
+  const [selectedCities, setSelectedCities] = useState<string[]>(() => {
+    const stored = initialFilters.current;
+    if (stored.selectedCities && Array.isArray(stored.selectedCities)) {
+      return stored.selectedCities;
+    }
+    // Migrate v1 single-city: wrap in an array if present.
+    if (stored.selectedCity) return [stored.selectedCity];
+    return [];
+  });
   const [listLayout, setListLayout] = useState<ListLayout>(
     initialFilters.current.listLayout ?? "list"
   );
@@ -303,7 +313,7 @@ export default function HomePage() {
       viewMode,
       diningFilter,
       categoryFilters: categoryFilter,
-      selectedCity,
+      selectedCities,
       listLayout,
     });
   }, [
@@ -315,7 +325,7 @@ export default function HomePage() {
     viewMode,
     diningFilter,
     categoryFilter,
-    selectedCity,
+    selectedCities,
     listLayout,
   ]);
 
@@ -431,8 +441,14 @@ export default function HomePage() {
         return concrete.some((c) => cats.includes(c));
       });
     }
-    if (selectedCity) {
-      list = list.filter((p) => inferCity(p.address) === selectedCity);
+    if (selectedCities.length > 0) {
+      // Multi-city OR semantics: show places whose inferred city is in
+      // the selection. Mirrors the category filter's array shape.
+      const citySet = new Set(selectedCities);
+      list = list.filter((p) => {
+        const city = inferCity(p.address);
+        return city != null && citySet.has(city);
+      });
     }
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -452,7 +468,7 @@ export default function HomePage() {
     unratedOnly,
     diningFilter,
     categoryFilter,
-    selectedCity,
+    selectedCities,
     user?.id,
   ]);
 
@@ -490,11 +506,15 @@ export default function HomePage() {
       .map(([c]) => c);
   }, [baseList]);
 
-  // Drop the selected city if it no longer exists in the current filter set.
+  // Drop any selected city that no longer exists in the current filter
+  // set (e.g. user removed every place in that city). Otherwise the
+  // hidden orphan would silently filter to zero rows.
   useEffect(() => {
-    if (!selectedCity) return;
-    if (!allCities.includes(selectedCity)) setSelectedCity(null);
-  }, [allCities, selectedCity]);
+    if (selectedCities.length === 0) return;
+    const known = new Set(allCities);
+    const cleaned = selectedCities.filter((c) => known.has(c));
+    if (cleaned.length !== selectedCities.length) setSelectedCities(cleaned);
+  }, [allCities, selectedCities]);
 
   // City filter as a flat option list for the dropdown picker.
   const cityOptions = useMemo<GroupedMultiSelectEntry[]>(
@@ -706,12 +726,10 @@ export default function HomePage() {
                 />
                 <GroupedMultiSelect
                   title="도시 · 城市"
-                  placeholder="모든 도시 · 全部城市"
-                  singleSelect
-                  allowEmpty
+                  placeholder="모든 도시 · 全部"
                   options={cityOptions}
-                  value={selectedCity ? [selectedCity] : []}
-                  onChange={(next) => setSelectedCity(next[0] ?? null)}
+                  value={selectedCities}
+                  onChange={setSelectedCities}
                 />
                 <GroupedMultiSelect
                   title="카테고리 · 类别"
@@ -721,6 +739,34 @@ export default function HomePage() {
                   onChange={setCategoryFilter}
                 />
               </div>
+
+              {/* Single-shot reset for everything in this filter strip
+                  — only renders when at least one filter is non-default
+                  so the row stays clean otherwise. */}
+              {(viewMode !== "date" ||
+                selectedCities.length > 0 ||
+                categoryFilter.length > 0 ||
+                diningFilter !== "all" ||
+                revisitOnly ||
+                unratedOnly ||
+                query.trim() !== "") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("date");
+                    setSelectedCities([]);
+                    setCategoryFilter([]);
+                    setDiningFilter("all");
+                    setRevisitOnly(false);
+                    setUnratedOnly(false);
+                    setQuery("");
+                  }}
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-ink-500 hover:text-ink-700 transition px-2 py-1 rounded-full bg-cream-50 border border-cream-200/60"
+                >
+                  <X className="w-3 h-3" />
+                  필터 전체 초기화 · 重置全部筛选
+                </button>
+              )}
             </div>
 
             {/* Old "도시별" chip strip retired — selectedCity now lives
