@@ -595,17 +595,6 @@ export default function HomePage() {
             >
               <Search className="w-5 h-5" />
             </button>
-            {/* 룰렛 — moved out of the bottom FAB cluster so the
-                timeline isn't covered by two oversized circles. */}
-            <button
-              type="button"
-              onClick={() => setRouletteOpen(true)}
-              className="p-3 bg-cream-100/70 rounded-full text-peach-500 hover:bg-cream-200 transition border border-cream-200/50"
-              aria-label="random pick"
-              title="운명의 룰렛 · 听天由命"
-            >
-              <Dice5 className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -696,6 +685,18 @@ export default function HomePage() {
               >
                 <span className="text-[13px] leading-none">✏️</span>
                 평가 안 한 메뉴 · 我还没打分
+              </button>
+              {/* 룰렛 — 헤더 아이콘 자리에 두면 그라데이션 타이틀이
+                  잘려서 toggles row 끝에 액션 칩으로 옮김. peach
+                  배경으로 토글 칩들과 톤 분리해서 "필터" 아니라
+                  "액션"임을 시각적으로 구분. */}
+              <button
+                type="button"
+                onClick={() => setRouletteOpen(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap bg-gradient-to-r from-peach-100 to-rose-100 text-peach-700 border-peach-200/70 shadow-sm hover:from-peach-200 hover:to-rose-200"
+              >
+                <Dice5 className="w-3.5 h-3.5" />
+                운명의 룰렛 · 听天由命
               </button>
             </div>
 

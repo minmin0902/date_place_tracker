@@ -12,6 +12,7 @@ import FoodFormPage from "@/pages/FoodFormPage";
 import ComparePage from "@/pages/ComparePage";
 import MapPage from "@/pages/MapPage";
 import SettingsPage from "@/pages/SettingsPage";
+import ProfileEditPage from "@/pages/ProfileEditPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -96,6 +97,7 @@ function Gate() {
         <Route path="map" element={<MapPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="profile/:who" element={<ProfileEditPage />} />
         <Route path="places/new" element={<PlaceFormPage />} />
         <Route path="places/:id" element={<PlaceDetailPage />} />
         <Route path="places/:id/edit" element={<PlaceFormPage />} />

@@ -120,6 +120,29 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["couples"]["Insert"]>;
       };
+      profiles: {
+        Row: {
+          user_id: string;
+          nickname: string | null;
+          // 내가 짝꿍에게 붙여준 애칭. 짝꿍이 본인 프로필 화면에서
+          // "내 짝꿍이 나를 OOO 라고 부른다" 로 노출되는 근거 데이터.
+          partner_nickname: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          hate_ingredients: string[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          nickname?: string | null;
+          partner_nickname?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          hate_ingredients?: string[] | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+      };
       wishlist_places: {
         Row: {
           id: string;
@@ -157,3 +180,4 @@ export type Food = Database["public"]["Tables"]["foods"]["Row"];
 export type Couple = Database["public"]["Tables"]["couples"]["Row"];
 export type WishlistPlace =
   Database["public"]["Tables"]["wishlist_places"]["Row"];
+export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
