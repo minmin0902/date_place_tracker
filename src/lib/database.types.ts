@@ -158,6 +158,59 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
       };
+      notifications: {
+        Row: {
+          id: string;
+          recipient_id: string;
+          couple_id: string;
+          kind: "place" | "food" | "memo" | "memo_thread";
+          actor_id: string;
+          place_id: string | null;
+          food_id: string | null;
+          memo_id: string | null;
+          preview: string | null;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          recipient_id: string;
+          couple_id: string;
+          kind: "place" | "food" | "memo" | "memo_thread";
+          actor_id: string;
+          place_id?: string | null;
+          food_id?: string | null;
+          memo_id?: string | null;
+          preview?: string | null;
+          read_at?: string | null;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["notifications"]["Insert"]
+        >;
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth_key: string;
+          user_agent: string | null;
+          created_at: string;
+          last_seen_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth_key: string;
+          user_agent?: string | null;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["push_subscriptions"]["Insert"]
+        >;
+      };
       memos: {
         Row: {
           id: string;
@@ -217,6 +270,10 @@ export type Database = {
 export type Place = Database["public"]["Tables"]["places"]["Row"];
 export type Food = Database["public"]["Tables"]["foods"]["Row"];
 export type Memo = Database["public"]["Tables"]["memos"]["Row"];
+export type NotificationRow =
+  Database["public"]["Tables"]["notifications"]["Row"];
+export type PushSubscriptionRow =
+  Database["public"]["Tables"]["push_subscriptions"]["Row"];
 export type Couple = Database["public"]["Tables"]["couples"]["Row"];
 export type WishlistPlace =
   Database["public"]["Tables"]["wishlist_places"]["Row"];

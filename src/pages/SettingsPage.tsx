@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  Bell,
+  BellOff,
   ChevronRight,
   Eye,
   EyeOff,
@@ -10,6 +12,7 @@ import {
   KeyRound,
   LogOut,
 } from "lucide-react";
+import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple, useSetCoupleHome } from "@/hooks/useCouple";
@@ -498,6 +501,10 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Push notifications card — only useful in real-auth mode
+            since the local dev seed has no notifications backend. */}
+        {!ALLOW_NO_AUTH && <PushNotificationCard />}
+
         {/* Password change — Supabase mode only. In ALLOW_NO_AUTH (local
             dev with seeded localDb) there's no real auth session to
             update, so the card hides itself. */}
@@ -733,6 +740,69 @@ function PersonStatCell({
         <span>{badge.emoji}</span>
         <span>{badge.label}</span>
       </span>
+    </div>
+  );
+}
+
+// Push notification opt-in card. Sits above the password card on the
+// settings page. Surfaces the four states the underlying hook can
+// return so the user always knows why notifications aren't firing.
+function PushNotificationCard() {
+  const { status, busy, error, enable, disable } = usePushSubscription();
+
+  const isOn = status === "granted-subscribed";
+  const canEnable =
+    status === "default" || status === "granted-unsubscribed";
+  const showHelpText = status === "denied" || status === "unsupported";
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span
+          className={`p-2 rounded-full ${isOn ? "bg-peach-100 text-peach-500" : "bg-cream-100 text-ink-500"}`}
+        >
+          {isOn ? (
+            <Bell className="w-4 h-4" />
+          ) : (
+            <BellOff className="w-4 h-4" />
+          )}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-ink-700">
+            푸시 알림 · 推送通知
+          </p>
+          <p className="text-[11px] text-ink-400">
+            {isOn
+              ? "짝꿍이 메모/사진 올리면 즉시 알림이 와요 · 宝宝有动静时立即推送"
+              : "짝꿍 활동을 앱이 닫혀있어도 알 수 있어요 · 应用关闭也能收到提醒"}
+          </p>
+        </div>
+      </div>
+
+      {showHelpText && (
+        <p className="text-[11px] text-rose-500 bg-rose-50 border border-rose-200 rounded-xl p-3 leading-snug">
+          {status === "denied"
+            ? "브라우저에서 알림이 차단되어 있어요. 브라우저 설정에서 알림을 허용해주세요. · 浏览器已禁止通知，请在浏览器设置中允许。"
+            : "이 브라우저는 푸시 알림을 지원하지 않아요 (iPhone은 홈 화면에 추가한 PWA에서만 동작). · 浏览器不支持推送（iPhone 仅支持已添加到主屏幕的 PWA）。"}
+        </p>
+      )}
+
+      {error && (
+        <p className="text-[11px] text-rose-500 break-words">{error}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void (isOn ? disable() : enable())}
+        disabled={busy || (!isOn && !canEnable)}
+        className={`w-full ${isOn ? "btn-ghost border border-cream-200" : "btn-primary"} disabled:opacity-50`}
+      >
+        {busy
+          ? "처리 중… · 处理中…"
+          : isOn
+            ? "알림 끄기 · 关闭通知"
+            : "알림 켜기 · 开启通知"}
+      </button>
     </div>
   );
 }

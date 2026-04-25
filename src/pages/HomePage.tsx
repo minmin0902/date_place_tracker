@@ -44,6 +44,7 @@ import { CategoryChips } from "@/components/CategoryChips";
 import { FilterSheet, type SortValue } from "@/components/FilterSheet";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoCommentInline } from "@/components/MemoComment";
+import { NotificationBell } from "@/components/NotificationBell";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -682,6 +683,7 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-1.5">
+            <NotificationBell />
             <button
               type="button"
               onClick={() => void onManualRefresh()}
