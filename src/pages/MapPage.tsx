@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+/// <reference types="google.maps" />
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   APIProvider,
   Map,
   AdvancedMarker,
   InfoWindow,
+  useApiIsLoaded,
 } from "@vis.gl/react-google-maps";
+import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/PageHeader";
 import { useCouple } from "@/hooks/useCouple";
-import { usePlaces } from "@/hooks/usePlaces";
+import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import { supabase } from "@/lib/supabase";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 const MAP_ID = "date-place-map";
@@ -49,10 +53,84 @@ function RevisitPin() {
   );
 }
 
+// Backfill missing coordinates: any place that has an address but no
+// lat/lng gets geocoded once via google.maps.Geocoder, written back to
+// Supabase, and the places query is invalidated so the new marker appears.
+// Lives inside <APIProvider> so the Maps script is guaranteed to be loaded.
+function GeocodeBackfill({ places }: { places: PlaceWithFoods[] }) {
+  const apiLoaded = useApiIsLoaded();
+  const qc = useQueryClient();
+  // Track ids we've already attempted this session so we don't loop on
+  // permanent geocode failures (e.g. "South side of mountain, no address").
+  const tried = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!apiLoaded) return;
+    const missing = places.filter(
+      (p) =>
+        (p.latitude == null || p.longitude == null) &&
+        p.address &&
+        p.address.trim().length > 0 &&
+        !tried.current.has(p.id)
+    );
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    const geocoder = new google.maps.Geocoder();
+
+    async function run() {
+      let didUpdate = false;
+      for (const p of missing) {
+        if (cancelled) break;
+        tried.current.add(p.id);
+        try {
+          const res = await geocoder.geocode({ address: p.address! });
+          const top = res.results?.[0];
+          if (!top) continue;
+          const loc = top.geometry?.location;
+          if (!loc) continue;
+          const lat = loc.lat();
+          const lng = loc.lng();
+          const { error } = await supabase
+            .from("places")
+            .update({ latitude: lat, longitude: lng })
+            .eq("id", p.id);
+          if (!error) didUpdate = true;
+        } catch {
+          // Geocoder throws on rate limit / no results — just skip and
+          // remember it via tried.current.
+        }
+        // Throttle: stay polite to the API and avoid OVER_QUERY_LIMIT.
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (didUpdate && !cancelled) {
+        qc.invalidateQueries({ queryKey: ["places"] });
+      }
+    }
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiLoaded, places, qc]);
+
+  return null;
+}
+
 export default function MapPage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const missingCoords = useMemo(
+    () =>
+      (places ?? []).filter(
+        (p) =>
+          (p.latitude == null || p.longitude == null) &&
+          p.address &&
+          p.address.trim().length > 0
+      ).length,
+    [places]
+  );
 
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
@@ -123,8 +201,19 @@ export default function MapPage() {
             또 갈래 · 必须二刷
           </span>
         </div>
+        {/* Backfill notice — only while there are still places without
+            coordinates. Disappears once all are geocoded. */}
+        {missingCoords > 0 && (
+          <div className="absolute top-3 right-3 z-10 bg-amber-50/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-amber-200 text-[11px] font-bold text-amber-700 max-w-[180px]">
+            좌표 채우는 중… · 正在补坐标…
+            <div className="text-[10px] font-number font-bold opacity-70 mt-0.5">
+              {missingCoords}곳 · 处
+            </div>
+          </div>
+        )}
         {initialCenter ? (
           <APIProvider apiKey={KEY}>
+            <GeocodeBackfill places={places ?? []} />
             <Map
               mapId={MAP_ID}
               defaultCenter={initialCenter}
