@@ -64,18 +64,18 @@ export default function ComparePage() {
   return (
     <div>
       <PageHeader
-        title="우리의 입맛 지도 · 我们的口味地图"
-        subtitle="둘이 뭘 좋아하는지 한눈에 · 看看我们俩各自的口味"
+        title="우리의 취향 지도 · 我们的口味地图"
+        subtitle="서로의 입맛을 한눈에 비교해봐요 · 一秒看懂咱俩的口味默契"
       />
       <div className="px-5 space-y-8 pt-2 pb-8">
         <Section
           icon={<HeartHandshake className="w-5 h-5" />}
           iconBg="bg-rose-100"
           iconColor="text-rose-500"
-          titleKo="💕 천생연분"
-          titleZh="灵魂伴侣"
-          descKo="둘 다 인정한 진짜 맛집"
-          descZh="俩人都赞不绝口的"
+          titleKo="💕 천생연분 맛집"
+          titleZh="双向奔赴"
+          descKo="우리 둘 다 푹 빠진 곳"
+          descZh="俩人都爱惨了！"
           empty={soulmates.length === 0}
           emptyText="아직 없어요 · 还没有"
         >
@@ -88,18 +88,18 @@ export default function ComparePage() {
           icon={<Swords className="w-5 h-5" />}
           iconBg="bg-indigo-100"
           iconColor="text-indigo-500"
-          titleKo="🥊 입맛 전쟁"
-          titleZh="口味大战"
-          descKo="호불호가 확 갈린 메뉴"
-          descZh="俩人评价差超多的"
+          titleKo="🥊 입맛 격돌"
+          titleZh="口味大PK"
+          descKo="서로 취향이 확 갈린 메뉴"
+          descZh="评价两极分化"
           empty={tasteWar.length === 0}
           emptyText="아직 없어요 · 还没有"
         >
           {tasteWar.map((r) => {
             const myFav = r.mine > r.partner;
             const badge = myFav
-              ? "🙋‍♂️ 나의 최애 · 我更爱"
-              : "🙋‍♀️ 짝꿍의 최애 · 宝宝更爱";
+              ? "🙋‍♂️ 내 원픽! · 我的本命"
+              : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
             return <FoodCard key={r.foodId} r={r} badge={badge} showBalance />;
           })}
         </Section>
@@ -109,10 +109,10 @@ export default function ComparePage() {
             icon={<Frown className="w-5 h-5" />}
             iconBg="bg-cream-200"
             iconColor="text-ink-500"
-            titleKo="🙅 다신 안 가"
-            titleZh="不去了"
-            descKo="둘 다 별로였던 곳"
-            descZh="俩人都不喜欢的"
+            titleKo="🙅 여긴 패스!"
+            titleZh="踩雷预警"
+            descKo="우리 스타일은 아니었던 곳"
+            descZh="绝对的黑名单"
           >
             {neverAgain.map((r) => (
               <FoodCard key={r.foodId} r={r} />

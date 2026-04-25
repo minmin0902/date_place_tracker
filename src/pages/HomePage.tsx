@@ -270,8 +270,8 @@ export default function HomePage() {
             <h1 className="text-[22px] sm:text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
               우리의 식탁 · 我们的餐桌
             </h1>
-            <p className="text-[10px] text-ink-400 font-bold tracking-[0.18em] uppercase font-number truncate">
-              Couple Food Diary
+            <p className="text-[11px] text-ink-400 font-bold truncate">
+              둘이 함께 채우는 맛집 일기 · 咱俩的干饭日记
             </p>
           </div>
           <button
@@ -338,7 +338,7 @@ export default function HomePage() {
                 <Heart
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
-                또 갈래 · 必须二刷
+                또 갈래! 맛집 · 必须二刷
               </button>
             </div>
 
@@ -414,8 +414,8 @@ export default function HomePage() {
                 emoji={revisitOnly ? "💖" : "🍽️"}
                 text={
                   revisitOnly
-                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的地方"
-                    : "아직 다녀온 곳이 없어요 · 还没有记录"
+                    ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
+                    : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
                 }
               />
             )}
@@ -625,7 +625,7 @@ function StatsDashboard({
       <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
       <div className="flex flex-col gap-1 items-end min-w-0">
         <span className="text-[10px] sm:text-[11px] font-bold text-peach-500 tracking-[0.15em] uppercase truncate">
-          자주 찾은 · 最常吃
+          자주 찾은 메뉴 · 最常翻牌
         </span>
         {stats.topCategory ? (
           <div className="mt-1 flex items-center gap-1.5 min-w-0">
@@ -1056,7 +1056,10 @@ function RouletteModal({
   const { t } = useTranslation();
   const [source, setSource] = useState<RouletteSource>("both");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [cityFilter, setCityFilter] = useState<string | null>(null);
+  // Roulette city filter is multi-select on purpose — picking 2 or 3 cities
+  // and spinning across them is a common "where should we eat tonight"
+  // workflow. Empty set means "all cities".
+  const [cityFilter, setCityFilter] = useState<Set<string>>(() => new Set());
   const [picked, setPicked] = useState<RouletteEntry | null>(null);
   const [spinning, setSpinning] = useState(false);
 
@@ -1108,7 +1111,7 @@ function RouletteModal({
   const availableCategories = useMemo(() => {
     const cats = new Set<string>();
     for (const e of sourcePool) {
-      if (cityFilter && e.city !== cityFilter) continue;
+      if (cityFilter.size > 0 && (!e.city || !cityFilter.has(e.city))) continue;
       if (e.category) cats.add(e.category);
     }
     return Array.from(cats);
@@ -1131,7 +1134,9 @@ function RouletteModal({
   const pool = useMemo(() => {
     let out = sourcePool;
     if (categoryFilter) out = out.filter((e) => e.category === categoryFilter);
-    if (cityFilter) out = out.filter((e) => e.city === cityFilter);
+    if (cityFilter.size > 0) {
+      out = out.filter((e) => e.city != null && cityFilter.has(e.city));
+    }
     return out;
   }, [sourcePool, categoryFilter, cityFilter]);
 
@@ -1142,18 +1147,28 @@ function RouletteModal({
     }
   }, [categoryFilter, availableCategories]);
   useEffect(() => {
-    if (cityFilter && !availableCities.includes(cityFilter)) {
-      setCityFilter(null);
+    if (cityFilter.size === 0) return;
+    const present = new Set(availableCities);
+    let changed = false;
+    const next = new Set<string>();
+    for (const c of cityFilter) {
+      if (present.has(c)) next.add(c);
+      else changed = true;
     }
+    if (changed) setCityFilter(next);
   }, [cityFilter, availableCities]);
 
   // Reset on open/close, and seed a teaser pick when the pool changes.
+  // setCityFilter must use the functional form and bail out when the Set
+  // is already empty — passing `new Set()` unconditionally creates a new
+  // reference each render, the cityFilter dep then changes, the effect
+  // re-runs, and we get "Maximum update depth exceeded".
   useEffect(() => {
     if (!open) {
       setPicked(null);
       setSpinning(false);
       setCategoryFilter(null);
-      setCityFilter(null);
+      setCityFilter((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     if (pool.length > 0) {
@@ -1245,7 +1260,11 @@ function RouletteModal({
             "가볼래 · 种草",
             <BookmarkPlus className="w-3.5 h-3.5" />
           )}
-          {sourceButton("both", "다 · 全部", <Dice5 className="w-3.5 h-3.5" />)}
+          {sourceButton(
+            "both",
+            "다 돌려! · 全都要",
+            <Dice5 className="w-3.5 h-3.5" />
+          )}
         </div>
 
         {/* category chips */}
@@ -1277,7 +1296,7 @@ function RouletteModal({
           </div>
         </div>
 
-        {/* city chips — only when the active source has any city info */}
+        {/* city chips — multi-select. Empty set = "all cities". */}
         {availableCities.length > 0 && (
           <div className="mb-3">
             <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
@@ -1286,21 +1305,31 @@ function RouletteModal({
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
-                onClick={() => setCityFilter(null)}
-                className={`chip text-[11px] px-2.5 py-0.5 ${cityFilter === null ? "chip-active" : ""}`}
+                onClick={() => setCityFilter(new Set())}
+                className={`chip text-[11px] px-2.5 py-0.5 ${cityFilter.size === 0 ? "chip-active" : ""}`}
               >
                 전부 · 全部
               </button>
-              {availableCities.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setCityFilter(cityFilter === c ? null : c)}
-                  className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${cityFilter === c ? "chip-active" : ""}`}
-                >
-                  📍 {c}
-                </button>
-              ))}
+              {availableCities.map((c) => {
+                const active = cityFilter.has(c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() =>
+                      setCityFilter((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c)) next.delete(c);
+                        else next.add(c);
+                        return next;
+                      })
+                    }
+                    className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${active ? "chip-active" : ""}`}
+                  >
+                    📍 {c}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1331,7 +1360,7 @@ function RouletteModal({
               ) : (
                 <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
                   {picked.kind === "revisit"
-                    ? "또 갈래 · 必须二刷"
+                    ? "또 올래! · 必须二刷"
                     : "위시리스트 · 种草清单"}
                 </p>
               )}

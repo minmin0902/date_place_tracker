@@ -168,7 +168,7 @@ export default function FoodFormPage() {
 
         <div>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
-            사진 · 美照
+            사진 · 绝美返图
           </label>
           {couple && (
             <PhotoUploader

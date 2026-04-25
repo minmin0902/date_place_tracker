@@ -64,6 +64,38 @@ export function useCreateCouple() {
   });
 }
 
+// Update the couple's home address — used by the home-cooking mode
+// (skips per-place location picking) and renders a 🏠 marker on the map.
+export function useSetCoupleHome() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      coupleId: string;
+      address: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    }) => {
+      if (ALLOW_NO_AUTH) {
+        // localDb couples don't persist home address yet; treat as no-op.
+        return null;
+      }
+      const { data, error } = await supabase
+        .from("couples")
+        .update({
+          home_address: input.address,
+          home_latitude: input.latitude,
+          home_longitude: input.longitude,
+        })
+        .eq("id", input.coupleId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["couple"] }),
+  });
+}
+
 export function useJoinCouple() {
   const qc = useQueryClient();
   return useMutation({

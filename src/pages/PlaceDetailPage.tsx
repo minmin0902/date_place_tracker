@@ -20,7 +20,7 @@ export default function PlaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const { data: place, isLoading } = usePlace(id);
+  const { data: place, isLoading, isError, error } = usePlace(id);
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const deletePlace = useDeletePlace();
@@ -50,8 +50,37 @@ export default function PlaceDetailPage() {
   if (isLoading) {
     return <p className="p-8 text-center text-ink-500">{t("common.loading")}</p>;
   }
+  // Surface any underlying Supabase / network error instead of falling
+  // through to the silent "common.empty" copy — that made every failure
+  // look like a missing record.
+  if (isError) {
+    console.error("[PlaceDetailPage] usePlace error:", error);
+    const e = error as unknown;
+    const msg =
+      e instanceof Error
+        ? e.message
+        : typeof e === "object" && e !== null
+          ? JSON.stringify(e)
+          : String(e);
+    return (
+      <div className="p-6">
+        <PageHeader title="불러오기 실패 · 加载失败" back />
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 text-rose-600 p-4 text-sm whitespace-pre-wrap break-words">
+          {msg}
+        </div>
+        <p className="text-xs text-ink-400 mt-3">
+          place id: <span className="font-number">{id}</span>
+        </p>
+      </div>
+    );
+  }
   if (!place) {
-    return <p className="p-8 text-center text-ink-500">{t("common.empty")}</p>;
+    return (
+      <div className="p-6">
+        <PageHeader title="찾을 수 없어요 · 找不到记录" back />
+        <p className="mt-4 text-sm text-ink-500">{t("common.empty")}</p>
+      </div>
+    );
   }
 
   const foods = place.foods ?? [];
@@ -119,6 +148,14 @@ export default function PlaceDetailPage() {
       />
 
       <div className="px-5 py-2 space-y-5 pb-8">
+        {/* Home-cooked banner — small visual cue that this entry is
+            "we made this at home" rather than a restaurant visit. */}
+        {place.is_home_cooked && (
+          <div className="flex items-center gap-2 bg-rose-50 border border-rose-100 rounded-full px-3 py-1.5 w-fit text-xs font-bold text-rose-500">
+            <span className="text-base leading-none">🍳</span>
+            <span>집밥 · 在家做的</span>
+          </div>
+        )}
         {/* Photos */}
         {place.photo_urls && place.photo_urls.length > 0 && (
           <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1">
@@ -138,7 +175,7 @@ export default function PlaceDetailPage() {
           <div className="col-span-2 flex items-center justify-between p-6 rounded-[2rem] bg-gradient-to-br from-peach-100 to-rose-100 border border-rose-200/60 shadow-airy">
             <div>
               <p className="text-sm font-medium text-rose-500 mb-1">
-                {t("place.avgScore")}
+                우리의 별점 · 我们的评分
               </p>
               <div className="text-5xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 tracking-tight">
                 {avg ?? "-"}
@@ -175,7 +212,7 @@ export default function PlaceDetailPage() {
                 place.want_to_revisit ? "fill-rose-400 text-rose-400" : ""
               }`}
             />
-            <span className="text-sm font-medium">{t("place.wantRevisit")}</span>
+            <span className="text-sm font-medium">또 올래! · 必须二刷</span>
           </button>
         </section>
 
@@ -200,28 +237,32 @@ export default function PlaceDetailPage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-sans font-bold text-lg flex items-baseline gap-2">
-              {t("place.foods")}
-              <span className="text-peach-400 text-sm">{foods.length}</span>
+              우리가 먹은 메뉴 · 我们吃过的
+              <span className="text-peach-400 text-sm font-number">
+                {foods.length}
+              </span>
             </h2>
             <Link
               to={`/places/${place.id}/foods/new`}
               className="flex items-center gap-1 px-3 py-1.5 bg-peach-100 text-peach-500 rounded-full text-sm font-medium hover:bg-peach-200 transition"
             >
               <Plus className="w-4 h-4" />
-              {t("place.addFood")}
+              메뉴 추가 · 记一笔
             </Link>
           </div>
 
           {!foods.length && (
             <div className="text-center py-10 bg-white rounded-3xl border border-cream-200 border-dashed">
               <span className="text-4xl mb-2 block">🍽️</span>
-              <p className="text-ink-500 text-sm">{t("place.noFoods")}</p>
+              <p className="text-ink-500 text-sm">
+                아직 등록된 메뉴가 없어요 · 还没记下吃了啥
+              </p>
             </div>
           )}
 
           {disagreeFoods.length > 0 && (
             <FoodGroup
-              title={t("place.disagreeFoods")}
+              title="🧐 서로 입맛이 달랐어요 · 评价两极分化"
               tone="rose"
               foods={disagreeFoods}
               placeId={place.id}
@@ -231,7 +272,7 @@ export default function PlaceDetailPage() {
 
           {agreeFoods.length > 0 && (
             <FoodGroup
-              title={t("place.agreeFoods")}
+              title="🥰 둘 다 만족했어요 · 疯狂打call"
               tone="peach"
               foods={agreeFoods}
               placeId={place.id}
@@ -241,7 +282,7 @@ export default function PlaceDetailPage() {
 
           {unrated.length > 0 && (
             <FoodGroup
-              title="-"
+              title="💬 아직 평가 전 · 等待打分"
               tone="neutral"
               foods={unrated}
               placeId={place.id}
@@ -275,12 +316,10 @@ function FoodGroup({
         : "bg-ink-300";
   return (
     <div className="mt-5 first:mt-0">
-      {title !== "-" && (
-        <div className="flex items-center gap-2 mb-2 px-1">
-          <span className={`w-2 h-2 rounded-full ${dotClass}`} />
-          <span className="text-sm font-semibold text-ink-700">{title}</span>
-        </div>
-      )}
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+        <span className="text-sm font-semibold text-ink-700">{title}</span>
+      </div>
       <div className="space-y-3">
         {foods.map((f) => (
           <FoodCard key={f.id} food={f} placeId={placeId} onDelete={onDelete} />
@@ -332,9 +371,12 @@ function FoodCard({
       </div>
 
       <div className="flex items-end justify-between gap-3 pr-16 mb-3">
-        <h3 className="font-semibold text-ink-900 text-base truncate">
-          {food.name}
-        </h3>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-ink-900 text-base truncate">
+            {food.name}
+          </h3>
+          {food.chef && <ChefBadge chef={food.chef} />}
+        </div>
         {total > 0 && (
           <div className="text-2xl font-number font-bold text-peach-400 leading-none">
             {total.toFixed(1)}
@@ -388,6 +430,34 @@ function FoodCard({
         </p>
       )}
     </div>
+  );
+}
+
+// Compact chef-credit badge under the food name. Tone matches the
+// home-cooking color cue used elsewhere (peach=me, rose=partner,
+// amber=both) for visual continuity.
+function ChefBadge({ chef }: { chef: "me" | "partner" | "together" }) {
+  const map = {
+    me: {
+      label: "🙋‍♀️ 내가 만들었어! · 我做的",
+      cls: "bg-peach-50 text-peach-500 border-peach-100",
+    },
+    partner: {
+      label: "🙋‍♂️ 짝꿍이 만들었어! · 宝宝做的",
+      cls: "bg-rose-50 text-rose-500 border-rose-100",
+    },
+    together: {
+      label: "👩‍🍳👨‍🍳 같이 만들었어! · 一起做的",
+      cls: "bg-amber-50 text-amber-600 border-amber-100",
+    },
+  } as const;
+  const m = map[chef];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${m.cls}`}
+    >
+      {m.label}
+    </span>
   );
 }
 
