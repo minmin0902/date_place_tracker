@@ -11,7 +11,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate, ratingsForViewer } from "@/lib/utils";
-import { categoryEmojiOf, isKnownPlaceCategory } from "@/lib/constants";
+import {
+  CATEGORY_EMOJI,
+  categoryEmojiOf,
+  isKnownPlaceCategory,
+} from "@/lib/constants";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -185,15 +189,33 @@ export default function PlaceDetailPage() {
             <div className="text-5xl drop-shadow-sm">🏆</div>
           </div>
 
-          {place.category && (
+          {/* Category tile — always rendered now. When the place has
+              no category set, the tile becomes an amber "❓ 미분류"
+              CTA linking straight to the edit form so the user can
+              tag it without hunting through settings. */}
+          {place.category ? (
             <div className="p-4 rounded-3xl bg-white border border-cream-200 flex flex-col items-center justify-center gap-2 shadow-soft">
               <span className="text-3xl">{categoryEmojiOf(place.category)}</span>
-              <span className="text-sm font-medium text-ink-700">
+              <span className="text-sm font-medium text-ink-700 text-center">
                 {isKnownPlaceCategory(place.category)
                   ? t(`category.${place.category}`)
                   : place.category}
               </span>
             </div>
+          ) : (
+            <Link
+              to={`/places/${place.id}/edit`}
+              className="p-4 rounded-3xl bg-amber-50 border border-amber-200 flex flex-col items-center justify-center gap-1 shadow-soft active:scale-[0.98] transition"
+            >
+              <span className="text-3xl">❓</span>
+              <span className="text-[12px] font-bold text-amber-700 text-center leading-tight">
+                미분류 · 未分类
+                <br />
+                <span className="text-[10px] opacity-70 font-medium">
+                  탭해서 태그하기
+                </span>
+              </span>
+            </Link>
           )}
 
           <button
@@ -204,7 +226,7 @@ export default function PlaceDetailPage() {
               place.want_to_revisit
                 ? "bg-rose-100 border-rose-200 text-rose-500"
                 : "bg-white border-cream-200 text-ink-400 hover:border-rose-200 hover:text-rose-400"
-            } ${!place.category ? "col-span-2" : ""}`}
+            }`}
             aria-pressed={place.want_to_revisit}
           >
             <Heart
@@ -383,18 +405,24 @@ function FoodCard({
           <h3 className="font-semibold text-ink-900 text-base truncate">
             {food.name}
           </h3>
-          {food.chef && <ChefBadge chef={food.chef} />}
-          {/* "Rate this" CTA — visible only to the partner who hasn't
-              rated this dish yet. Tapping the badge jumps straight to
-              the edit form so they can drop a score in one tap. */}
-          {!myWasGiven && (
-            <Link
-              to={`/places/${placeId}/foods/${food.id}/edit`}
-              className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
-            >
-              ✏️ 내 별점 아직 안 줬어요 · 还没打分
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+            {/* Food-level category chip — built-in keys go through i18n,
+                custom strings render as-is, missing → amber CTA Link
+                pointing at the edit form so the user can tag it. */}
+            <FoodCategoryChip food={food} placeId={placeId} />
+            {food.chef && <ChefBadge chef={food.chef} />}
+            {/* "Rate this" CTA — visible only to the partner who hasn't
+                rated this dish yet. Tapping the badge jumps straight to
+                the edit form so they can drop a score in one tap. */}
+            {!myWasGiven && (
+              <Link
+                to={`/places/${placeId}/foods/${food.id}/edit`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
+              >
+                ✏️ 내 별점 아직 안 줬어요 · 还没打分
+              </Link>
+            )}
+          </div>
         </div>
         {total > 0 && (
           <div className="text-2xl font-number font-bold text-peach-400 leading-none">
@@ -473,9 +501,45 @@ function ChefBadge({ chef }: { chef: "me" | "partner" | "together" }) {
   const m = map[chef];
   return (
     <span
-      className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${m.cls}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${m.cls}`}
     >
       {m.label}
+    </span>
+  );
+}
+
+// Food category chip — built-in keys go through i18n, custom strings
+// render as-is, missing categories become an amber CTA Link to the
+// edit form so the user can fill them in inline.
+function FoodCategoryChip({
+  food,
+  placeId,
+}: {
+  food: Food;
+  placeId: string;
+}) {
+  const { t } = useTranslation();
+  if (!food.category) {
+    return (
+      <Link
+        to={`/places/${placeId}/foods/${food.id}/edit`}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition"
+      >
+        ❓ 종류 미분류 · 未分类
+      </Link>
+    );
+  }
+  // Treat any FOOD_CATEGORIES / PLACE_CATEGORIES key as known and
+  // run it through i18n; custom strings (typed via "기타" input)
+  // render as-is. Both share the same category.* namespace so a
+  // single t() call covers it.
+  const known = food.category in CATEGORY_EMOJI;
+  const label = known
+    ? t(`category.${food.category}`, { defaultValue: food.category })
+    : food.category;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border border-cream-200 bg-cream-50 text-ink-600">
+      {categoryEmojiOf(food.category)} {label}
     </span>
   );
 }

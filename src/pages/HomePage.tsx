@@ -267,15 +267,22 @@ export default function HomePage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
+  // A place is "needs categorizing" if either the place itself has no
+  // category, or any of its foods is missing a category. That way the
+  // 미분류 filter surfaces partially-tagged places too — users can
+  // fix the missing food categories without combing through every
+  // record.
+  const isPlaceUncategorized = (p: PlaceWithFoods) =>
+    !p.category || (p.foods ?? []).some((f) => !f.category);
+
   // Build the category dropdown options dynamically: built-in list first,
   // then any custom strings the user has saved (via the "기타" input)
   // appended in the order they appeared. The "__none__" sentinel
-  // surfaces places where category was never set (so the user can
-  // jump in and tag them).
+  // surfaces places that still need tagging (place-level or food-level).
   const categoryOptions = useMemo(() => {
     const out: { value: string; label: string }[] = [];
     out.push({ value: "all", label: "모든 종류 · 全部" });
-    const hasUncategorized = (places ?? []).some((p) => !p.category);
+    const hasUncategorized = (places ?? []).some(isPlaceUncategorized);
     if (hasUncategorized) {
       out.push({ value: "__none__", label: "❓ 카테고리 미설정 · 未分类" });
     }
@@ -329,7 +336,7 @@ export default function HomePage() {
     else if (diningFilter === "home")
       list = list.filter((p) => p.is_home_cooked);
     if (categoryFilter === "__none__") {
-      list = list.filter((p) => !p.category);
+      list = list.filter(isPlaceUncategorized);
     } else if (categoryFilter !== "all") {
       list = list.filter((p) => p.category === categoryFilter);
     }
@@ -998,6 +1005,7 @@ function TimelineItem({
   isLast: boolean;
   viewerId: string | undefined;
 }) {
+  const { t } = useTranslation();
   const avg = avgTotal(place);
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
@@ -1008,6 +1016,15 @@ function TimelineItem({
     const view = ratingsForViewer(f, viewerId);
     return view.myRating == null;
   }).length;
+  const uncategorizedFoods = (place.foods ?? []).filter((f) => !f.category)
+    .length;
+  // Resolve the place-level category label: built-in keys go through
+  // i18n, custom strings render as-is, falsy collapses to "미분류".
+  const catLabel = place.category
+    ? isKnownPlaceCategory(place.category)
+      ? `${categoryEmojiOf(place.category)} ${t(`category.${place.category}`)}`
+      : `${categoryEmojiOf(place.category)} ${place.category}`
+    : "❓ 미분류 · 未分类";
   return (
     <div className="relative pl-6 pb-6">
       {!isLast && (
@@ -1070,6 +1087,18 @@ function TimelineItem({
               </p>
             )}
             <div className="flex items-center flex-wrap gap-1.5 mt-2">
+              {/* Place-level category chip — shows "❓ 미분류" when
+                  the place hasn't been tagged so the user can spot
+                  unclassified entries at a glance from the timeline. */}
+              <span
+                className={`text-[11px] px-2 py-0.5 rounded-lg shadow-sm border ${
+                  place.category
+                    ? "bg-white/90 text-ink-700 border-cream-200/60"
+                    : "bg-amber-50 text-amber-700 border-amber-200 font-bold"
+                }`}
+              >
+                {catLabel}
+              </span>
               {avg !== null ? (
                 <span className="inline-flex items-center bg-white/90 px-2 py-0.5 rounded-lg text-xs font-bold border border-peach-200/60 text-peach-500 shadow-sm">
                   <span className="mr-1">⭐</span>
@@ -1087,6 +1116,16 @@ function TimelineItem({
                 </span>{" "}
                 <span className="opacity-70">개 · 道</span>
               </span>
+              {/* Uncategorized foods badge — surfaces when at least
+                  one food on this place is missing its category, so
+                  the user can drill in and tag them. */}
+              {uncategorizedFoods > 0 && (
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
+                  ❓ 메뉴{" "}
+                  <span className="font-number">{uncategorizedFoods}</span>개
+                  미분류
+                </span>
+              )}
               {/* "Need my rating" CTA — only shows when there's at least
                   one food on this place that the viewer hasn't scored yet. */}
               {unratedByMe > 0 && (
