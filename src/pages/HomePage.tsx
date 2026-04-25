@@ -42,6 +42,7 @@ import {
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
 import { FilterSheet, type SortValue } from "@/components/FilterSheet";
+import { MediaThumb } from "@/components/MediaThumb";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -1391,7 +1392,7 @@ function TimelineItem({
             className={`w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center text-3xl border ${theme.img}`}
           >
             {place.photo_urls?.[0] ? (
-              <img
+              <MediaThumb
                 src={place.photo_urls[0]}
                 alt={place.name}
                 className="w-full h-full object-cover"
@@ -1585,7 +1586,7 @@ function MenuRow({
         className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center text-2xl border ${theme.img}`}
       >
         {photo ? (
-          <img
+          <MediaThumb
             src={photo}
             alt={food.name}
             className="w-full h-full object-cover"
@@ -1714,10 +1715,11 @@ function TimelineGridItem({
         }`}
       >
         {photo ? (
-          <img
+          <MediaThumb
             src={photo}
             alt={place.name}
             className="w-full h-full object-cover"
+            showPlayBadge
           />
         ) : (
           <span className="text-6xl drop-shadow-sm">

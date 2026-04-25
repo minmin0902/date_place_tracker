@@ -77,3 +77,14 @@ export function formatDate(date: string | Date, locale: string) {
     timeZone: APP_TIMEZONE,
   }).format(d);
 }
+
+// Cheap "is this URL a video?" heuristic — checks the extension at the
+// end of the path (ignores query strings). We don't have a content-
+// type column on photos, and Supabase Storage URLs preserve the
+// original extension, so this works for the small set of formats we
+// upload (mp4, mov, webm, ogv, mkv, m4v).
+const VIDEO_EXT = /\.(mp4|m4v|mov|webm|ogg|ogv|mkv)(\?|$)/i;
+export function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return VIDEO_EXT.test(url);
+}

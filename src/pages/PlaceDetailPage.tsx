@@ -13,6 +13,7 @@ import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
+import { MediaThumb } from "@/components/MediaThumb";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -173,16 +174,20 @@ export default function PlaceDetailPage() {
             <span>집밥 · 在家做的</span>
           </div>
         )}
-        {/* Photos */}
+        {/* Photos / videos — videos auto-render via MediaThumb. */}
         {place.photo_urls && place.photo_urls.length > 0 && (
           <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1">
             {place.photo_urls.map((url) => (
-              <img
+              <div
                 key={url}
-                src={url}
-                className="h-40 rounded-2xl object-cover flex-shrink-0"
-                alt=""
-              />
+                className="h-40 w-40 rounded-2xl overflow-hidden flex-shrink-0"
+              >
+                <MediaThumb
+                  src={url}
+                  className="w-full h-full object-cover"
+                  showPlayBadge
+                />
+              </div>
             ))}
           </div>
         )}
@@ -518,12 +523,16 @@ function FoodCard({
       {photos.length > 0 && (
         <div className="flex gap-2 overflow-x-auto -mx-4 px-4 mb-3 pb-1">
           {photos.map((url) => (
-            <img
+            <div
               key={url}
-              src={url}
-              alt=""
-              className="h-24 w-24 object-cover rounded-xl flex-shrink-0 border border-cream-100"
-            />
+              className="h-24 w-24 rounded-xl overflow-hidden flex-shrink-0 border border-cream-100"
+            >
+              <MediaThumb
+                src={url}
+                className="w-full h-full object-cover"
+                showPlayBadge
+              />
+            </div>
           ))}
         </div>
       )}

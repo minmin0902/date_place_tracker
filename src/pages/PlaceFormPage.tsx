@@ -25,6 +25,11 @@ type HomeFoodDraft = {
   name: string;
   chef: ChefRole;
   categories: string[];
+  // Per-menu memo + media. The bulk-insert that happens on form
+  // submit forwards these into the foods row, so home meals end up
+  // as fully-rated entries instead of bare names.
+  memo: string;
+  photo_urls: string[];
 };
 
 function newHomeFood(): HomeFoodDraft {
@@ -33,6 +38,8 @@ function newHomeFood(): HomeFoodDraft {
     name: "",
     chef: "together",
     categories: [],
+    memo: "",
+    photo_urls: [],
   };
 }
 
@@ -154,7 +161,18 @@ export default function PlaceFormPage() {
       if (saved.placeLabel != null)
         setPlaceLabel(saved.placeLabel as string | null);
       if (Array.isArray(saved.homeFoods) && saved.homeFoods.length > 0) {
-        setHomeFoods(saved.homeFoods as HomeFoodDraft[]);
+        // v1 drafts didn't persist memo/photo_urls — fill defaults
+        // so the new fields don't break on restore.
+        setHomeFoods(
+          (saved.homeFoods as Array<Partial<HomeFoodDraft>>).map((f) => ({
+            uid: f.uid ?? crypto.randomUUID(),
+            name: f.name ?? "",
+            chef: (f.chef as ChefRole) ?? "together",
+            categories: f.categories ?? [],
+            memo: f.memo ?? "",
+            photo_urls: f.photo_urls ?? [],
+          }))
+        );
       }
     },
   });
@@ -270,9 +288,12 @@ export default function PlaceFormPage() {
               partner_rating: null,
               category: f.categories[0] ?? null,
               categories: f.categories.length ? f.categories : null,
-              memo: null,
-              photo_url: null,
-              photo_urls: null,
+              memo: f.memo.trim() || null,
+              // photo_url is the legacy single-photo column; keep it
+              // populated with the first media so older clients still
+              // see something.
+              photo_url: f.photo_urls[0] ?? null,
+              photo_urls: f.photo_urls.length ? f.photo_urls : null,
               chef: f.chef,
               created_by: user?.id ?? null,
             },
@@ -485,11 +506,16 @@ export default function PlaceFormPage() {
                   index={idx}
                   food={food}
                   removable={homeFoods.length > 1}
+                  coupleId={couple?.id ?? ""}
                   onRemove={() => removeHomeFood(food.uid)}
                   onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
                   onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
                   onChangeCategories={(v) =>
                     updateHomeFood(food.uid, "categories", v)
+                  }
+                  onChangeMemo={(v) => updateHomeFood(food.uid, "memo", v)}
+                  onChangePhotos={(v) =>
+                    updateHomeFood(food.uid, "photo_urls", v)
                   }
                 />
               ))}
@@ -613,18 +639,27 @@ function HomeFoodCard({
   index,
   food,
   removable,
+  coupleId,
   onRemove,
   onChangeName,
   onChangeChef,
   onChangeCategories,
+  onChangeMemo,
+  onChangePhotos,
 }: {
   index: number;
   food: HomeFoodDraft;
   removable: boolean;
+  // PhotoUploader needs the couple id to scope storage paths; passed
+  // down because HomeFoodCard is rendered inside the place form
+  // before the place row exists.
+  coupleId: string;
   onRemove: () => void;
   onChangeName: (v: string) => void;
   onChangeChef: (v: ChefRole) => void;
   onChangeCategories: (v: string[]) => void;
+  onChangeMemo: (v: string) => void;
+  onChangePhotos: (v: string[]) => void;
 }) {
   // A row-level error: the food has a name typed in but no category
   // picked, which would land it in 미분류 on the bulk-insert.
@@ -703,6 +738,42 @@ function HomeFoodCard({
             labelZh="一起做"
           />
         </div>
+      </div>
+
+      {/* Per-menu memo. Optional — short note about how it turned out
+          ("육수 좀 더 줄였어야"). Submitted to the foods row alongside
+          the bulk-insert. */}
+      <div>
+        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
+          메모 · 备注
+        </p>
+        <textarea
+          className="input-base min-h-[60px] text-[13px]"
+          value={food.memo}
+          onChange={(e) => onChangeMemo(e.target.value)}
+          placeholder="간 좀 더 강하게 · 下次咸点"
+        />
+      </div>
+
+      {/* Per-menu photos / videos. Up to 3 to keep the home-mode card
+          from getting tall — full gallery still lives on the place
+          detail page after submit. */}
+      <div>
+        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
+          사진 · 동영상 · 照片视频
+        </p>
+        {coupleId ? (
+          <PhotoUploader
+            coupleId={coupleId}
+            photos={food.photo_urls}
+            onChange={onChangePhotos}
+            max={3}
+          />
+        ) : (
+          <p className="text-[11px] text-ink-400">
+            저장 후 사진을 올릴 수 있어요 · 保存后再添加照片
+          </p>
+        )}
       </div>
     </div>
   );
