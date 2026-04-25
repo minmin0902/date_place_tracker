@@ -1608,18 +1608,27 @@ function MenuRow({
             {formatDate(place.date_visited, locale)}
           </span>
         </p>
+        {food.memo && (
+          // Menu memo as a tight one-liner under the place/date — long
+          // memos truncate so the row height stays uniform across the
+          // list. Tap-through still reaches the full memo on detail.
+          <p className="text-[11px] text-ink-500 mt-0.5 line-clamp-1 break-keep">
+            {food.memo}
+          </p>
+        )}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           {foodCats.slice(0, 2).map((c) => (
             <span
               key={c}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-ink-600 border border-cream-200/60"
+              className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-ink-600 border border-cream-200/60 inline-flex items-center gap-0.5"
             >
               {/* i18n covers both place + food category keys
-                  (main/side/drink/dessert/...). isKnownPlaceCategory
-                  was the wrong gate — it false'd food keys back to
-                  raw english. Fall back to raw value only when the
-                  key really isn't translated (custom freeform tags). */}
-              {t(`category.${c}`, { defaultValue: c })}
+                  (main/side/drink/dessert/...). Fall back to raw value
+                  only when the key really isn't translated (custom
+                  freeform tags). Emoji prefixes the label so the chip
+                  carries the same visual cue as the rest of the app. */}
+              <span>{categoryEmojiOf(c)}</span>
+              <span>{t(`category.${c}`, { defaultValue: c })}</span>
             </span>
           ))}
           {eaterRole === "me" && (
