@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BookmarkPlus,
   CheckCircle2,
@@ -149,11 +150,102 @@ function avgTotal(p: PlaceWithFoods): number | null {
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
+// Pull-to-refresh: when the document is scrolled to the very top and
+// the user drags downward past PULL_THRESHOLD, fire onRefresh. The
+// listeners are passive so they never block link taps. PULL_MAX caps
+// the indicator travel so a hard yank doesn't push the bubble offscreen.
+const PULL_THRESHOLD = 70;
+const PULL_MAX = 110;
+
+function usePullToRefresh(onRefresh: () => Promise<unknown>) {
+  const [pull, setPull] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef<number | null>(null);
+  const tracking = useRef(false);
+
+  useEffect(() => {
+    function onTouchStart(e: TouchEvent) {
+      // Only engage from the very top, and only with one finger so a
+      // pinch-zoom or 2-finger scroll doesn't accidentally arm us.
+      if (window.scrollY > 0 || e.touches.length !== 1) {
+        startY.current = null;
+        tracking.current = false;
+        return;
+      }
+      startY.current = e.touches[0].clientY;
+      tracking.current = true;
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (!tracking.current || startY.current === null) return;
+      const dy = e.touches[0].clientY - startY.current;
+      if (dy <= 0) {
+        // Finger went up — abandon, let normal scroll take over.
+        setPull(0);
+        tracking.current = false;
+        return;
+      }
+      // Square-rootish damping so the indicator decelerates on long pulls.
+      const damped = Math.min(PULL_MAX, dy * 0.55);
+      setPull(damped);
+    }
+    function onTouchEnd() {
+      if (!tracking.current) return;
+      tracking.current = false;
+      startY.current = null;
+      setPull((current) => {
+        if (current >= PULL_THRESHOLD && !refreshing) {
+          setRefreshing(true);
+          Promise.resolve(onRefresh()).finally(() => {
+            setRefreshing(false);
+            setPull(0);
+          });
+          return PULL_THRESHOLD; // hold the indicator while refreshing
+        }
+        return 0;
+      });
+    }
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [onRefresh, refreshing]);
+
+  return { pull, refreshing };
+}
+
 export default function HomePage() {
   const { i18n, t } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
+  const qc = useQueryClient();
+  // Single source of truth for "refresh everything the home tab cares
+  // about" — used by both the pull gesture and the manual button.
+  const refreshAll = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["places"] }),
+      qc.invalidateQueries({ queryKey: ["wishlist"] }),
+      qc.invalidateQueries({ queryKey: ["couple"] }),
+    ]);
+  const { pull, refreshing } = usePullToRefresh(refreshAll);
+  // Separate flag so the header button gets its own spinner on
+  // desktop (where pull-to-refresh isn't available).
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  async function onManualRefresh() {
+    if (manualRefreshing || refreshing) return;
+    setManualRefreshing(true);
+    try {
+      await refreshAll();
+    } finally {
+      setManualRefreshing(false);
+    }
+  }
 
   const [tab, setTab] = useState<Tab>("timeline");
   const [query, setQuery] = useState("");
@@ -318,6 +410,29 @@ export default function HomePage() {
 
   return (
     <div className="relative">
+      {/* Pull-to-refresh indicator — fades in as the user drags down,
+          starts spinning once a refresh is in flight. Pointer-events
+          off so it never intercepts taps. */}
+      {(pull > 0 || refreshing) && (
+        <div
+          className="fixed left-0 right-0 z-30 flex justify-center pointer-events-none"
+          style={{
+            top: `calc(env(safe-area-inset-top, 0px) + ${Math.max(8, pull * 0.4)}px)`,
+            opacity: Math.min(1, pull / PULL_THRESHOLD),
+          }}
+        >
+          <div className="bg-white/95 backdrop-blur rounded-full shadow-airy border border-cream-200 w-10 h-10 flex items-center justify-center">
+            <RefreshCw
+              className={`w-5 h-5 text-rose-400 ${refreshing ? "animate-spin" : ""}`}
+              style={{
+                transform: refreshing
+                  ? undefined
+                  : `rotate(${Math.min(360, (pull / PULL_THRESHOLD) * 280)}deg)`,
+              }}
+            />
+          </div>
+        </div>
+      )}
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
@@ -328,14 +443,28 @@ export default function HomePage() {
               둘이 함께 채우는 맛집 일기 · 咱俩的干饭日记
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSearch((v) => !v)}
-            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50"
-            aria-label="search"
-          >
-            <Search className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void onManualRefresh()}
+              disabled={manualRefreshing || refreshing}
+              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-label="refresh"
+              title="새로고침 · 刷新"
+            >
+              <RefreshCw
+                className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSearch((v) => !v)}
+              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50"
+              aria-label="search"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {showSearch && (
