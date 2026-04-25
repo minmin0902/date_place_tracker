@@ -12,6 +12,7 @@ import {
   type GroupedMultiSelectEntry,
 } from "@/components/GroupedMultiSelect";
 import { PhotoUploader } from "@/components/PhotoUploader";
+import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
 import { LocationPicker } from "@/components/LocationPicker";
 import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
@@ -29,6 +30,8 @@ type HomeFoodDraft = {
   // submit forwards these into the foods row, so home meals end up
   // as fully-rated entries instead of bare names.
   memo: string;
+  // Who wrote `memo`. Only persisted when memo is non-empty.
+  memo_author_id: string | null;
   photo_urls: string[];
 };
 
@@ -39,6 +42,7 @@ function newHomeFood(): HomeFoodDraft {
     chef: "together",
     categories: [],
     memo: "",
+    memo_author_id: null,
     photo_urls: [],
   };
 }
@@ -82,6 +86,9 @@ export default function PlaceFormPage() {
   // hydrate from `categories` first, fall back to legacy `category`.
   const [categories, setCategories] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
+  // Tracks the toggle in the memo input so we know which partner
+  // wrote it. Defaults to the current user once they're known.
+  const [memoAuthorId, setMemoAuthorId] = useState<string | null>(null);
   const [wantRevisit, setWantRevisit] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
@@ -98,6 +105,7 @@ export default function PlaceFormPage() {
     setAddress(existing.address ?? "");
     setCategories(getCategories(existing));
     setMemo(existing.memo ?? "");
+    setMemoAuthorId(existing.memo_author_id ?? null);
     setWantRevisit(existing.want_to_revisit);
     setPhotos(existing.photo_urls ?? []);
     if (existing.latitude != null && existing.longitude != null) {
@@ -120,6 +128,7 @@ export default function PlaceFormPage() {
       address,
       categories,
       memo,
+      memoAuthorId,
       wantRevisit,
       photos,
       coord,
@@ -133,6 +142,7 @@ export default function PlaceFormPage() {
       address,
       categories,
       memo,
+      memoAuthorId,
       wantRevisit,
       photos,
       coord,
@@ -153,6 +163,10 @@ export default function PlaceFormPage() {
       if (Array.isArray(saved.categories))
         setCategories(saved.categories as string[]);
       if (saved.memo != null) setMemo(saved.memo as string);
+      if (saved.memoAuthorId !== undefined)
+        setMemoAuthorId(
+          saved.memoAuthorId === null ? null : (saved.memoAuthorId as string)
+        );
       if (saved.wantRevisit != null)
         setWantRevisit(saved.wantRevisit as boolean);
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
@@ -170,6 +184,7 @@ export default function PlaceFormPage() {
             chef: (f.chef as ChefRole) ?? "together",
             categories: f.categories ?? [],
             memo: f.memo ?? "",
+            memo_author_id: f.memo_author_id ?? null,
             photo_urls: f.photo_urls ?? [],
           }))
         );
@@ -263,6 +278,10 @@ export default function PlaceFormPage() {
         category: categories[0] ?? null,
         categories: categories.length ? categories : null,
         memo: memo.trim() || null,
+        // Stamp author only when there's actually a memo. If the user
+        // clears the textarea, drop the author too so the row can fall
+        // back to the legacy renderer if anyone re-adds a memo later.
+        memo_author_id: memo.trim() ? memoAuthorId ?? user.id : null,
         want_to_revisit: wantRevisit,
         is_home_cooked: isHome,
         latitude: placeLat,
@@ -289,6 +308,9 @@ export default function PlaceFormPage() {
               category: f.categories[0] ?? null,
               categories: f.categories.length ? f.categories : null,
               memo: f.memo.trim() || null,
+              memo_author_id: f.memo.trim()
+                ? f.memo_author_id ?? user.id
+                : null,
               // photo_url is the legacy single-photo column; keep it
               // populated with the first media so older clients still
               // see something.
@@ -488,47 +510,66 @@ export default function PlaceFormPage() {
 
         {/* Home-mode multi-menu: only on new entries. Editing a home
             place still lets you tweak the metadata, but per-food edits
-            happen on the detail page. */}
+            happen on the detail page.
+            Gated on categories — restaurants force you to pick a place
+            category before adding foods, so home mode follows the same
+            rule for symmetry. Empty state shows a hint instead of the
+            full card so the form still tells the user what's missing. */}
         {mode === "home" && !isEdit && (
-          <div className="space-y-3 bg-rose-50/40 rounded-3xl p-4 border border-rose-100/60">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-sm font-bold text-rose-500">
-                오늘 차린 메뉴들 🍳 · 今天做了什么好吃的？
-              </span>
-              <span className="text-xs font-number font-bold text-rose-400">
-                {homeFoods.length}
-              </span>
+          categories.length === 0 ? (
+            <div className="rounded-3xl border-2 border-dashed border-rose-200/70 bg-rose-50/30 p-6 text-center">
+              <span className="text-3xl block mb-1.5">🍳</span>
+              <p className="text-sm font-bold text-rose-500">
+                먼저 카테고리를 골라주세요 · 先选个种类吧
+              </p>
+              <p className="text-[11px] text-rose-400/80 mt-1">
+                카테고리를 정하면 메뉴를 추가할 수 있어요 · 选好种类才能加菜单哦
+              </p>
             </div>
-            <div className="space-y-3">
-              {homeFoods.map((food, idx) => (
-                <HomeFoodCard
-                  key={food.uid}
-                  index={idx}
-                  food={food}
-                  removable={homeFoods.length > 1}
-                  coupleId={couple?.id ?? ""}
-                  onRemove={() => removeHomeFood(food.uid)}
-                  onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
-                  onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
-                  onChangeCategories={(v) =>
-                    updateHomeFood(food.uid, "categories", v)
-                  }
-                  onChangeMemo={(v) => updateHomeFood(food.uid, "memo", v)}
-                  onChangePhotos={(v) =>
-                    updateHomeFood(food.uid, "photo_urls", v)
-                  }
-                />
-              ))}
+          ) : (
+            <div className="space-y-3 bg-rose-50/40 rounded-3xl p-4 border border-rose-100/60">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-sm font-bold text-rose-500">
+                  오늘 차린 메뉴들 🍳 · 今天做了什么好吃的？
+                </span>
+                <span className="text-xs font-number font-bold text-rose-400">
+                  {homeFoods.length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {homeFoods.map((food, idx) => (
+                  <HomeFoodCard
+                    key={food.uid}
+                    index={idx}
+                    food={food}
+                    removable={homeFoods.length > 1}
+                    coupleId={couple?.id ?? ""}
+                    onRemove={() => removeHomeFood(food.uid)}
+                    onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
+                    onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
+                    onChangeCategories={(v) =>
+                      updateHomeFood(food.uid, "categories", v)
+                    }
+                    onChangeMemo={(v) => updateHomeFood(food.uid, "memo", v)}
+                    onChangeMemoAuthor={(v) =>
+                      updateHomeFood(food.uid, "memo_author_id", v)
+                    }
+                    onChangePhotos={(v) =>
+                      updateHomeFood(food.uid, "photo_urls", v)
+                    }
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={addHomeFood}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-rose-200/80 text-rose-400 font-bold text-[13px] flex items-center justify-center gap-1.5 hover:bg-rose-50 active:scale-[0.98] transition"
+              >
+                <Plus className="w-4 h-4" />
+                메뉴 추가하기 · 加个菜
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={addHomeFood}
-              className="w-full py-3 rounded-xl border-2 border-dashed border-rose-200/80 text-rose-400 font-bold text-[13px] flex items-center justify-center gap-1.5 hover:bg-rose-50 active:scale-[0.98] transition"
-            >
-              <Plus className="w-4 h-4" />
-              메뉴 추가하기 · 加个菜
-            </button>
-          </div>
+          )
         )}
 
         <div>
@@ -544,10 +585,20 @@ export default function PlaceFormPage() {
           )}
         </div>
 
-        <div>
-          <label className="block text-sm font-bold mb-1.5 text-ink-700">
-            메모 · 备注
-          </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="block text-sm font-bold text-ink-700">
+              메모 · 备注
+            </label>
+            {/* Tag the memo with whichever partner is typing, so detail
+                pages render it as a comment from the right person. */}
+            {memo.trim().length > 0 && (
+              <MemoAuthorPicker
+                value={memoAuthorId}
+                onChange={setMemoAuthorId}
+              />
+            )}
+          </div>
           <textarea
             className="input-base min-h-[100px]"
             value={memo}
@@ -645,6 +696,7 @@ function HomeFoodCard({
   onChangeChef,
   onChangeCategories,
   onChangeMemo,
+  onChangeMemoAuthor,
   onChangePhotos,
 }: {
   index: number;
@@ -659,6 +711,7 @@ function HomeFoodCard({
   onChangeChef: (v: ChefRole) => void;
   onChangeCategories: (v: string[]) => void;
   onChangeMemo: (v: string) => void;
+  onChangeMemoAuthor: (v: string) => void;
   onChangePhotos: (v: string[]) => void;
 }) {
   // A row-level error: the food has a name typed in but no category
@@ -744,9 +797,15 @@ function HomeFoodCard({
           ("육수 좀 더 줄였어야"). Submitted to the foods row alongside
           the bulk-insert. */}
       <div>
-        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
-          메모 · 备注
-        </p>
+        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+          <p className="text-[11px] font-bold text-ink-400">메모 · 备注</p>
+          {food.memo.trim().length > 0 && (
+            <MemoAuthorPicker
+              value={food.memo_author_id}
+              onChange={onChangeMemoAuthor}
+            />
+          )}
+        </div>
         <textarea
           className="input-base min-h-[60px] text-[13px]"
           value={food.memo}

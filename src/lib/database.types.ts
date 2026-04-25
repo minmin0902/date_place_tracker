@@ -24,6 +24,9 @@ export type Database = {
           // the singleton form of `category`".
           categories: string[] | null;
           memo: string | null;
+          // Who wrote `memo`. null on legacy rows (rendered as the
+          // partner since the couple originally shared one account).
+          memo_author_id: string | null;
           want_to_revisit: boolean;
           is_home_cooked: boolean;
           photo_urls: string[] | null;
@@ -42,6 +45,7 @@ export type Database = {
           category?: string | null;
           categories?: string[] | null;
           memo?: string | null;
+          memo_author_id?: string | null;
           want_to_revisit?: boolean;
           is_home_cooked?: boolean;
           photo_urls?: string[] | null;
@@ -68,6 +72,8 @@ export type Database = {
           category: string | null;
           categories: string[] | null;
           memo: string | null;
+          // Who wrote `memo`. null on legacy rows.
+          memo_author_id: string | null;
           // Legacy single-photo column, kept for back-compat. Prefer
           // photo_urls for reads/writes.
           photo_url: string | null;
@@ -89,6 +95,7 @@ export type Database = {
           category?: string | null;
           categories?: string[] | null;
           memo?: string | null;
+          memo_author_id?: string | null;
           photo_url?: string | null;
           photo_urls?: string[] | null;
           chef?: ChefRole | null;

@@ -13,6 +13,7 @@ import {
 } from "@/components/GroupedMultiSelect";
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
+import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
 import { FOOD_CATEGORIES, categoryEmojiOf } from "@/lib/constants";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
@@ -74,6 +75,7 @@ export default function FoodFormPage() {
   const [partnerRating, setPartnerRating] = useState<number | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
+  const [memoAuthorId, setMemoAuthorId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   // Eater (viewer perspective): 'both' / 'me' / 'partner'. Drives the
   // segmented toggle. Translated to storage-relative EaterRole on save.
@@ -96,6 +98,7 @@ export default function FoodFormPage() {
     setPartnerRating(view.partnerRating);
     setCategories(getCategories(existing));
     setMemo(existing.memo ?? "");
+    setMemoAuthorId(existing.memo_author_id ?? null);
     // Prefer the new `eater` enum; fall back to the legacy is_solo
     // boolean ('me' if true, 'both' if false) so older rows hydrate.
     const eaterStored: EaterRole = existing.eater
@@ -123,10 +126,20 @@ export default function FoodFormPage() {
       partnerRating,
       categories,
       memo,
+      memoAuthorId,
       photos,
       viewerEater,
     }),
-    [name, myRating, partnerRating, categories, memo, photos, viewerEater]
+    [
+      name,
+      myRating,
+      partnerRating,
+      categories,
+      memo,
+      memoAuthorId,
+      photos,
+      viewerEater,
+    ]
   );
   const draft = useFormDraft({
     key: draftKey,
@@ -141,6 +154,10 @@ export default function FoodFormPage() {
       if (Array.isArray(saved.categories))
         setCategories(saved.categories as string[]);
       if (saved.memo != null) setMemo(saved.memo as string);
+      if (saved.memoAuthorId !== undefined)
+        setMemoAuthorId(
+          saved.memoAuthorId === null ? null : (saved.memoAuthorId as string)
+        );
       if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
       if (
         saved.viewerEater === "both" ||
@@ -200,6 +217,7 @@ export default function FoodFormPage() {
         category: categories[0] ?? null,
         categories: categories.length ? categories : null,
         memo: memo.trim() || null,
+        memo_author_id: memo.trim() ? memoAuthorId ?? user?.id ?? null : null,
         // Keep the legacy scalar column populated too so any older build
         // still reading photo_url sees something.
         photo_url: photos[0] ?? null,
@@ -378,10 +396,18 @@ export default function FoodFormPage() {
           )}
         </div>
 
-        <div>
-          <label className="block text-sm font-bold mb-1.5 text-ink-700">
-            메모 · 备注
-          </label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="block text-sm font-bold text-ink-700">
+              메모 · 备注
+            </label>
+            {memo.trim().length > 0 && (
+              <MemoAuthorPicker
+                value={memoAuthorId}
+                onChange={setMemoAuthorId}
+              />
+            )}
+          </div>
           <textarea
             className="input-base min-h-[80px]"
             value={memo}

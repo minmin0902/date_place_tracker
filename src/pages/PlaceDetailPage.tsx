@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
 import { MediaThumb } from "@/components/MediaThumb";
+import { MemoComment } from "@/components/MemoComment";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -180,12 +181,13 @@ export default function PlaceDetailPage() {
             {place.photo_urls.map((url) => (
               <div
                 key={url}
-                className="h-40 w-40 rounded-2xl overflow-hidden flex-shrink-0"
+                className="h-40 w-40 rounded-2xl overflow-hidden flex-shrink-0 bg-ink-900"
               >
                 <MediaThumb
                   src={url}
                   className="w-full h-full object-cover"
                   showPlayBadge
+                  controls
                 />
               </div>
             ))}
@@ -278,9 +280,10 @@ export default function PlaceDetailPage() {
               </div>
             )}
             {place.memo && (
-              <div className="card p-4 text-sm text-ink-700 whitespace-pre-wrap">
-                {place.memo}
-              </div>
+              <MemoComment
+                memo={place.memo}
+                authorId={place.memo_author_id}
+              />
             )}
           </section>
         )}
@@ -525,12 +528,13 @@ function FoodCard({
           {photos.map((url) => (
             <div
               key={url}
-              className="h-24 w-24 rounded-xl overflow-hidden flex-shrink-0 border border-cream-100"
+              className="h-24 w-24 rounded-xl overflow-hidden flex-shrink-0 border border-cream-100 bg-ink-900"
             >
               <MediaThumb
                 src={url}
                 className="w-full h-full object-cover"
                 showPlayBadge
+                controls
               />
             </div>
           ))}
@@ -585,9 +589,13 @@ function FoodCard({
       )}
 
       {food.memo && (
-        <p className="text-sm text-ink-700 mt-3 whitespace-pre-wrap">
-          {food.memo}
-        </p>
+        <div className="mt-3">
+          <MemoComment
+            memo={food.memo}
+            authorId={food.memo_author_id}
+            size="sm"
+          />
+        </div>
       )}
     </div>
   );

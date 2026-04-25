@@ -43,6 +43,7 @@ import {
 import { CategoryChips } from "@/components/CategoryChips";
 import { FilterSheet, type SortValue } from "@/components/FilterSheet";
 import { MediaThumb } from "@/components/MediaThumb";
+import { MemoCommentInline } from "@/components/MemoComment";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -1614,7 +1615,10 @@ function MenuRow({
           // memos truncate so the row height stays uniform across the
           // list. Tap-through still reaches the full memo on detail.
           <p className="text-[11px] text-ink-500 mt-0.5 line-clamp-1 break-keep">
-            {food.memo}
+            <MemoCommentInline
+              memo={food.memo}
+              authorId={food.memo_author_id}
+            />
           </p>
         )}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -1765,7 +1769,10 @@ function TimelineGridItem({
         </div>
         {place.memo && (
           <p className="text-[11px] text-ink-500 leading-snug whitespace-pre-wrap line-clamp-3 break-keep">
-            {place.memo}
+            <MemoCommentInline
+              memo={place.memo}
+              authorId={place.memo_author_id}
+            />
           </p>
         )}
         <p className="text-[10px] text-ink-400 font-number truncate">

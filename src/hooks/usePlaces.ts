@@ -72,6 +72,9 @@ export function useUpsertPlace() {
         category: string | null;
         categories?: string[] | null;
         memo: string | null;
+        // null = "no memo yet" or "legacy memo from before this column
+        // existed". Set when the form posts a non-empty memo.
+        memo_author_id?: string | null;
         want_to_revisit: boolean;
         is_home_cooked?: boolean;
         latitude: number | null;
@@ -136,6 +139,7 @@ export function useUpsertFood() {
         category: string | null;
         categories?: string[] | null;
         memo: string | null;
+        memo_author_id?: string | null;
         photo_url: string | null;
         photo_urls: string[] | null;
         chef?: "me" | "partner" | "together" | null;
@@ -194,9 +198,17 @@ export async function uploadPhoto(file: File, coupleId: string): Promise<string>
   }
   const ext = file.name.split(".").pop() ?? "jpg";
   const path = `${coupleId}/${crypto.randomUUID()}.${ext}`;
+  // Pass contentType so videos serve with the right MIME (e.g. video/mp4)
+  // — Supabase otherwise falls back to application/octet-stream, which
+  // most browsers refuse to play inline. file.type is empty on some
+  // mobile pickers; in that case let Supabase infer from the extension.
   const { error } = await supabase.storage
     .from(PHOTO_BUCKET)
-    .upload(path, file, { cacheControl: "3600", upsert: false });
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || undefined,
+    });
   if (error) throw error;
   const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
   return data.publicUrl;

@@ -16,11 +16,17 @@ export function MediaThumb({
   alt,
   className = "",
   showPlayBadge = false,
+  controls = false,
 }: {
   src: string;
   alt?: string;
   className?: string;
   showPlayBadge?: boolean;
+  // Show native video controls so users can actually play the clip.
+  // Tiny thumbnails leave this off (controls don't fit + tap-through
+  // navigates to a detail page anyway); larger gallery slots turn it
+  // on so the play button is visible.
+  controls?: boolean;
 }) {
   if (isVideoUrl(src)) {
     return (
@@ -35,8 +41,9 @@ export function MediaThumb({
           preload="metadata"
           muted
           playsInline
+          controls={controls}
         />
-        {showPlayBadge && (
+        {showPlayBadge && !controls && (
           <span className="absolute bottom-1 left-1 inline-flex items-center gap-0.5 bg-ink-900/70 text-white text-[9px] font-bold px-1 py-0.5 rounded">
             <Play className="w-2.5 h-2.5" /> VIDEO
           </span>

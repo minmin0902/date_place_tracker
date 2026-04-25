@@ -143,6 +143,35 @@ export function useDisplayNames(): {
   return { myDisplay, partnerDisplay };
 }
 
+// Resolve a memo's author into the bits the comment-style render needs:
+// display name + avatar.
+//   - Matches my user id  → my profile name + avatar
+//   - Matches partner id  → partner's name + avatar
+//   - null / unknown      → fall back to the partner. Legacy memos
+//     (written before memo_author_id existed) get backfilled to the
+//     partner's id by the migration, but the null path stays a safety
+//     net for any row the backfill might have missed.
+export function useMemoAuthor(authorId: string | null | undefined): {
+  name: string;
+  avatarUrl: string | null;
+} {
+  const { me, partner, myId, partnerId } = useCoupleProfiles();
+  const { myDisplay, partnerDisplay } = useDisplayNames();
+  if (authorId && authorId === myId) {
+    return {
+      name: myDisplay,
+      avatarUrl: me.data?.avatar_url ?? null,
+    };
+  }
+  if (!authorId || authorId === partnerId) {
+    return {
+      name: partnerDisplay,
+      avatarUrl: partner.data?.avatar_url ?? null,
+    };
+  }
+  return { name: "?", avatarUrl: null };
+}
+
 export function useUpsertProfile() {
   const qc = useQueryClient();
   const { user } = useAuth();
