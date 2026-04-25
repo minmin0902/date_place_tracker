@@ -19,6 +19,9 @@ import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 
 type DiningFilter = "all" | "out" | "home";
+// Four list sections moved to a horizontal tab so the page doesn't
+// stack four full lists vertically.
+type TabId = "top3" | "match" | "clash" | "pass";
 
 type Row = {
   foodId: string;
@@ -33,10 +36,11 @@ type Row = {
 
 // ---------- 푸드 BTI ----------
 //
-// We don't have a free-form tag column on foods, so the BTI is derived
-// from each parent place's category. Every place feeds 1+ BTI buckets;
-// the bucket with the highest avg couple score becomes the couple's
-// "type" and the rest get listed as a percentage breakdown.
+// Categories alone don't carry tags like "spicy" or "meat", so the BTI
+// is derived from the parent place's categories array. Each category
+// feeds 1+ BTI buckets; the bucket with the highest average couple
+// score becomes the couple's "type", with the rest listed as a
+// percentage breakdown.
 
 type BtiKey =
   | "korean"
@@ -136,9 +140,6 @@ const BTI_PROFILES: Record<
 
 const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
   korean: ["korean"],
-  // Japanese feeds both the broad asian bucket AND its own dedicated
-  // BTI so couples who lean specifically Japanese (sushi, ramen, etc.)
-  // can surface that taste profile without losing the asian aggregate.
   japanese: ["asian", "japanese"],
   chinese: ["asian"],
   italian: ["western"],
@@ -147,15 +148,11 @@ const CATEGORY_TO_BTI: Record<string, BtiKey[]> = {
   thai: ["asian", "exotic"],
   vietnamese: ["asian"],
   indian: ["exotic", "asian"],
-  // Cafe contributes to both the dessert-y "sweet" bucket and a
-  // dedicated "cafe lover" bucket, so coffee-only crawlers (no
-  // dessert) still get a profile that fits.
   cafe: ["sweet", "cafe"],
   bakery: ["sweet"],
   brunch: ["sweet", "western"],
   dessert: ["sweet"],
   bar: ["drinker"],
-  // other → no inference
 };
 
 const YYDS = 4.5; // both ≥ 4.5  → 명예의 전당
@@ -177,6 +174,7 @@ export default function ComparePage() {
     );
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
+  const [activeTab, setActiveTab] = useState<TabId>("top3");
 
   const rows: Row[] = useMemo(() => {
     if (!places) return [];
@@ -186,14 +184,9 @@ export default function ComparePage() {
         // Only foods both partners ate qualify for comparison —
         // solo foods (one eater) can't be diffed and would skew the
         // 별점 요정 stat. Skip them entirely from this page.
-        const isBoth = f.eater
-          ? f.eater === "both"
-          : !f.is_solo;
+        const isBoth = f.eater ? f.eater === "both" : !f.is_solo;
         if (!isBoth) continue;
         if (f.my_rating == null || f.partner_rating == null) continue;
-        // mine / partner are bound to the current viewer so the
-        // "내 원픽" badge + bar always reads right whichever partner
-        // is logged in.
         const view = ratingsForViewer(f, user?.id);
         out.push({
           foodId: f.id,
@@ -218,15 +211,12 @@ export default function ComparePage() {
     return rows;
   }, [rows, diningFilter]);
 
-  // YYDS — 둘 다 ≥4.5. Caps at top 3 so the trophy section stays focused.
   const yyds = [...filteredRows]
     .filter((r) => r.mine >= YYDS && r.partner >= YYDS)
     .sort((a, b) => b.mine + b.partner - (a.mine + a.partner))
     .slice(0, 3);
   const yydsIds = new Set(yyds.map((r) => r.foodId));
 
-  // 천생연분 — 둘 다 ≥4 but not already in YYDS (so the same dish doesn't
-  // appear in both sections).
   const soulmates = [...filteredRows]
     .filter(
       (r) => r.mine >= HIGH && r.partner >= HIGH && !yydsIds.has(r.foodId)
@@ -241,7 +231,6 @@ export default function ComparePage() {
     .filter(
       (r) =>
         Math.abs(r.mine - r.partner) >= WAR &&
-        // exclude rows that are already in the extreme-agreement buckets
         !(r.mine >= HIGH && r.partner >= HIGH) &&
         !(r.mine <= LOW && r.partner <= LOW)
     )
@@ -254,7 +243,7 @@ export default function ComparePage() {
       <PullIndicator pull={pull} refreshing={refreshing} />
       <PageHeader
         title="우리의 취향 지도 · 我们的口味地图"
-        subtitle="서로의 입맛을 한눈에 비교해봐요 · 一秒看懂咱俩的口味默契"
+        subtitle="서로의 입맛을 한눈에 · 一秒看懂咱俩的口味"
         right={
           <button
             type="button"
@@ -271,7 +260,6 @@ export default function ComparePage() {
         }
       />
 
-      {/* 외식/집밥 필터 — HomePage 와 같은 톤으로 통일 */}
       <div className="px-5 pt-2">
         <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
           <DiningSegment
@@ -298,87 +286,73 @@ export default function ComparePage() {
         </div>
       </div>
 
-      <div className="px-5 space-y-8 pt-5 pb-8">
-        {filteredRows.length > 0 && <FoodBtiCard rows={filteredRows} />}
-
-        {filteredRows.length > 0 && <RatingStats rows={filteredRows} />}
-
-        {/* 명예의 전당 — 둘 다 4.5+ 준 메뉴 TOP 3 */}
-        {yyds.length > 0 && (
-          <Section
-            icon={<Trophy className="w-5 h-5" />}
-            iconBg="bg-amber-100"
-            iconColor="text-amber-500"
-            titleKo="🏆 명예의 전당 TOP 3"
-            titleZh="封神榜 YYDS"
-            descKo="둘 다 만점급 준 레전드 메뉴!"
-            descZh="俩人都给了神级评分！"
-          >
-            {yyds.map((r, idx) => (
-              <FoodCard
-                key={r.foodId}
-                r={r}
-                showTotal
-                yyds
-                badge={`🏆 TOP ${idx + 1}`}
-              />
-            ))}
-          </Section>
-        )}
-
-        <Section
-          icon={<HeartHandshake className="w-5 h-5" />}
-          iconBg="bg-rose-100"
-          iconColor="text-rose-500"
-          titleKo="💕 천생연분 맛집"
-          titleZh="双向奔赴"
-          descKo="우리 둘 다 푹 빠진 곳"
-          descZh="俩人都爱惨了！"
-          empty={soulmates.length === 0}
-          emptyText="아직 없어요 · 还没有"
+      {/* Stats carousel — BTI + Rating cards swipe horizontally instead
+          of stacking, saving a full screen of vertical space. CSS scroll
+          snap handles the gesture; the dot indicator below shows the
+          active card. The negative margins let cards bleed to the
+          screen edge while content stays inside the safe gutter. */}
+      <div className="pt-5 pb-4">
+        <p className="text-[10px] font-bold text-ink-400 tracking-wider mb-2 uppercase px-6">
+          가로로 스와이프 · 滑动查看
+        </p>
+        <div
+          className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5"
+          style={{ scrollPaddingInline: "1.25rem" }}
         >
-          {soulmates.map((r) => (
-            <FoodCard key={r.foodId} r={r} showTotal />
-          ))}
-        </Section>
+          <div className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[calc(28rem-2.5rem)]">
+            <FoodBtiCard rows={filteredRows} />
+          </div>
+          <div className="snap-center shrink-0 w-[calc(100vw-2.5rem)] max-w-[calc(28rem-2.5rem)]">
+            <RatingStats rows={filteredRows} />
+          </div>
+        </div>
+      </div>
 
-        <Section
-          icon={<Swords className="w-5 h-5" />}
-          iconBg="bg-indigo-100"
-          iconColor="text-indigo-500"
-          titleKo="🥊 입맛 격돌"
-          titleZh="口味大PK"
-          descKo="서로 취향이 확 갈린 메뉴"
-          descZh="评价两极分化"
-          empty={tasteWar.length === 0}
-          emptyText="아직 없어요 · 还没有"
-        >
-          {tasteWar.map((r) => {
-            const myFav = r.mine > r.partner;
-            const badge = myFav
-              ? "🙋‍♂️ 내 원픽! · 我的本命"
-              : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
-            return <FoodCard key={r.foodId} r={r} badge={badge} showBalance />;
-          })}
-        </Section>
+      {/* List section tabs — 4 categories collapse into one tab strip
+          + one rendered list, instead of 4 vertically-stacked sections.
+          Drops the page from "endless scroll" to a single screen of
+          content per tab. */}
+      <div className="px-5 pb-8">
+        <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 pb-1">
+          <SectionTab
+            active={activeTab === "top3"}
+            onClick={() => setActiveTab("top3")}
+            icon={<Trophy className="w-3.5 h-3.5" />}
+            labelKo="명예의 전당"
+            labelZh="封神榜"
+            count={yyds.length}
+            tone="amber"
+          />
+          <SectionTab
+            active={activeTab === "match"}
+            onClick={() => setActiveTab("match")}
+            icon={<HeartHandshake className="w-3.5 h-3.5" />}
+            labelKo="천생연분"
+            labelZh="双向奔赴"
+            count={soulmates.length}
+            tone="rose"
+          />
+          <SectionTab
+            active={activeTab === "clash"}
+            onClick={() => setActiveTab("clash")}
+            icon={<Swords className="w-3.5 h-3.5" />}
+            labelKo="입맛 격돌"
+            labelZh="口味PK"
+            count={tasteWar.length}
+            tone="indigo"
+          />
+          <SectionTab
+            active={activeTab === "pass"}
+            onClick={() => setActiveTab("pass")}
+            icon={<Frown className="w-3.5 h-3.5" />}
+            labelKo="여긴 패스"
+            labelZh="踩雷"
+            count={neverAgain.length}
+            tone="ink"
+          />
+        </div>
 
-        {neverAgain.length > 0 && (
-          <Section
-            icon={<Frown className="w-5 h-5" />}
-            iconBg="bg-cream-200"
-            iconColor="text-ink-500"
-            titleKo="🙅 여긴 패스!"
-            titleZh="踩雷预警"
-            descKo="우리 스타일은 아니었던 곳"
-            descZh="绝对的黑名单"
-          >
-            {neverAgain.map((r) => (
-              <FoodCard key={r.foodId} r={r} />
-            ))}
-          </Section>
-        )}
-
-        {filteredRows.length === 0 && (
+        {filteredRows.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-cream-200">
             <div className="text-5xl mb-3">📭</div>
             <p className="text-sm text-ink-500 font-medium">
@@ -389,6 +363,69 @@ export default function ComparePage() {
                   : "둘 다 평가한 메뉴가 아직 없어요 · 还没有共同评分的菜"}
             </p>
           </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
+            {activeTab === "top3" && (
+              <ListPanel
+                titleKo="둘 다 만점급 준 레전드 메뉴"
+                titleZh="俩人都给了神级评分！"
+                empty={yyds.length === 0}
+                emptyText="만점 메뉴가 아직 없어요 · 还没有满分菜"
+              >
+                {yyds.map((r, idx) => (
+                  <FoodCard
+                    key={r.foodId}
+                    r={r}
+                    showTotal
+                    yyds
+                    badge={`🏆 TOP ${idx + 1}`}
+                  />
+                ))}
+              </ListPanel>
+            )}
+            {activeTab === "match" && (
+              <ListPanel
+                titleKo="우리 둘 다 푹 빠진 곳"
+                titleZh="俩人都爱惨了！"
+                empty={soulmates.length === 0}
+                emptyText="아직 없어요 · 还没有"
+              >
+                {soulmates.map((r) => (
+                  <FoodCard key={r.foodId} r={r} showTotal />
+                ))}
+              </ListPanel>
+            )}
+            {activeTab === "clash" && (
+              <ListPanel
+                titleKo="서로 취향이 확 갈린 메뉴"
+                titleZh="评价两极分化"
+                empty={tasteWar.length === 0}
+                emptyText="아직 없어요 · 还没有"
+              >
+                {tasteWar.map((r) => {
+                  const myFav = r.mine > r.partner;
+                  const badge = myFav
+                    ? "🙋‍♂️ 내 원픽! · 我的本命"
+                    : "🙋‍♀️ 짝꿍 원픽! · 宝宝的本命";
+                  return (
+                    <FoodCard key={r.foodId} r={r} badge={badge} showBalance />
+                  );
+                })}
+              </ListPanel>
+            )}
+            {activeTab === "pass" && (
+              <ListPanel
+                titleKo="우리 스타일은 아니었던 곳"
+                titleZh="绝对的黑名单"
+                empty={neverAgain.length === 0}
+                emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
+              >
+                {neverAgain.map((r) => (
+                  <FoodCard key={r.foodId} r={r} />
+                ))}
+              </ListPanel>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -398,8 +435,8 @@ export default function ComparePage() {
 // ---------- 푸드 BTI 카드 ----------
 //
 // Aggregates couple-average scores per BTI bucket using the parent
-// place's category. Top bucket → big "current type" hero. Other
-// non-zero buckets → percentage breakdown bars under it.
+// place's categories array. Top bucket → big "current type" hero.
+// Other non-zero buckets → percentage breakdown bars under it.
 
 function FoodBtiCard({ rows }: { rows: Row[] }) {
   const stats = useMemo(() => {
@@ -435,42 +472,51 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
     return out;
   }, [rows]);
 
-  if (stats.length === 0) return null;
+  if (stats.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl p-6 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[280px]">
+        <Dna className="w-8 h-8 text-ink-300 mb-3" />
+        <h3 className="font-bold text-ink-700 text-base mb-1">
+          푸드 BTI 분석 중 · 口味DNA 分析中
+        </h3>
+        <p className="text-xs text-ink-500 max-w-[220px]">
+          둘 다 별점 매긴 메뉴가 모이면 우리 커플 입맛을 진단해드려요!
+          <br />
+          多打分就能看到你们的口味DNA啦！
+        </p>
+      </div>
+    );
+  }
 
   const top = stats[0];
   const topProfile = BTI_PROFILES[top.key];
 
   return (
-    <div className="relative bg-white rounded-3xl p-6 border border-cream-200 shadow-airy overflow-hidden">
-      {/* Soft tint blob in the top-right matching the top profile so the
-          card visually leans toward the diagnosed type without
-          overpowering the content. */}
+    <div className="relative bg-white rounded-3xl p-5 border border-cream-200 shadow-airy overflow-hidden h-full">
       <div
-        className={`absolute -top-12 -right-12 w-44 h-44 rounded-full bg-gradient-to-br ${topProfile.gradient} opacity-[0.08] blur-2xl`}
+        className={`absolute -top-12 -right-12 w-44 h-44 rounded-full bg-gradient-to-br ${topProfile.gradient} opacity-[0.08] blur-2xl pointer-events-none`}
       />
-
-      <div className="relative z-10 flex flex-col items-center text-center border-b border-cream-100 pb-5 mb-5">
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-ink-900 text-white rounded-full text-[10px] font-bold tracking-wider mb-4 shadow-sm font-number">
+      <div className="relative z-10 flex flex-col items-center text-center border-b border-cream-100 pb-4 mb-4">
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-ink-900 text-white rounded-full text-[10px] font-bold tracking-wider mb-3 shadow-sm font-number">
           <Dna className="w-3.5 h-3.5" /> FOOD BTI
         </div>
-        <div className="text-6xl drop-shadow-md mb-2">{topProfile.emoji}</div>
+        <div className="text-5xl drop-shadow-md mb-2">{topProfile.emoji}</div>
         <h2
-          className={`text-[22px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight mb-1.5`}
+          className={`text-[20px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight mb-1`}
         >
           {topProfile.titleKo}
         </h2>
-        <p className="text-[12px] font-bold text-ink-400">
+        <p className="text-[11px] font-bold text-ink-400">
           {topProfile.titleZh}
         </p>
-        <p className="text-[13px] font-medium text-ink-700 mt-3 bg-cream-50 px-4 py-2 rounded-xl">
+        <p className="text-[12px] font-medium text-ink-700 mt-2 bg-cream-50 px-3 py-1.5 rounded-xl">
           “{topProfile.descKo} · {topProfile.descZh}”
         </p>
       </div>
 
-      {/* Section breakdown — top 4 buckets so the card stays compact */}
-      <div className="relative z-10 space-y-3.5">
+      <div className="relative z-10 space-y-2.5">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-[12px] font-bold text-ink-900">
+          <p className="text-[11px] font-bold text-ink-900">
             섹션별 입맛 분석
           </p>
           <p className="text-[10px] text-ink-400 font-medium">
@@ -480,12 +526,12 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
         {stats.slice(0, 4).map((s) => {
           const pf = BTI_PROFILES[s.key];
           return (
-            <div key={s.key} className="flex items-center gap-3">
-              <div className="w-8 flex-shrink-0 text-xl text-center">
+            <div key={s.key} className="flex items-center gap-2">
+              <div className="w-7 flex-shrink-0 text-base text-center">
                 {pf.emoji}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex justify-between text-[11px] font-bold text-ink-700 mb-1.5 gap-2">
+                <div className="flex justify-between text-[11px] font-bold text-ink-700 mb-1 gap-2">
                   <span className="truncate">
                     {pf.titleKo}{" "}
                     <span className="text-ink-400 font-medium">
@@ -496,7 +542,7 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
                     {Math.round(s.percent)}%
                   </span>
                 </div>
-                <div className="w-full h-2.5 bg-cream-100 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-cream-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full ${pf.bar} rounded-full transition-all duration-1000 ease-out`}
                     style={{ width: `${s.percent}%` }}
@@ -514,14 +560,25 @@ function FoodBtiCard({ rows }: { rows: Row[] }) {
 // ---------- 별점 요정 vs 깐깐징어 통계 카드 ----------
 
 function RatingStats({ rows }: { rows: Row[] }) {
+  if (rows.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl p-6 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[280px]">
+        <Scale className="w-8 h-8 text-ink-300 mb-3" />
+        <h3 className="font-bold text-ink-700 text-base mb-1">
+          별점 요정은 누구? · 谁是打分小天使？
+        </h3>
+        <p className="text-xs text-ink-500 max-w-[220px]">
+          둘이 별점을 더 매겨주세요. 평균이 모이면 비교가 시작돼요!
+          <br />
+          多打分就知道谁更大方啦！
+        </p>
+      </div>
+    );
+  }
   const avgMine = rows.reduce((s, r) => s + r.mine, 0) / rows.length;
   const avgPartner = rows.reduce((s, r) => s + r.partner, 0) / rows.length;
   const diff = Math.abs(avgMine - avgPartner);
-  // Tolerance: differences smaller than 0.1 are noise, treat as a tie.
   const isTie = diff < 0.1;
-  // Fixed columns: 나 on the left, 짝꿍 on the right. The role badge
-  // (별점 요정 / 깐깐징어) flips to whichever person fits, so the
-  // "who is who" reading is left = me, right = partner, no exception.
   const myRole: "fairy" | "strict" | "tie" = isTie
     ? "tie"
     : avgMine > avgPartner
@@ -534,7 +591,7 @@ function RatingStats({ rows }: { rows: Row[] }) {
       : "fairy";
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-5 border border-indigo-100 shadow-airy">
+    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-5 border border-indigo-100 shadow-airy h-full">
       <h3 className="font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-4">
         <Scale className="w-4 h-4 text-indigo-500" />
         누가 더 후할까? · 谁是打分小天使？
@@ -596,8 +653,7 @@ function PersonStatTile({
   avg: number;
   role: "fairy" | "strict" | "tie";
 }) {
-  const personCls =
-    tone === "peach" ? "text-peach-500" : "text-rose-500";
+  const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
   const accentCls =
     tone === "peach"
       ? "bg-peach-50 border-peach-200"
@@ -637,7 +693,7 @@ function PersonStatTile({
   );
 }
 
-// ---------- segmented 버튼 ----------
+// ---------- segmented 버튼 + 가로 탭 ----------
 
 function DiningSegment({
   active,
@@ -667,50 +723,84 @@ function DiningSegment({
   );
 }
 
-// ---------- Section + FoodCard ----------
-
-function Section({
+// 4-section list tab. Tone-coded so the active state hints at which
+// list is showing without needing to read the label.
+function SectionTab({
+  active,
+  onClick,
   icon,
-  iconBg,
-  iconColor,
+  labelKo,
+  labelZh,
+  count,
+  tone,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  labelKo: string;
+  labelZh: string;
+  count: number;
+  tone: "amber" | "rose" | "indigo" | "ink";
+}) {
+  const activeCls =
+    tone === "amber"
+      ? "bg-amber-50 border-amber-200 text-amber-700"
+      : tone === "rose"
+        ? "bg-rose-50 border-rose-200 text-rose-600"
+        : tone === "indigo"
+          ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+          : "bg-ink-900 border-ink-900 text-white";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[12px] font-bold transition whitespace-nowrap shadow-sm ${
+        active
+          ? activeCls
+          : "bg-white border-cream-200/80 text-ink-500 hover:bg-cream-50"
+      }`}
+    >
+      {icon}
+      <span>{labelKo}</span>
+      <span className="text-[10px] opacity-70">· {labelZh}</span>
+      <span
+        className={`ml-1 font-number text-[10px] px-1.5 py-0.5 rounded-full ${
+          active && tone !== "ink"
+            ? "bg-white/60"
+            : active
+              ? "bg-white/20"
+              : "bg-cream-100 text-ink-400"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+// ---------- list panel ----------
+
+function ListPanel({
   titleKo,
   titleZh,
-  descKo,
-  descZh,
   empty,
   emptyText,
   children,
 }: {
-  icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
   titleKo: string;
   titleZh: string;
-  descKo: string;
-  descZh: string;
-  empty?: boolean;
-  emptyText?: string;
+  empty: boolean;
+  emptyText: string;
   children: React.ReactNode;
 }) {
   return (
     <section>
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-full ${iconBg} ${iconColor}`}>{icon}</div>
-        <div>
-          <h2 className="font-sans font-bold text-lg leading-tight">
-            {titleKo}
-            <span className="ml-2 text-ink-400 text-base font-medium">
-              · {titleZh}
-            </span>
-          </h2>
-          <p className="text-xs text-ink-500">
-            {descKo} · {descZh}
-          </p>
-        </div>
-      </div>
+      <p className="text-xs text-ink-500 mb-3 px-1">
+        {titleKo} · {titleZh}
+      </p>
       <div className="space-y-3">
         {empty ? (
-          <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-cream-200 text-sm text-ink-400">
+          <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-cream-200 text-sm text-ink-400">
             {emptyText}
           </div>
         ) : (
@@ -720,6 +810,8 @@ function Section({
     </section>
   );
 }
+
+// ---------- food card ----------
 
 function FoodCard({
   r,
@@ -735,14 +827,10 @@ function FoodCard({
   yyds?: boolean;
 }) {
   const total = r.mine + r.partner;
-  // YYDS cards get a warm gold gradient + amber badge so the trophy
-  // section visually reads as "premium" without changing the layout.
   const cardCls = yyds
     ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
     : "bg-white border-cream-200 shadow-soft";
-  const badgeCls = yyds
-    ? "bg-amber-500 text-white"
-    : "bg-ink-900 text-white";
+  const badgeCls = yyds ? "bg-amber-500 text-white" : "bg-ink-900 text-white";
   return (
     <Link
       to={`/places/${r.placeId}`}
@@ -839,15 +927,13 @@ function BalanceBar({ mine, partner }: { mine: number; partner: number }) {
   return (
     <div className="mt-3">
       <div className="flex justify-between text-xs font-medium mb-1.5 px-1">
-        <span
-          className={mine > partner ? "text-peach-500" : "text-ink-400"}
-        >
-          나 · 我 (<span className="font-number font-bold">{mine.toFixed(1)}</span>)
+        <span className={mine > partner ? "text-peach-500" : "text-ink-400"}>
+          나 · 我 (
+          <span className="font-number font-bold">{mine.toFixed(1)}</span>)
         </span>
-        <span
-          className={partner > mine ? "text-rose-500" : "text-ink-400"}
-        >
-          짝꿍 · 宝宝 (<span className="font-number font-bold">{partner.toFixed(1)}</span>)
+        <span className={partner > mine ? "text-rose-500" : "text-ink-400"}>
+          짝꿍 · 宝宝 (
+          <span className="font-number font-bold">{partner.toFixed(1)}</span>)
         </span>
       </div>
       <div className="w-full h-4 bg-cream-100 rounded-full flex overflow-hidden border border-cream-200">
