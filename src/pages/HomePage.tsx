@@ -550,13 +550,14 @@ export default function HomePage() {
                 </span>
               </h2>
             </div>
-            {/* Quick toggles row — wrap so on narrow screens they fall
-                under each other instead of squishing the title. */}
-            <div className="flex flex-wrap gap-1.5 mb-3 px-1">
+            {/* Quick toggles row — single horizontal scroll line so the
+                two pills never wrap and stack the title down. Narrow
+                screens scroll the row sideways instead. */}
+            <div className="flex gap-1.5 mb-3 px-1 overflow-x-auto hide-scrollbar">
               <button
                 type="button"
                 onClick={() => setRevisitOnly((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
                   revisitOnly
                     ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -565,12 +566,12 @@ export default function HomePage() {
                 <Heart
                   className={`w-3.5 h-3.5 ${revisitOnly ? "fill-rose-500" : ""}`}
                 />
-                또 갈래! 맛집 · 必须二刷
+                또 갈래! · 必须二刷
               </button>
               <button
                 type="button"
                 onClick={() => setUnratedOnly((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
                   unratedOnly
                     ? "bg-amber-50 text-amber-700 border-amber-200/70 shadow-[0_2px_10px_rgba(217,119,6,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
