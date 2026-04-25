@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   BookmarkPlus,
   CheckCircle2,
@@ -146,87 +145,11 @@ function avgTotal(p: PlaceWithFoods): number | null {
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
-// Pull-to-refresh: when the document is scrolled to the top and the user
-// drags downward past PULL_THRESHOLD, fire onRefresh. Returns the current
-// pull distance (clamped) + busy flag so the caller can render an indicator.
-const PULL_THRESHOLD = 70;
-const PULL_MAX = 110;
-
-function usePullToRefresh(onRefresh: () => Promise<unknown>) {
-  const [pull, setPull] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const startY = useRef<number | null>(null);
-  const tracking = useRef(false);
-
-  useEffect(() => {
-    function onTouchStart(e: TouchEvent) {
-      // Only engage from the very top, and only with one finger.
-      if (window.scrollY > 0 || e.touches.length !== 1) {
-        startY.current = null;
-        tracking.current = false;
-        return;
-      }
-      startY.current = e.touches[0].clientY;
-      tracking.current = true;
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (!tracking.current || startY.current === null) return;
-      const dy = e.touches[0].clientY - startY.current;
-      if (dy <= 0) {
-        // Finger moved up; abandon the gesture.
-        setPull(0);
-        tracking.current = false;
-        return;
-      }
-      // Resistance: square-rootish damping so the indicator decelerates.
-      const damped = Math.min(PULL_MAX, dy * 0.55);
-      setPull(damped);
-    }
-    function onTouchEnd() {
-      if (!tracking.current) return;
-      tracking.current = false;
-      startY.current = null;
-      setPull((current) => {
-        if (current >= PULL_THRESHOLD && !refreshing) {
-          setRefreshing(true);
-          Promise.resolve(onRefresh()).finally(() => {
-            setRefreshing(false);
-            setPull(0);
-          });
-          return PULL_THRESHOLD; // hold the indicator while refreshing
-        }
-        return 0;
-      });
-    }
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend", onTouchEnd);
-    window.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-      window.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [onRefresh, refreshing]);
-
-  return { pull, refreshing };
-}
-
 export default function HomePage() {
   const { i18n } = useTranslation();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
-  const qc = useQueryClient();
-
-  const { pull, refreshing } = usePullToRefresh(() =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: ["places"] }),
-      qc.invalidateQueries({ queryKey: ["wishlist"] }),
-      qc.invalidateQueries({ queryKey: ["couple"] }),
-    ])
-  );
 
   const [tab, setTab] = useState<Tab>("timeline");
   const [query, setQuery] = useState("");
@@ -341,30 +264,6 @@ export default function HomePage() {
 
   return (
     <div className="relative">
-      {/* Pull-to-refresh indicator — drops in from above when pulled.
-          The negative top + opacity tied to pull distance gives a smooth
-          reveal; once refreshing, the spinner sticks until the queries
-          resolve. */}
-      {(pull > 0 || refreshing) && (
-        <div
-          className="fixed left-0 right-0 z-30 flex justify-center pointer-events-none"
-          style={{
-            top: `calc(env(safe-area-inset-top, 0px) + ${Math.max(8, pull * 0.4)}px)`,
-            opacity: Math.min(1, pull / PULL_THRESHOLD),
-          }}
-        >
-          <div className="bg-white/95 backdrop-blur rounded-full shadow-airy border border-cream-200 w-10 h-10 flex items-center justify-center">
-            <RefreshCw
-              className={`w-5 h-5 text-rose-400 ${refreshing ? "animate-spin" : ""}`}
-              style={{
-                transform: refreshing
-                  ? undefined
-                  : `rotate(${Math.min(360, (pull / PULL_THRESHOLD) * 280)}deg)`,
-              }}
-            />
-          </div>
-        </div>
-      )}
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
