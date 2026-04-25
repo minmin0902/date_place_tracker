@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Dice5,
+  Grid3x3,
   Heart,
+  List,
   MapPin,
   Plus,
   RefreshCw,
@@ -44,6 +46,9 @@ type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc" | "city";
 // Type filter — works alongside ViewMode so users can combine
 // "집밥만 보기" with "별점 높은순".
 type DiningFilter = "all" | "out" | "home";
+// Visual layout for the timeline list. "list" is the original timeline
+// card; "grid" is a 2-col photo-first feed. Independent from ViewMode.
+type ListLayout = "list" | "grid";
 
 // Persist filter state across navigation in this tab session — so
 // "내 별점 안 줬어요" + "외식" + "별점 높은순" is preserved when the
@@ -61,6 +66,7 @@ type StoredFilters = {
   selectedCity?: string | null;
   query?: string;
   showSearch?: boolean;
+  listLayout?: ListLayout;
 };
 
 function loadFilters(): StoredFilters {
@@ -244,6 +250,9 @@ export default function HomePage() {
   const [selectedCity, setSelectedCity] = useState<string | null>(
     initialFilters.current.selectedCity ?? null
   );
+  const [listLayout, setListLayout] = useState<ListLayout>(
+    initialFilters.current.listLayout ?? "list"
+  );
 
   // Persist filters every time one changes — picked up on the next
   // mount of HomePage so users return to the same view after diving
@@ -259,6 +268,7 @@ export default function HomePage() {
       diningFilter,
       categoryFilter,
       selectedCity,
+      listLayout,
     });
   }, [
     tab,
@@ -270,6 +280,7 @@ export default function HomePage() {
     diningFilter,
     categoryFilter,
     selectedCity,
+    listLayout,
   ]);
 
   // A place is "needs categorizing" if either the place itself has no
@@ -549,6 +560,25 @@ export default function HomePage() {
                   {filteredPlaces.length}
                 </span>
               </h2>
+              {/* List ↔ grid layout toggle. Hidden when 도시별 view is
+                  active because city groups don't make sense in a 2-col
+                  photo grid. */}
+              {viewMode !== "city" && (
+                <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
+                  <LayoutToggle
+                    active={listLayout === "list"}
+                    onClick={() => setListLayout("list")}
+                    icon={<List className="w-4 h-4" />}
+                    label="리스트 뷰 · 列表"
+                  />
+                  <LayoutToggle
+                    active={listLayout === "grid"}
+                    onClick={() => setListLayout("grid")}
+                    icon={<Grid3x3 className="w-4 h-4" />}
+                    label="그리드 뷰 · 网格"
+                  />
+                </div>
+              )}
             </div>
             {/* Quick toggles row — single horizontal scroll line so the
                 two pills never wrap and stack the title down. Narrow
@@ -722,6 +752,17 @@ export default function HomePage() {
                       ))}
                     </div>
                   </div>
+                ))}
+              </div>
+            ) : listLayout === "grid" ? (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                {filteredPlaces.map((p) => (
+                  <TimelineGridItem
+                    key={p.id}
+                    place={p}
+                    locale={i18n.language}
+                    viewerId={user?.id}
+                  />
                 ))}
               </div>
             ) : (
@@ -1157,6 +1198,141 @@ function TimelineItem({
         </div>
       </Link>
     </div>
+  );
+}
+
+// ---------- list ↔ grid layout toggle ----------
+
+function LayoutToggle({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`p-1.5 rounded-md transition-all ${
+        active
+          ? "bg-white text-ink-900 shadow-sm border border-cream-200"
+          : "text-ink-400 hover:text-ink-700"
+      }`}
+    >
+      {icon}
+    </button>
+  );
+}
+
+// ---------- timeline grid item (2-col photo-first feed) ----------
+
+function TimelineGridItem({
+  place,
+  locale,
+  viewerId,
+}: {
+  place: PlaceWithFoods;
+  locale: string;
+  viewerId: string | undefined;
+}) {
+  const isHome = !!place.is_home_cooked;
+  const theme = timelineTheme(isHome);
+  const avg = avgTotal(place);
+  const photo = place.photo_urls?.[0];
+  const unratedByMe = (place.foods ?? []).filter((f) => {
+    const eater = f.eater ?? (f.is_solo ? "creator" : "both");
+    if (eater !== "both") {
+      const isEater =
+        eater === "creator"
+          ? !f.created_by || f.created_by === viewerId
+          : f.created_by !== viewerId;
+      if (!isEater) return false;
+    }
+    const view = ratingsForViewer(f, viewerId);
+    return view.myRating == null;
+  }).length;
+
+  return (
+    <Link
+      to={`/places/${place.id}`}
+      className={`block rounded-2xl overflow-hidden border ${theme.cardBorder} shadow-soft active:scale-[0.97] transition`}
+    >
+      {/* Photo well — square. Falls back to a big emoji on the
+          home/category-tinted background when no photo is uploaded. */}
+      <div
+        className={`aspect-square relative ${
+          photo ? "bg-cream-50" : `${theme.img} flex items-center justify-center`
+        }`}
+      >
+        {photo ? (
+          <img
+            src={photo}
+            alt={place.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span className="text-6xl drop-shadow-sm">
+            {isHome ? "🍳" : categoryIcon(place.category)}
+          </span>
+        )}
+        {/* Top-left: dining-type tag */}
+        <div className="absolute top-2 left-2">
+          <span
+            className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold leading-none border ${theme.tag}`}
+          >
+            {isHome ? "🍳 집밥 · 私房菜" : "🍽️ 외식 · 探店"}
+          </span>
+        </div>
+        {/* Top-right: revisit heart */}
+        {place.want_to_revisit && (
+          <div className="absolute top-2 right-2 bg-white/90 rounded-full p-1 shadow-sm">
+            <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+          </div>
+        )}
+        {/* Bottom: gradient overlay + name. Only over photos so the
+            emoji fallback stays clean. */}
+        {photo && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-2 pt-8">
+            <h3 className="text-white font-bold text-[13px] leading-tight line-clamp-2 drop-shadow">
+              {place.name}
+            </h3>
+          </div>
+        )}
+        {/* Unrated-by-me badge */}
+        {unratedByMe > 0 && (
+          <div className="absolute bottom-2 right-2 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm flex items-center gap-0.5">
+            ✏️ <span className="font-number">{unratedByMe}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Footer: name (only when no photo so it isn't duplicated) +
+          date + score. Tight layout — grid cards prioritize density. */}
+      <div className={`p-2 bg-white ${theme.card}`}>
+        {!photo && (
+          <h3 className="font-bold text-ink-900 text-[13px] truncate mb-1">
+            {place.name}
+          </h3>
+        )}
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[10px] text-ink-500 font-number truncate">
+            {formatDate(place.date_visited, locale)}
+          </span>
+          {avg !== null && (
+            <span className="inline-flex items-center text-peach-500 font-bold font-number text-[11px] flex-shrink-0">
+              ⭐ {avg.toFixed(1)}
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
   );
 }
 
