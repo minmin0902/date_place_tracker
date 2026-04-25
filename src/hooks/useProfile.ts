@@ -144,7 +144,8 @@ export function useDisplayNames(): {
 }
 
 // Resolve a memo's author into the bits the comment-style render needs:
-// display name + avatar.
+// display name, avatar, and a peach/rose tone for visual continuity
+// with the rest of the app (peach = me, rose = partner).
 //   - Matches my user id  → my profile name + avatar
 //   - Matches partner id  → partner's name + avatar
 //   - null / unknown      → fall back to the partner. Legacy memos
@@ -154,6 +155,7 @@ export function useDisplayNames(): {
 export function useMemoAuthor(authorId: string | null | undefined): {
   name: string;
   avatarUrl: string | null;
+  tone: "peach" | "rose";
 } {
   const { me, partner, myId, partnerId } = useCoupleProfiles();
   const { myDisplay, partnerDisplay } = useDisplayNames();
@@ -161,15 +163,17 @@ export function useMemoAuthor(authorId: string | null | undefined): {
     return {
       name: myDisplay,
       avatarUrl: me.data?.avatar_url ?? null,
+      tone: "peach",
     };
   }
   if (!authorId || authorId === partnerId) {
     return {
       name: partnerDisplay,
       avatarUrl: partner.data?.avatar_url ?? null,
+      tone: "rose",
     };
   }
-  return { name: "?", avatarUrl: null };
+  return { name: "?", avatarUrl: null, tone: "rose" };
 }
 
 export function useUpsertProfile() {

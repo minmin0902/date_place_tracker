@@ -1,9 +1,16 @@
-import type { Couple, Place, Food, WishlistPlace } from "./database.types";
+import type {
+  Couple,
+  Place,
+  Food,
+  Memo,
+  WishlistPlace,
+} from "./database.types";
 
 type LocalDB = {
   couples: Couple[];
   places: Place[];
   foods: Food[];
+  memos: Memo[];
   wishlist: WishlistPlace[];
   photos: Record<string, string>; // path -> dataURL
 };
@@ -15,7 +22,7 @@ export const LOCAL_USER_2_EMAIL = "luoyuhan2025@gmail.com";
 
 // Bump the storage key whenever the seed shape changes so stale dev data from
 // an earlier version gets discarded automatically.
-const KEY = "local_db_v6";
+const KEY = "local_db_v7";
 
 // Fixed ids so the seed is idempotent across reloads.
 const SEED_COUPLE_ID = "seed-couple-1";
@@ -84,6 +91,7 @@ function makeSeedDb(): LocalDB {
       mkFood("iced americano", 3.6, 1),
     ],
     wishlist: [],
+    memos: [],
     photos: {},
   };
 }
@@ -161,6 +169,7 @@ export function upsertPlace(input: any) {
     category: input.values.category ?? null,
     memo: input.values.memo ?? null,
     memo_author_id: input.values.memo_author_id ?? null,
+    memo_updated_at: input.values.memo_updated_at ?? null,
     want_to_revisit: !!input.values.want_to_revisit,
     photo_urls: input.values.photo_urls ?? null,
     latitude: input.values.latitude ?? null,
@@ -202,6 +211,7 @@ export function upsertFood(input: any) {
     category: input.values.category ?? null,
     memo: input.values.memo ?? null,
     memo_author_id: input.values.memo_author_id ?? null,
+    memo_updated_at: input.values.memo_updated_at ?? null,
     photo_url: input.values.photo_url ?? null,
     photo_urls: input.values.photo_urls ?? null,
     created_at: now,
@@ -289,4 +299,52 @@ export async function uploadPhoto(file: File, coupleId: string): Promise<string>
     throw e;
   }
   return dataUrl;
+}
+
+// ---------------------------------------------------------------
+// Memos thread (extra memos partners add from the detail page).
+// localDb-only mirror of the memos table; same shape as the DB row.
+// ---------------------------------------------------------------
+
+export function getMemos(filter: {
+  placeId?: string;
+  foodId?: string;
+}): Memo[] {
+  const db = load();
+  const all = db.memos ?? [];
+  return all
+    .filter((m) =>
+      filter.placeId ? m.place_id === filter.placeId : m.food_id === filter.foodId
+    )
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+}
+
+export function addMemo(input: {
+  coupleId: string;
+  placeId?: string | null;
+  foodId?: string | null;
+  authorId: string;
+  body: string;
+}): Memo {
+  const db = load();
+  const now = new Date().toISOString();
+  const memo: Memo = {
+    id: crypto.randomUUID(),
+    couple_id: input.coupleId,
+    place_id: input.placeId ?? null,
+    food_id: input.foodId ?? null,
+    author_id: input.authorId,
+    body: input.body,
+    created_at: now,
+    updated_at: now,
+  };
+  db.memos = [...(db.memos ?? []), memo];
+  save(db);
+  return memo;
+}
+
+export function deleteMemo(id: string) {
+  const db = load();
+  db.memos = (db.memos ?? []).filter((m) => m.id !== id);
+  save(db);
 }

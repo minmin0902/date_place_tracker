@@ -287,6 +287,14 @@ export default function PlaceFormPage() {
         // clears the textarea, drop the author too so the row can fall
         // back to the legacy renderer if anyone re-adds a memo later.
         memo_author_id: memo.trim() ? memoAuthorId ?? user.id : null,
+        // Bump memo_updated_at only when the text actually changed,
+        // so unrelated re-saves (toggling revisit, swapping a photo)
+        // don't push the timestamp forward. Empty memo → null.
+        memo_updated_at: !memo.trim()
+          ? null
+          : memo.trim() === (existing?.memo ?? "")
+            ? existing?.memo_updated_at ?? new Date().toISOString()
+            : new Date().toISOString(),
         want_to_revisit: wantRevisit,
         is_home_cooked: isHome,
         latitude: placeLat,
@@ -315,6 +323,11 @@ export default function PlaceFormPage() {
               memo: f.memo.trim() || null,
               memo_author_id: f.memo.trim()
                 ? f.memo_author_id ?? user.id
+                : null,
+              // Home-mode foods are always brand-new inserts, so a
+              // non-empty memo is by definition just-written.
+              memo_updated_at: f.memo.trim()
+                ? new Date().toISOString()
                 : null,
               // photo_url is the legacy single-photo column; keep it
               // populated with the first media so older clients still

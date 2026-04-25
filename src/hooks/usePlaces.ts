@@ -75,6 +75,10 @@ export function useUpsertPlace() {
         // null = "no memo yet" or "legacy memo from before this column
         // existed". Set when the form posts a non-empty memo.
         memo_author_id?: string | null;
+        // ISO. The form computes this only when the memo TEXT actually
+        // changed; unchanged memos forward the old value so the
+        // timestamp doesn't drift on an unrelated re-save.
+        memo_updated_at?: string | null;
         want_to_revisit: boolean;
         is_home_cooked?: boolean;
         latitude: number | null;
@@ -140,6 +144,7 @@ export function useUpsertFood() {
         categories?: string[] | null;
         memo: string | null;
         memo_author_id?: string | null;
+        memo_updated_at?: string | null;
         photo_url: string | null;
         photo_urls: string[] | null;
         chef?: "me" | "partner" | "together" | null;

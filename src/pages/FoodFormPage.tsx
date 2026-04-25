@@ -243,6 +243,14 @@ export default function FoodFormPage() {
         categories: categories.length ? categories : null,
         memo: memo.trim() || null,
         memo_author_id: memo.trim() ? memoAuthorId ?? user?.id ?? null : null,
+        // Bump memo_updated_at only when the text actually changed —
+        // unrelated edits (rating tweak, photo swap) shouldn't push
+        // the comment timestamp forward.
+        memo_updated_at: !memo.trim()
+          ? null
+          : memo.trim() === (existing?.memo ?? "")
+            ? existing?.memo_updated_at ?? new Date().toISOString()
+            : new Date().toISOString(),
         // Keep the legacy scalar column populated too so any older build
         // still reading photo_url sees something.
         photo_url: photos[0] ?? null,

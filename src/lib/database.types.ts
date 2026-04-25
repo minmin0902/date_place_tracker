@@ -27,6 +27,10 @@ export type Database = {
           // Who wrote `memo`. null on legacy rows (rendered as the
           // partner since the couple originally shared one account).
           memo_author_id: string | null;
+          // When `memo` was last written. Distinct from updated_at —
+          // we don't want unrelated row updates (RLS migrations,
+          // category edits, etc) to falsely advance this timestamp.
+          memo_updated_at: string | null;
           want_to_revisit: boolean;
           is_home_cooked: boolean;
           photo_urls: string[] | null;
@@ -46,6 +50,7 @@ export type Database = {
           categories?: string[] | null;
           memo?: string | null;
           memo_author_id?: string | null;
+          memo_updated_at?: string | null;
           want_to_revisit?: boolean;
           is_home_cooked?: boolean;
           photo_urls?: string[] | null;
@@ -74,6 +79,8 @@ export type Database = {
           memo: string | null;
           // Who wrote `memo`. null on legacy rows.
           memo_author_id: string | null;
+          // When `memo` was last written. See places row for rationale.
+          memo_updated_at: string | null;
           // Legacy single-photo column, kept for back-compat. Prefer
           // photo_urls for reads/writes.
           photo_url: string | null;
@@ -96,6 +103,7 @@ export type Database = {
           categories?: string[] | null;
           memo?: string | null;
           memo_author_id?: string | null;
+          memo_updated_at?: string | null;
           photo_url?: string | null;
           photo_urls?: string[] | null;
           chef?: ChefRole | null;
@@ -150,6 +158,30 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
       };
+      memos: {
+        Row: {
+          id: string;
+          couple_id: string;
+          // Exactly one of place_id / food_id is set.
+          place_id: string | null;
+          food_id: string | null;
+          author_id: string;
+          body: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          couple_id: string;
+          place_id?: string | null;
+          food_id?: string | null;
+          author_id: string;
+          body: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["memos"]["Insert"]>;
+      };
       wishlist_places: {
         Row: {
           id: string;
@@ -184,6 +216,7 @@ export type Database = {
 
 export type Place = Database["public"]["Tables"]["places"]["Row"];
 export type Food = Database["public"]["Tables"]["foods"]["Row"];
+export type Memo = Database["public"]["Tables"]["memos"]["Row"];
 export type Couple = Database["public"]["Tables"]["couples"]["Row"];
 export type WishlistPlace =
   Database["public"]["Tables"]["wishlist_places"]["Row"];

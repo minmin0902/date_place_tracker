@@ -15,6 +15,7 @@ import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoComment } from "@/components/MemoComment";
+import { MemoThread } from "@/components/MemoThread";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -270,23 +271,31 @@ export default function PlaceDetailPage() {
           </button>
         </section>
 
-        {/* Address + memo */}
-        {(place.address || place.memo) && (
-          <section className="space-y-3">
-            {place.address && (
-              <div className="card p-4 flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-peach-400 mt-0.5" />
-                <p className="text-sm text-ink-700">{place.address}</p>
-              </div>
-            )}
+        {/* Address + memo thread. The section is always rendered so
+            either partner can drop a memo via the inline composer
+            below, even on places that started out with no memo. */}
+        <section className="space-y-3">
+          {place.address && (
+            <div className="card p-4 flex items-start gap-3">
+              <MapPin className="w-5 h-5 text-peach-400 mt-0.5" />
+              <p className="text-sm text-ink-700">{place.address}</p>
+            </div>
+          )}
+          <div className="card p-4 space-y-3">
             {place.memo && (
               <MemoComment
                 memo={place.memo}
                 authorId={place.memo_author_id}
+                // memo_updated_at tracks ONLY memo edits — unrelated
+                // saves (revisit toggle, photo add) leave it alone.
+                // Falls back to created_at on legacy rows the
+                // backfill migration may have missed.
+                createdAt={place.memo_updated_at ?? place.created_at}
               />
             )}
-          </section>
-        )}
+            <MemoThread placeId={place.id} />
+          </div>
+        </section>
 
         {/* Foods */}
         <section>
@@ -588,15 +597,21 @@ function FoodCard({
         </>
       )}
 
-      {food.memo && (
-        <div className="mt-3">
+      {/* Memo block — primary memo (typed in the create form) plus
+          the thread of any extra memos either partner has added since.
+          Rendered together inside a tinted box so the conversation
+          reads as a unit, separate from the rating bars above. */}
+      <div className="mt-3 rounded-2xl bg-cream-50/60 border border-cream-100 px-3 py-3 space-y-3">
+        {food.memo && (
           <MemoComment
             memo={food.memo}
             authorId={food.memo_author_id}
+            createdAt={food.memo_updated_at ?? food.created_at}
             size="sm"
           />
-        </div>
-      )}
+        )}
+        <MemoThread foodId={food.id} size="sm" />
+      </div>
     </div>
   );
 }

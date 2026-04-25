@@ -1,6 +1,6 @@
 import { useMemoAuthor } from "@/hooks/useProfile";
 
-// Tight one-line attribution for places where the full chat-bubble
+// Tight one-line attribution for places where the full caption layout
 // would crowd the row. Renders "{author} · {memo}" as a single span;
 // callers wrap it in their own truncating <p> tag.
 export function MemoCommentInline({
@@ -22,59 +22,101 @@ export function MemoCommentInline({
   );
 }
 
-// Comment-style memo display — small avatar on the left, author name +
-// memo text on the right, in a chat-bubble shape. Drop-in for the
-// previous "<div className='card'>{memo}</div>" pattern, used wherever
-// places.memo / foods.memo gets rendered.
+// Relative-time formatter: "방금 전 / 12분 전 / 3시간 전 / 5일 전 /
+// 4월 12일". Korean only — the rest of the app pairs Korean labels
+// with Chinese subtitles, but for a tiny comment timestamp we keep it
+// to one short string. Threshold-based so we don't pull in dayjs/etc
+// just for this.
+function relativeKo(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const diffSec = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (diffSec < 60) return "방금 전";
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}일 전`;
+  return new Date(t).toLocaleDateString("ko-KR", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Instagram-style memo display — small avatar on the left, bold author
+// name inline with the memo, and a tiny relative timestamp underneath.
+// Used on the place detail page where users come back to read what
+// they wrote about a date / dish.
 //
-// `authorId === null` means the row pre-dates the memo_author_id
-// column. The hook surfaces the legacy fallback name ("주디") so those
-// memos read correctly without any SQL backfill.
+// `authorId === null` is handled by the hook (renders as the partner)
+// to keep legacy rows from blanking out before the SQL backfill runs.
 export function MemoComment({
   memo,
   authorId,
+  createdAt,
   className = "",
   size = "md",
 }: {
   memo: string;
   authorId: string | null | undefined;
+  // ISO string. Optional because some memo surfaces (e.g. legacy
+  // imports) don't have a reliable timestamp; we just hide the row.
+  createdAt?: string | null;
   className?: string;
-  // 'sm' shrinks the avatar + padding for the per-food card render
+  // 'sm' shrinks the avatar + text for the per-food card render
   // where multiple memos can stack inside a tight place detail page.
   size?: "sm" | "md";
 }) {
-  const { name, avatarUrl } = useMemoAuthor(authorId);
+  const { name, avatarUrl, tone } = useMemoAuthor(authorId);
   const isSm = size === "sm";
-  const avatarPx = isSm ? "w-6 h-6 text-[10px]" : "w-8 h-8 text-xs";
-  const padding = isSm ? "px-3 py-2" : "px-4 py-3";
-  const initial = name.trim().slice(0, 1) || "·";
+  const avatarBox = isSm ? "w-7 h-7 text-[10px]" : "w-8 h-8 text-[11px]";
+  const textSize = isSm ? "text-[12px]" : "text-[13px]";
+  const initial = Array.from(name)[0] ?? "·";
+  const toneCls =
+    tone === "peach"
+      ? "bg-peach-100 text-peach-500"
+      : "bg-rose-100 text-rose-500";
+  const stamp = createdAt ? relativeKo(createdAt) : "";
+
   return (
-    <div className={`flex items-start gap-2 ${className}`}>
-      <div
-        className={`${avatarPx} rounded-full bg-peach-100 text-peach-500 font-bold flex-shrink-0 flex items-center justify-center overflow-hidden border border-cream-200`}
-        aria-hidden
-      >
-        {avatarUrl ? (
-          <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
-        ) : (
-          <span>{initial}</span>
-        )}
-      </div>
-      <div
-        className={`flex-1 min-w-0 rounded-2xl rounded-tl-md bg-cream-50 border border-cream-200 ${padding}`}
-      >
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span
-            className={`font-bold text-ink-900 ${isSm ? "text-[12px]" : "text-[13px]"}`}
-          >
-            {name}
-          </span>
-        </div>
-        <p
-          className={`text-ink-700 whitespace-pre-wrap break-words ${isSm ? "text-[12px]" : "text-sm"}`}
+    <div className={`flex gap-3 ${className}`}>
+      {/* Avatar — uses the user's uploaded photo when available, else
+          a colored bubble with the first character of their name. */}
+      <div className="flex-shrink-0 mt-0.5">
+        <div
+          className={`${avatarBox} rounded-full overflow-hidden border border-cream-200 flex items-center justify-center font-black ${
+            avatarUrl ? "" : toneCls
+          }`}
+          aria-hidden
         >
-          {memo}
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Caption — bold name flowing inline with the memo body, like
+          an Instagram post caption / comment. break-keep so Korean
+          words don't split awkwardly mid-character. */}
+      <div className="flex-1 min-w-0">
+        <p
+          className={`leading-snug whitespace-pre-wrap break-words break-keep ${textSize}`}
+        >
+          <span className="font-bold text-ink-900 mr-1.5">{name}</span>
+          <span className="text-ink-700">{memo}</span>
         </p>
+        {stamp && (
+          <p className="text-[10px] text-ink-400 mt-1 font-medium font-number">
+            {stamp}
+          </p>
+        )}
       </div>
     </div>
   );
