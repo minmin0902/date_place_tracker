@@ -72,6 +72,7 @@ export function useUpsertPlace() {
         category: string | null;
         memo: string | null;
         want_to_revisit: boolean;
+        is_home_cooked?: boolean;
         latitude: number | null;
         longitude: number | null;
         photo_urls: string[] | null;
@@ -135,6 +136,7 @@ export function useUpsertFood() {
         memo: string | null;
         photo_url: string | null;
         photo_urls: string[] | null;
+        chef?: "me" | "partner" | "together" | null;
       };
     }) => {
       if (ALLOW_NO_AUTH) return upsertLocalFood(input);

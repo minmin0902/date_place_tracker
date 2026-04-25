@@ -1159,12 +1159,16 @@ function RouletteModal({
   }, [cityFilter, availableCities]);
 
   // Reset on open/close, and seed a teaser pick when the pool changes.
+  // setCityFilter must use the functional form and bail out when the Set
+  // is already empty — passing `new Set()` unconditionally creates a new
+  // reference each render, the cityFilter dep then changes, the effect
+  // re-runs, and we get "Maximum update depth exceeded".
   useEffect(() => {
     if (!open) {
       setPicked(null);
       setSpinning(false);
       setCategoryFilter(null);
-      setCityFilter(new Set());
+      setCityFilter((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     if (pool.length > 0) {

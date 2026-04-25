@@ -20,6 +20,44 @@ const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // Seoul fallback
 
 type LatLng = { lat: number; lng: number };
 
+// House-shaped pin for the couple's home address. Stands out from the
+// food markers via a different gradient + roof silhouette so users can
+// orient relative to home at a glance.
+function HomePin() {
+  return (
+    <div className="relative drop-shadow-md">
+      <svg
+        width="38"
+        height="46"
+        viewBox="0 0 38 46"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="home pin"
+      >
+        <defs>
+          <linearGradient id="homePinFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#7DD3C0" />
+            <stop offset="1" stopColor="#3EB7A0" />
+          </linearGradient>
+        </defs>
+        {/* Outer teardrop body */}
+        <path
+          d="M19 0 C9 0 1 8 1 18 C1 29 14 38 18 45 C18.4 45.7 19.6 45.7 20 45 C24 38 37 29 37 18 C37 8 29 0 19 0 Z"
+          fill="url(#homePinFill)"
+          stroke="white"
+          strokeWidth="2"
+        />
+        {/* Roof + house body */}
+        <path
+          d="M19 8 L11 16 L11 24 L27 24 L27 16 Z"
+          fill="white"
+        />
+        {/* Door */}
+        <rect x="17" y="18" width="4" height="6" fill="#3EB7A0" />
+      </svg>
+    </div>
+  );
+}
+
 // Teardrop-shaped pin with a heart, rendered as SVG so the tail points at
 // the exact lat/lng (no emoji-font quirks across platforms).
 function RevisitPin() {
@@ -74,36 +112,63 @@ function GeocodeBackfill({ places }: { places: PlaceWithFoods[] }) {
         !tried.current.has(p.id)
     );
     if (missing.length === 0) return;
+    console.log(
+      `[GeocodeBackfill] ${missing.length} 곳 좌표 채우기 시작 ·`,
+      missing.map((p) => p.name)
+    );
 
     let cancelled = false;
     const geocoder = new google.maps.Geocoder();
 
     async function run() {
-      let didUpdate = false;
+      let didUpdate = 0;
+      let geocodeFail = 0;
+      let writeFail = 0;
       for (const p of missing) {
         if (cancelled) break;
         tried.current.add(p.id);
         try {
           const res = await geocoder.geocode({ address: p.address! });
           const top = res.results?.[0];
-          if (!top) continue;
+          if (!top) {
+            console.warn(`[GeocodeBackfill] no result · ${p.name} · ${p.address}`);
+            geocodeFail++;
+            continue;
+          }
           const loc = top.geometry?.location;
-          if (!loc) continue;
+          if (!loc) {
+            geocodeFail++;
+            continue;
+          }
           const lat = loc.lat();
           const lng = loc.lng();
           const { error } = await supabase
             .from("places")
             .update({ latitude: lat, longitude: lng })
             .eq("id", p.id);
-          if (!error) didUpdate = true;
-        } catch {
-          // Geocoder throws on rate limit / no results — just skip and
-          // remember it via tried.current.
+          if (error) {
+            console.error(
+              `[GeocodeBackfill] DB update 실패 · ${p.name}`,
+              error
+            );
+            writeFail++;
+          } else {
+            didUpdate++;
+            console.log(
+              `[GeocodeBackfill] ✓ ${p.name} → ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+            );
+          }
+        } catch (e) {
+          console.warn(`[GeocodeBackfill] geocode 예외 · ${p.name}`, e);
+          geocodeFail++;
         }
         // Throttle: stay polite to the API and avoid OVER_QUERY_LIMIT.
         await new Promise((r) => setTimeout(r, 250));
       }
-      if (didUpdate && !cancelled) {
+      console.log(
+        `[GeocodeBackfill] 끝 · 성공 ${didUpdate} / geocode 실패 ${geocodeFail} / DB 실패 ${writeFail}`
+      );
+      if (didUpdate > 0 && !cancelled) {
         qc.invalidateQueries({ queryKey: ["places"] });
       }
     }
@@ -121,16 +186,23 @@ export default function MapPage() {
   const { data: places } = usePlaces(couple?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const missingCoords = useMemo(
-    () =>
-      (places ?? []).filter(
-        (p) =>
-          (p.latitude == null || p.longitude == null) &&
-          p.address &&
-          p.address.trim().length > 0
-      ).length,
-    [places]
-  );
+  // Breakdown for the debug panel: how many places are on the map vs
+  // how many are stuck without coordinates and why.
+  const breakdown = useMemo(() => {
+    const total = places?.length ?? 0;
+    let onMap = 0;
+    let backfillable = 0; // address present but no lat/lng — Geocoder can fix
+    let noAddress = 0; // can't be located at all
+    for (const p of places ?? []) {
+      const hasCoords = p.latitude != null && p.longitude != null;
+      const hasAddress = !!p.address && p.address.trim().length > 0;
+      if (hasCoords) onMap++;
+      else if (hasAddress) backfillable++;
+      else noAddress++;
+    }
+    return { total, onMap, backfillable, noAddress };
+  }, [places]);
+  const missingCoords = breakdown.backfillable;
 
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
@@ -200,17 +272,40 @@ export default function MapPage() {
             <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-peach-400 to-rose-400" />
             또 갈래 · 必须二刷
           </span>
+          {couple?.home_latitude != null && couple?.home_longitude != null && (
+            <span className="flex items-center gap-2">
+              <span className="inline-block w-3.5 h-4 rounded-t-full bg-gradient-to-b from-teal-300 to-teal-500" />
+              우리집 · 我们家
+            </span>
+          )}
         </div>
-        {/* Backfill notice — only while there are still places without
-            coordinates. Disappears once all are geocoded. */}
-        {missingCoords > 0 && (
-          <div className="absolute top-3 right-3 z-10 bg-amber-50/95 backdrop-blur rounded-xl px-3 py-2 shadow-soft border border-amber-200 text-[11px] font-bold text-amber-700 max-w-[180px]">
-            좌표 채우는 중… · 正在补坐标…
-            <div className="text-[10px] font-number font-bold opacity-70 mt-0.5">
-              {missingCoords}곳 · 处
-            </div>
+        {/* Debug breakdown — total places vs how many made it to the map.
+            Yellow when there are gaps, green when 100%. Helps diagnose
+            "왜 어떤 곳은 안 떠?" at a glance. */}
+        <div
+          className={`absolute top-3 right-3 z-10 backdrop-blur rounded-xl px-3 py-2 shadow-soft border text-[11px] font-bold max-w-[200px] ${
+            breakdown.onMap === breakdown.total && breakdown.total > 0
+              ? "bg-emerald-50/95 border-emerald-200 text-emerald-700"
+              : "bg-amber-50/95 border-amber-200 text-amber-700"
+          }`}
+        >
+          <div>
+            지도 · 地图{" "}
+            <span className="font-number">
+              {breakdown.onMap}/{breakdown.total}
+            </span>
           </div>
-        )}
+          {breakdown.backfillable > 0 && (
+            <div className="text-[10px] opacity-80 mt-0.5">
+              좌표 채우는 중 · {breakdown.backfillable}곳
+            </div>
+          )}
+          {breakdown.noAddress > 0 && (
+            <div className="text-[10px] opacity-80 mt-0.5">
+              주소 없음 · 无地址 {breakdown.noAddress}곳
+            </div>
+          )}
+        </div>
         {initialCenter ? (
           <APIProvider apiKey={KEY}>
             <GeocodeBackfill places={places ?? []} />
@@ -229,18 +324,38 @@ export default function MapPage() {
                   </div>
                 </AdvancedMarker>
               )}
+              {couple?.home_latitude != null &&
+                couple?.home_longitude != null && (
+                  <AdvancedMarker
+                    position={{
+                      lat: couple.home_latitude,
+                      lng: couple.home_longitude,
+                    }}
+                    title="우리집 · 我们家"
+                  >
+                    <HomePin />
+                  </AdvancedMarker>
+                )}
               {markers.map((p) => (
                 <AdvancedMarker
                   key={p.id}
                   position={{ lat: p.latitude!, lng: p.longitude! }}
                   onClick={() => setSelectedId(p.id)}
                   title={
-                    p.want_to_revisit
-                      ? `${p.name} · 또 갈래 · 想再去`
-                      : p.name
+                    p.is_home_cooked
+                      ? `${p.name} · 집밥 · 在家做`
+                      : p.want_to_revisit
+                        ? `${p.name} · 또 갈래 · 想再去`
+                        : p.name
                   }
                 >
-                  {p.want_to_revisit ? (
+                  {p.is_home_cooked ? (
+                    // Home-cooked entries get a small chef-hat marker so
+                    // they read as "we cooked this" instead of "we went here".
+                    <div className="text-2xl drop-shadow leading-none">
+                      🍳
+                    </div>
+                  ) : p.want_to_revisit ? (
                     <RevisitPin />
                   ) : (
                     <div className="text-3xl drop-shadow">📍</div>

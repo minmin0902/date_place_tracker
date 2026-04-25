@@ -148,6 +148,14 @@ export default function PlaceDetailPage() {
       />
 
       <div className="px-5 py-2 space-y-5 pb-8">
+        {/* Home-cooked banner — small visual cue that this entry is
+            "we made this at home" rather than a restaurant visit. */}
+        {place.is_home_cooked && (
+          <div className="flex items-center gap-2 bg-rose-50 border border-rose-100 rounded-full px-3 py-1.5 w-fit text-xs font-bold text-rose-500">
+            <span className="text-base leading-none">🍳</span>
+            <span>집밥 · 在家做的</span>
+          </div>
+        )}
         {/* Photos */}
         {place.photo_urls && place.photo_urls.length > 0 && (
           <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1">
@@ -363,9 +371,12 @@ function FoodCard({
       </div>
 
       <div className="flex items-end justify-between gap-3 pr-16 mb-3">
-        <h3 className="font-semibold text-ink-900 text-base truncate">
-          {food.name}
-        </h3>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-ink-900 text-base truncate">
+            {food.name}
+          </h3>
+          {food.chef && <ChefBadge chef={food.chef} />}
+        </div>
         {total > 0 && (
           <div className="text-2xl font-number font-bold text-peach-400 leading-none">
             {total.toFixed(1)}
@@ -419,6 +430,34 @@ function FoodCard({
         </p>
       )}
     </div>
+  );
+}
+
+// Compact chef-credit badge under the food name. Tone matches the
+// home-cooking color cue used elsewhere (peach=me, rose=partner,
+// amber=both) for visual continuity.
+function ChefBadge({ chef }: { chef: "me" | "partner" | "together" }) {
+  const map = {
+    me: {
+      label: "🙋‍♀️ 내가 만들었어! · 我做的",
+      cls: "bg-peach-50 text-peach-500 border-peach-100",
+    },
+    partner: {
+      label: "🙋‍♂️ 짝꿍이 만들었어! · 宝宝做的",
+      cls: "bg-rose-50 text-rose-500 border-rose-100",
+    },
+    together: {
+      label: "👩‍🍳👨‍🍳 같이 만들었어! · 一起做的",
+      cls: "bg-amber-50 text-amber-600 border-amber-100",
+    },
+  } as const;
+  const m = map[chef];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${m.cls}`}
+    >
+      {m.label}
+    </span>
   );
 }
 

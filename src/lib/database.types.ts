@@ -1,3 +1,5 @@
+export type ChefRole = "me" | "partner" | "together";
+
 export type Database = {
   public: {
     Tables: {
@@ -10,6 +12,7 @@ export type Database = {
           category: string | null;
           memo: string | null;
           want_to_revisit: boolean;
+          is_home_cooked: boolean;
           photo_urls: string[] | null;
           latitude: number | null;
           longitude: number | null;
@@ -26,6 +29,7 @@ export type Database = {
           category?: string | null;
           memo?: string | null;
           want_to_revisit?: boolean;
+          is_home_cooked?: boolean;
           photo_urls?: string[] | null;
           latitude?: number | null;
           longitude?: number | null;
@@ -47,6 +51,7 @@ export type Database = {
           // photo_urls for reads/writes.
           photo_url: string | null;
           photo_urls: string[] | null;
+          chef: ChefRole | null;
           created_at: string;
         };
         Insert: {
@@ -59,6 +64,7 @@ export type Database = {
           memo?: string | null;
           photo_url?: string | null;
           photo_urls?: string[] | null;
+          chef?: ChefRole | null;
         };
         Update: Partial<Database["public"]["Tables"]["foods"]["Insert"]>;
       };
@@ -68,6 +74,9 @@ export type Database = {
           user1_id: string;
           user2_id: string | null;
           invite_code: string;
+          home_address: string | null;
+          home_latitude: number | null;
+          home_longitude: number | null;
           created_at: string;
         };
         Insert: {
@@ -75,6 +84,9 @@ export type Database = {
           user1_id: string;
           user2_id?: string | null;
           invite_code: string;
+          home_address?: string | null;
+          home_latitude?: number | null;
+          home_longitude?: number | null;
         };
         Update: Partial<Database["public"]["Tables"]["couples"]["Insert"]>;
       };
