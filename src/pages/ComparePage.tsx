@@ -62,7 +62,7 @@ const CARD_META: Record<
     ko: "별점 요정 vs 깐깐징어",
     zh: "打分天使 vs 严格考官",
   },
-  chef: { emoji: "👨‍🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
+  chef: { emoji: "🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
   roulette: { emoji: "🎲", ko: "운명의 룰렛", zh: "听天由命" },
 };
 
@@ -714,8 +714,8 @@ export default function ComparePage() {
                   {(r) => {
                     const myFav = r.mine > r.partner;
                     const badge = myFav
-                      ? `🙋‍♂️ ${myDisplay} 원픽! · ${myDisplay}的本命`
-                      : `🙋‍♀️ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
+                      ? `🙋 ${myDisplay} 원픽! · ${myDisplay}的本命`
+                      : `🙋 ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
                     return (
                       <FoodCard
                         key={r.foodId}

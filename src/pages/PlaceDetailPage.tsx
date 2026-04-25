@@ -471,7 +471,13 @@ function FoodCard({
                 custom strings render as-is, missing → amber CTA Link
                 pointing at the edit form so the user can tag it. */}
             <FoodCategoryChip food={food} placeId={placeId} />
-            {food.chef && <ChefBadge chef={food.chef} />}
+            {food.chef && (
+              <ChefBadge
+                chef={food.chef}
+                myDisplay={myDisplay}
+                partnerDisplay={partnerDisplay}
+              />
+            )}
             {/* Solo-eat badge — surfaces who ate alone so you don't
                 wonder why one rating is missing. */}
             {isSolo && (
@@ -581,18 +587,28 @@ function FoodCard({
 // Compact chef-credit badge under the food name. Tone matches the
 // home-cooking color cue used elsewhere (peach=me, rose=partner,
 // amber=both) for visual continuity.
-function ChefBadge({ chef }: { chef: "me" | "partner" | "together" }) {
+function ChefBadge({
+  chef,
+  myDisplay,
+  partnerDisplay,
+}: {
+  chef: "me" | "partner" | "together";
+  myDisplay: string;
+  partnerDisplay: string;
+}) {
+  // Gendered 🙋‍♀️ / 🙋‍♂️ swapped for the neutral 🙋; together swapped
+  // for 🍳 (cooking together) so no gendered chef pictograms remain.
   const map = {
     me: {
-      label: "🙋‍♀️ 내가 만들었어! · 我做的",
+      label: `🙋 ${myDisplay}이 만들었어! · ${myDisplay}做的`,
       cls: "bg-peach-50 text-peach-500 border-peach-100",
     },
     partner: {
-      label: "🙋‍♂️ 짝꿍이 만들었어! · 宝宝做的",
+      label: `🙋 ${partnerDisplay}이 만들었어! · ${partnerDisplay}做的`,
       cls: "bg-rose-50 text-rose-500 border-rose-100",
     },
     together: {
-      label: "👩‍🍳👨‍🍳 같이 만들었어! · 一起做的",
+      label: "🍳 같이 만들었어! · 一起做的",
       cls: "bg-amber-50 text-amber-600 border-amber-100",
     },
   } as const;

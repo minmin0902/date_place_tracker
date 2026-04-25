@@ -866,7 +866,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋‍♂️ {myDisplay}만 먹음 · 我独享
+                🙋 {myDisplay}만 먹음 · {myDisplay}独享
               </button>
               <button
                 type="button"
@@ -877,7 +877,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🙋‍♀️ {partnerDisplay}만 먹음 · 宝宝独享
+                🙋 {partnerDisplay}만 먹음 · {partnerDisplay}独享
               </button>
             </div>
 
@@ -997,9 +997,9 @@ export default function HomePage() {
                         : listFilter === "revisit"
                           ? "💖"
                           : listFilter === "myOnly"
-                            ? "🙋‍♂️"
+                            ? "🙋"
                             : listFilter === "partnerOnly"
-                              ? "🙋‍♀️"
+                              ? "🙋"
                               : diningFilter === "home"
                                 ? "🍳"
                                 : "🍽️"
@@ -1012,9 +1012,9 @@ export default function HomePage() {
                         : listFilter === "revisit"
                           ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
                           : listFilter === "myOnly"
-                            ? `${myDisplay}만 먹은 메뉴가 아직 없어요 · 还没有我独享的菜`
+                            ? `${myDisplay}만 먹은 메뉴가 아직 없어요 · 还没有${myDisplay}独享的菜`
                             : listFilter === "partnerOnly"
-                              ? `${partnerDisplay}만 먹은 메뉴가 아직 없어요 · 还没有宝宝独享的菜`
+                              ? `${partnerDisplay}만 먹은 메뉴가 아직 없어요 · 还没有${partnerDisplay}独享的菜`
                               : diningFilter === "home"
                                 ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
                                 : diningFilter === "out"
@@ -1624,12 +1624,12 @@ function MenuRow({
           ))}
           {eaterRole === "me" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-peach-50 text-peach-600 border border-peach-200 font-bold">
-              🙋‍♂️ {myDisplay}만 · 我独享
+              🙋 {myDisplay}만 · {myDisplay}独享
             </span>
           )}
           {eaterRole === "partner" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 border border-rose-200 font-bold">
-              🙋‍♀️ {partnerDisplay}만 · 宝宝独享
+              🙋 {partnerDisplay}만 · {partnerDisplay}独享
             </span>
           )}
         </div>
