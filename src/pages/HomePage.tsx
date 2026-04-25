@@ -129,6 +129,7 @@ type RouletteEntry = {
   id: string;
   name: string;
   category: string | null;
+  city: string | null;
   avgScore: number | null;
   memo: string | null;
   linkTo: string;
@@ -157,9 +158,7 @@ export default function HomePage() {
   const [revisitOnly, setRevisitOnly] = useState(false);
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("date");
-  const [selectedCities, setSelectedCities] = useState<Set<string>>(
-    () => new Set()
-  );
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
 
   // Base list: filter first, then sort per viewMode below.
   const baseList = useMemo(() => {
@@ -209,27 +208,20 @@ export default function HomePage() {
       .map(([c]) => c);
   }, [filteredPlaces, viewMode]);
 
-  // Drop selected cities that no longer exist in the current filter set.
+  // Drop the selected city if it no longer exists in the current filter set.
   useEffect(() => {
-    if (viewMode !== "city" || selectedCities.size === 0) return;
-    const present = new Set(allCities);
-    let changed = false;
-    const next = new Set<string>();
-    for (const c of selectedCities) {
-      if (present.has(c)) next.add(c);
-      else changed = true;
-    }
-    if (changed) setSelectedCities(next);
-  }, [allCities, viewMode, selectedCities]);
+    if (viewMode !== "city" || !selectedCity) return;
+    if (!allCities.includes(selectedCity)) setSelectedCity(null);
+  }, [allCities, viewMode, selectedCity]);
 
-  // Group by inferred city for the city view. Respects any active
-  // multi-select filter — empty set means "show all".
+  // Group by inferred city for the city view. A selected city narrows the
+  // groups to just that one; null means "show all".
   const cityGroups = useMemo(() => {
     if (viewMode !== "city") return null;
     const bucket = new Map<string, PlaceWithFoods[]>();
     for (const p of filteredPlaces) {
       const city = inferCity(p.address) ?? "기타 · 其他";
-      if (selectedCities.size > 0 && !selectedCities.has(city)) continue;
+      if (selectedCity && selectedCity !== city) continue;
       if (!bucket.has(city)) bucket.set(city, []);
       bucket.get(city)!.push(p);
     }
@@ -237,16 +229,7 @@ export default function HomePage() {
       const byCount = b[1].length - a[1].length;
       return byCount !== 0 ? byCount : a[0].localeCompare(b[0]);
     });
-  }, [filteredPlaces, viewMode, selectedCities]);
-
-  function toggleCity(city: string) {
-    setSelectedCities((prev) => {
-      const next = new Set(prev);
-      if (next.has(city)) next.delete(city);
-      else next.add(city);
-      return next;
-    });
-  }
+  }, [filteredPlaces, viewMode, selectedCity]);
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -383,16 +366,16 @@ export default function HomePage() {
               />
             </div>
 
-            {/* City multi-select — only when 도시별 view is active. Empty
-                selection means "show all"; otherwise the groups render
-                are filtered to the picked cities. */}
+            {/* City single-select — only when 도시별 view is active.
+                Null means "show all"; picking a city narrows to that one.
+                Tapping the same city again clears the selection. */}
             {viewMode === "city" && allCities.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-5 px-1">
                 <button
                   type="button"
-                  onClick={() => setSelectedCities(new Set())}
+                  onClick={() => setSelectedCity(null)}
                   className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap ${
-                    selectedCities.size === 0
+                    selectedCity === null
                       ? "bg-ink-900 text-white border-ink-900"
                       : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
                   }`}
@@ -400,12 +383,14 @@ export default function HomePage() {
                   전체 · 全部
                 </button>
                 {allCities.map((c) => {
-                  const active = selectedCities.has(c);
+                  const active = selectedCity === c;
                   return (
                     <button
                       key={c}
                       type="button"
-                      onClick={() => toggleCity(c)}
+                      onClick={() =>
+                        setSelectedCity(active ? null : c)
+                      }
                       className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap flex items-center gap-1 ${
                         active
                           ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
@@ -437,7 +422,7 @@ export default function HomePage() {
 
             {viewMode === "city" && cityGroups ? (
               <div className="mt-2 space-y-6">
-                {cityGroups.length === 0 && selectedCities.size > 0 && (
+                {cityGroups.length === 0 && selectedCity && (
                   <EmptyState
                     emoji="📍"
                     text="선택한 도시에 기록이 없어요 · 这个城市还没有记录"
@@ -1071,6 +1056,7 @@ function RouletteModal({
   const { t } = useTranslation();
   const [source, setSource] = useState<RouletteSource>("both");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [cityFilter, setCityFilter] = useState<string | null>(null);
   const [picked, setPicked] = useState<RouletteEntry | null>(null);
   const [spinning, setSpinning] = useState(false);
 
@@ -1083,6 +1069,7 @@ function RouletteModal({
           id: p.id,
           name: p.name,
           category: p.category,
+          city: inferCity(p.address),
           avgScore: avgTotal(p),
           memo: null,
           linkTo: `/places/${p.id}`,
@@ -1097,6 +1084,7 @@ function RouletteModal({
         id: w.id,
         name: w.name,
         category: w.category,
+        city: inferCity(w.address),
         avgScore: null,
         memo: w.memo,
         linkTo: `/places/new?fromWishlist=${w.id}`,
@@ -1104,38 +1092,68 @@ function RouletteModal({
     [wishlist]
   );
 
-  // Union of categories present in whichever source(s) are active.
-  const availableCategories = useMemo(() => {
-    const pool: RouletteEntry[] = [];
-    if (source === "revisit" || source === "both") pool.push(...revisitEntries);
-    if (source === "wishlist" || source === "both") pool.push(...wishlistEntries);
-    const cats = new Set<string>();
-    for (const e of pool) {
-      if (e.category) cats.add(e.category);
-    }
-    return Array.from(cats);
-  }, [source, revisitEntries, wishlistEntries]);
-
-  const pool = useMemo(() => {
+  // Pool from the active source(s), before any filter is applied —
+  // drives the chip lists (categories + cities) and the final pool.
+  const sourcePool = useMemo(() => {
     const out: RouletteEntry[] = [];
     if (source === "revisit" || source === "both") out.push(...revisitEntries);
     if (source === "wishlist" || source === "both") out.push(...wishlistEntries);
-    if (categoryFilter) return out.filter((e) => e.category === categoryFilter);
     return out;
-  }, [source, revisitEntries, wishlistEntries, categoryFilter]);
+  }, [source, revisitEntries, wishlistEntries]);
 
-  // If the selected category is no longer in the active source, drop the filter.
+  // Categories shown in chips — only those in entries that survive the
+  // *other* filter (city). That way picking a city also narrows the
+  // category list, and vice versa, so users don't pick a combo with
+  // zero results.
+  const availableCategories = useMemo(() => {
+    const cats = new Set<string>();
+    for (const e of sourcePool) {
+      if (cityFilter && e.city !== cityFilter) continue;
+      if (e.category) cats.add(e.category);
+    }
+    return Array.from(cats);
+  }, [sourcePool, cityFilter]);
+
+  const availableCities = useMemo(() => {
+    const byCount = new Map<string, number>();
+    for (const e of sourcePool) {
+      if (categoryFilter && e.category !== categoryFilter) continue;
+      if (!e.city) continue;
+      byCount.set(e.city, (byCount.get(e.city) ?? 0) + 1);
+    }
+    return [...byCount.entries()]
+      .sort((a, b) =>
+        b[1] - a[1] !== 0 ? b[1] - a[1] : a[0].localeCompare(b[0])
+      )
+      .map(([c]) => c);
+  }, [sourcePool, categoryFilter]);
+
+  const pool = useMemo(() => {
+    let out = sourcePool;
+    if (categoryFilter) out = out.filter((e) => e.category === categoryFilter);
+    if (cityFilter) out = out.filter((e) => e.city === cityFilter);
+    return out;
+  }, [sourcePool, categoryFilter, cityFilter]);
+
+  // If the selected category/city is no longer in the active source, drop it.
   useEffect(() => {
     if (categoryFilter && !availableCategories.includes(categoryFilter)) {
       setCategoryFilter(null);
     }
   }, [categoryFilter, availableCategories]);
+  useEffect(() => {
+    if (cityFilter && !availableCities.includes(cityFilter)) {
+      setCityFilter(null);
+    }
+  }, [cityFilter, availableCities]);
 
   // Reset on open/close, and seed a teaser pick when the pool changes.
   useEffect(() => {
     if (!open) {
       setPicked(null);
       setSpinning(false);
+      setCategoryFilter(null);
+      setCityFilter(null);
       return;
     }
     if (pool.length > 0) {
@@ -1143,7 +1161,7 @@ function RouletteModal({
     } else {
       setPicked(null);
     }
-  }, [open, source, categoryFilter, pool.length]);
+  }, [open, source, categoryFilter, cityFilter, pool.length]);
 
   function spin() {
     if (pool.length === 0 || spinning) return;
@@ -1231,28 +1249,61 @@ function RouletteModal({
         </div>
 
         {/* category chips */}
-        <div className="flex flex-wrap gap-1 mb-3">
-          <button
-            type="button"
-            onClick={() => setCategoryFilter(null)}
-            className={`chip text-[11px] px-2.5 py-0.5 ${categoryFilter === null ? "chip-active" : ""}`}
-          >
-            전부 · 全部
-          </button>
-          {availableCategories.map((c) => (
+        <div className="mb-2">
+          <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
+            종류 · 种类
+          </p>
+          <div className="flex flex-wrap gap-1">
             <button
-              key={c}
               type="button"
-              onClick={() =>
-                setCategoryFilter(categoryFilter === c ? null : c)
-              }
-              className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${categoryFilter === c ? "chip-active" : ""}`}
+              onClick={() => setCategoryFilter(null)}
+              className={`chip text-[11px] px-2.5 py-0.5 ${categoryFilter === null ? "chip-active" : ""}`}
             >
-              <span>{categoryIcon(c)}</span>
-              {t(`category.${c}`)}
+              전부 · 全部
             </button>
-          ))}
+            {availableCategories.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() =>
+                  setCategoryFilter(categoryFilter === c ? null : c)
+                }
+                className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${categoryFilter === c ? "chip-active" : ""}`}
+              >
+                <span>{categoryIcon(c)}</span>
+                {t(`category.${c}`)}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* city chips — only when the active source has any city info */}
+        {availableCities.length > 0 && (
+          <div className="mb-3">
+            <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
+              도시 · 城市
+            </p>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setCityFilter(null)}
+                className={`chip text-[11px] px-2.5 py-0.5 ${cityFilter === null ? "chip-active" : ""}`}
+              >
+                전부 · 全部
+              </button>
+              {availableCities.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCityFilter(cityFilter === c ? null : c)}
+                  className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${cityFilter === c ? "chip-active" : ""}`}
+                >
+                  📍 {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* display */}
         <div className="rounded-2xl h-36 sm:h-40 flex items-center justify-center border-2 border-dashed border-rose-200 bg-rose-50 mb-4 relative overflow-hidden">
