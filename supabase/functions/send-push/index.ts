@@ -29,7 +29,13 @@ import webpush from "npm:web-push@3";
 type NotificationRow = {
   id: string;
   recipient_id: string;
-  kind: "place" | "food" | "memo" | "memo_thread";
+  kind:
+    | "place"
+    | "food"
+    | "memo"
+    | "memo_thread"
+    | "revisit"
+    | "rating";
   actor_id: string;
   place_id: string | null;
   food_id: string | null;
@@ -74,6 +80,10 @@ function renderPayload(n: NotificationRow, actorName: string) {
         return "改了备注";
       case "memo_thread":
         return "留了言";
+      case "revisit":
+        return "想再去";
+      case "rating":
+        return "打了分";
     }
   })();
   return {

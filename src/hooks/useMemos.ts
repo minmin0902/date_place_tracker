@@ -49,9 +49,13 @@ export function useAddMemo() {
       foodId?: string | null;
       authorId: string;
       body: string;
+      // Optional photo/video URLs already uploaded to storage. The
+      // composer hands these in after PhotoUploader has finished.
+      photoUrls?: string[] | null;
     }): Promise<Memo> => {
       const body = input.body.trim();
       if (!body) throw new Error("empty memo");
+      const photos = input.photoUrls?.length ? input.photoUrls : null;
       if (ALLOW_NO_AUTH) {
         return addLocalMemo({ ...input, body });
       }
@@ -63,6 +67,7 @@ export function useAddMemo() {
           food_id: input.foodId ?? null,
           author_id: input.authorId,
           body,
+          photo_urls: photos,
         })
         .select()
         .single();

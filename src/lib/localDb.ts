@@ -325,6 +325,7 @@ export function addMemo(input: {
   foodId?: string | null;
   authorId: string;
   body: string;
+  photoUrls?: string[] | null;
 }): Memo {
   const db = load();
   const now = new Date().toISOString();
@@ -335,6 +336,7 @@ export function addMemo(input: {
     food_id: input.foodId ?? null,
     author_id: input.authorId,
     body: input.body,
+    photo_urls: input.photoUrls?.length ? input.photoUrls : null,
     created_at: now,
     updated_at: now,
   };

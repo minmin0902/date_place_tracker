@@ -163,7 +163,13 @@ export type Database = {
           id: string;
           recipient_id: string;
           couple_id: string;
-          kind: "place" | "food" | "memo" | "memo_thread";
+          kind:
+            | "place"
+            | "food"
+            | "memo"
+            | "memo_thread"
+            | "revisit"
+            | "rating";
           actor_id: string;
           place_id: string | null;
           food_id: string | null;
@@ -176,7 +182,13 @@ export type Database = {
           id?: string;
           recipient_id: string;
           couple_id: string;
-          kind: "place" | "food" | "memo" | "memo_thread";
+          kind:
+            | "place"
+            | "food"
+            | "memo"
+            | "memo_thread"
+            | "revisit"
+            | "rating";
           actor_id: string;
           place_id?: string | null;
           food_id?: string | null;
@@ -220,6 +232,9 @@ export type Database = {
           food_id: string | null;
           author_id: string;
           body: string;
+          // Optional small attachments (photo or short video) on the
+          // comment itself. Same shape as places.photo_urls.
+          photo_urls: string[] | null;
           created_at: string;
           updated_at: string;
         };
@@ -230,6 +245,7 @@ export type Database = {
           food_id?: string | null;
           author_id: string;
           body: string;
+          photo_urls?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };

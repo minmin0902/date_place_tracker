@@ -2,37 +2,7 @@ import { useRef, useState } from "react";
 import { Camera, X, AlertCircle, Play } from "lucide-react";
 import { uploadPhoto } from "@/hooks/usePlaces";
 import { isVideoUrl } from "@/lib/utils";
-
-// Hard caps before upload — saves users a wasted upload that the
-// storage layer will reject anyway. Server-side enforcement is the
-// Supabase bucket's `file_size_limit` (set to 200MB to match — see
-// the matching migration). The byte cap is sized for iPhone 4K 30fps
-// (~130MB / 30s, ~250MB / 60s) so most clips go through, while still
-// guarding against 4K-60fps monsters that would eat storage quota.
-const MAX_VIDEO_SECONDS = 60;
-const MAX_VIDEO_MB = 200;
-const MAX_VIDEO_BYTES = MAX_VIDEO_MB * 1024 * 1024;
-
-// Read video metadata client-side to check duration. Returns null on
-// browsers that can't decode, in which case we let the upload through
-// so we don't soft-block valid clips.
-async function videoDurationOf(file: File): Promise<number | null> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.onloadedmetadata = () => {
-      const dur = Number.isFinite(video.duration) ? video.duration : null;
-      URL.revokeObjectURL(url);
-      resolve(dur);
-    };
-    video.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    video.src = url;
-  });
-}
+import { assertVideoUnderLimit } from "@/lib/media-validation";
 
 export function PhotoUploader({
   coupleId,
@@ -57,24 +27,7 @@ export function PhotoUploader({
       const uploaded: string[] = [];
       const slots = Math.max(0, max - photos.length);
       for (const f of Array.from(files).slice(0, slots)) {
-        // Video gate — duration + byte size. The byte cap catches the
-        // "60s 4K" case duration alone misses; together they keep the
-        // upload under the matching Supabase bucket limit so we don't
-        // burn bandwidth on a doomed POST.
-        if (f.type.startsWith("video/")) {
-          if (f.size > MAX_VIDEO_BYTES) {
-            const mb = (f.size / 1024 / 1024).toFixed(0);
-            throw new Error(
-              `동영상이 ${mb}MB라서 못 올려요. ${MAX_VIDEO_MB}MB 이내로 줄여주세요 (폰 갤러리 트림/압축) · 视频${mb}MB太大了，请压缩到${MAX_VIDEO_MB}MB以内`
-            );
-          }
-          const dur = await videoDurationOf(f);
-          if (dur != null && dur > MAX_VIDEO_SECONDS + 0.5) {
-            throw new Error(
-              `동영상은 ${MAX_VIDEO_SECONDS}초 이내만 올릴 수 있어요 · 视频最长${MAX_VIDEO_SECONDS}秒`
-            );
-          }
-        }
+        await assertVideoUnderLimit(f);
         const url = await uploadPhoto(f, coupleId);
         uploaded.push(url);
       }

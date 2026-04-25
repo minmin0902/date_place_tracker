@@ -1,4 +1,5 @@
 import { useMemoAuthor } from "@/hooks/useProfile";
+import { MediaThumb } from "./MediaThumb";
 
 // Tight one-line attribution for places where the full caption layout
 // would crowd the row. Renders "{author} · {memo}" as a single span;
@@ -55,6 +56,7 @@ export function MemoComment({
   memo,
   authorId,
   createdAt,
+  photoUrls,
   className = "",
   size = "md",
 }: {
@@ -63,6 +65,10 @@ export function MemoComment({
   // ISO string. Optional because some memo surfaces (e.g. legacy
   // imports) don't have a reliable timestamp; we just hide the row.
   createdAt?: string | null;
+  // Optional small attachments — rendered as a horizontal thumb row
+  // under the caption. Same MediaThumb the rest of the app uses, so
+  // video URLs auto-flip to <video> with controls.
+  photoUrls?: string[] | null;
   className?: string;
   // 'sm' shrinks the avatar + text for the per-food card render
   // where multiple memos can stack inside a tight place detail page.
@@ -112,6 +118,23 @@ export function MemoComment({
           <span className="font-bold text-ink-900 mr-1.5">{name}</span>
           <span className="text-ink-700">{memo}</span>
         </p>
+        {photoUrls && photoUrls.length > 0 && (
+          <div className="flex gap-1.5 mt-1.5">
+            {photoUrls.map((url) => (
+              <div
+                key={url}
+                className={`${isSm ? "w-14 h-14" : "w-20 h-20"} rounded-xl overflow-hidden border border-cream-200 bg-ink-900 flex-shrink-0`}
+              >
+                <MediaThumb
+                  src={url}
+                  className="w-full h-full object-cover"
+                  showPlayBadge
+                  controls
+                />
+              </div>
+            ))}
+          </div>
+        )}
         {stamp && (
           <p className="text-[10px] text-ink-400 mt-1 font-medium font-number">
             {stamp}

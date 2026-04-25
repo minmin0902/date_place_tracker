@@ -1,5 +1,13 @@
 import { useNavigate } from "react-router-dom";
-import { Bell, MessageCircle, MapPin, Utensils, CheckCheck } from "lucide-react";
+import {
+  Bell,
+  MessageCircle,
+  MapPin,
+  Utensils,
+  CheckCheck,
+  Heart,
+  Star,
+} from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import {
   useMarkAllNotificationsRead,
@@ -107,6 +115,10 @@ function NotificationItem({ item }: { item: NotificationRow }) {
         return <MapPin className="w-4 h-4" />;
       case "food":
         return <Utensils className="w-4 h-4" />;
+      case "revisit":
+        return <Heart className="w-4 h-4" />;
+      case "rating":
+        return <Star className="w-4 h-4" />;
       case "memo":
       case "memo_thread":
       default:
@@ -118,11 +130,15 @@ function NotificationItem({ item }: { item: NotificationRow }) {
       case "place":
         return "새 장소 등록 · 添加了新地点";
       case "food":
-        return "메뉴 추가 · 添加了菜品";
+        return "메뉴 추가 · 记下了新菜品";
       case "memo":
-        return "메모 수정 · 修改了备注";
+        return "메모 수정 · 改了备注";
       case "memo_thread":
         return "메모 남김 · 留了言";
+      case "revisit":
+        return "또 갈래 · 想再去";
+      case "rating":
+        return "별점 줬어요 · 打了分";
       default:
         return "";
     }
