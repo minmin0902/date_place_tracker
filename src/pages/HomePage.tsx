@@ -7,7 +7,6 @@ import { PullIndicator } from "@/components/PullIndicator";
 import {
   BookmarkPlus,
   CheckCircle2,
-  ChevronDown,
   Dice5,
   Grid3x3,
   Heart,
@@ -246,7 +245,7 @@ function viewerOnlyEater(
 }
 
 export default function HomePage() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
@@ -513,12 +512,15 @@ export default function HomePage() {
     return list;
   }, [baseList, viewMode]);
 
-  // All cities present in the current (filtered) timeline — feeds the
-  // city filter dropdown. Always derived (no longer gated on viewMode)
-  // since "도시별" is now a standalone filter.
+  // All cities present across the user's full place list — derived
+  // from raw `places`, NOT from baseList. Using baseList was a bug:
+  // baseList already has selectedCities applied, so picking one city
+  // shrunk the chip pool to just that city and made multi-select
+  // impossible. We want the chip pool to stay constant so the user
+  // can keep adding cities to the selection.
   const allCities = useMemo(() => {
     const byCount = new Map<string, number>();
-    for (const p of baseList) {
+    for (const p of places ?? []) {
       if (!p.address) continue;
       const city = inferCity(p.address);
       if (!city) continue;
@@ -529,7 +531,7 @@ export default function HomePage() {
         b[1] - a[1] !== 0 ? b[1] - a[1] : a[0].localeCompare(b[0])
       )
       .map(([c]) => c);
-  }, [baseList]);
+  }, [places]);
 
   // Drop any selected city that no longer exists in the current filter
   // set (e.g. user removed every place in that city). Otherwise the
@@ -670,9 +672,67 @@ export default function HomePage() {
                   />
               </div>
             </div>
-            {/* Single-pick chip group: one of {revisit, unrated, myOnly,
-                partnerOnly} or none. Tapping the active chip clears
-                back to "none". Horizontal scroll on narrow screens. */}
+            {/* 1) 모두 / 외식 / 집밥 — 옛 큰 segment row 그대로 복원. */}
+            <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
+              <SegmentButton
+                active={diningFilter === "all"}
+                onClick={() => setDiningFilter("all")}
+                label="모두 · 全部"
+                activeText="text-ink-900"
+                activeBorder="border-cream-100"
+              />
+              <SegmentButton
+                active={diningFilter === "out"}
+                onClick={() => setDiningFilter("out")}
+                label="🍽️ 외식 · 探店"
+                activeText="text-peach-500"
+                activeBorder="border-peach-100"
+              />
+              <SegmentButton
+                active={diningFilter === "home"}
+                onClick={() => setDiningFilter("home")}
+                label="🍳 집밥 · 私房菜"
+                activeText="text-teal-600"
+                activeBorder="border-teal-100"
+              />
+            </div>
+
+            {/* 2) 단일 "상세 필터" 버튼 — 어느 시점이든 누르면 통합
+                FilterSheet 가 열려서 정렬·도시·카테고리를 한 번에
+                조정. 활성 카운트 배지로 어떤 필터가 잡혀 있는지 표시. */}
+            {(() => {
+              const sortActive = viewMode !== "date";
+              const sheetCount =
+                (sortActive ? 1 : 0) +
+                selectedCities.length +
+                categoryFilter.length;
+              const isActive = sheetCount > 0;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setFilterSheetOpen(true)}
+                  className={`w-full inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep mb-3 ${
+                    isActive
+                      ? "bg-peach-50 border-peach-200 text-peach-700"
+                      : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2 min-w-0 truncate">
+                    <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
+                    상세 필터 · 详细筛选
+                  </span>
+                  {isActive && (
+                    <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
+                      {sheetCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            {/* 3) Single-pick chip group: 또 갈래 / 평가 안 한 메뉴 /
+                나만 먹음 / 짝꿍만 먹음. 옛 라벨 그대로, mutually
+                exclusive 동작 유지. */}
             <div className="flex gap-1.5 mb-3 px-1 overflow-x-auto hide-scrollbar">
               <button
                 type="button"
@@ -724,73 +784,73 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 mb-6 px-1">
-              <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
-                <SegmentButton
-                  active={diningFilter === "all"}
-                  onClick={() => setDiningFilter("all")}
-                  label="모두 · 全部"
-                  activeText="text-ink-900"
-                  activeBorder="border-cream-100"
-                />
-                <SegmentButton
-                  active={diningFilter === "out"}
-                  onClick={() => setDiningFilter("out")}
-                  label="🍽️ 외식 · 探店"
-                  activeText="text-peach-500"
-                  activeBorder="border-peach-100"
-                />
-                <SegmentButton
-                  active={diningFilter === "home"}
-                  onClick={() => setDiningFilter("home")}
-                  label="🍳 집밥 · 私房菜"
-                  activeText="text-teal-600"
-                  activeBorder="border-teal-100"
-                />
-              </div>
-
-              {/* Single unified trigger — replaces the 3-up grid where
-                  each dropdown opened its own modal and labels got
-                  truncated in narrow cells. Tap → bottom sheet with
-                  every filter in one place. Active-filter count rides
-                  on the right as a peach badge. */}
-              {(() => {
-                const sortActive = viewMode !== "date";
-                const activeCount =
-                  (sortActive ? 1 : 0) +
-                  selectedCities.length +
-                  categoryFilter.length;
-                const isActive = activeCount > 0;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setFilterSheetOpen(true)}
-                    className={`w-full inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep ${
-                      isActive
-                        ? "bg-peach-50 border-peach-200 text-peach-700"
-                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
-                    }`}
+            {/* Active sheet-side selections shown as removable chips
+                directly under the bar — gives the user a clear "you
+                have X cities + Y categories selected" without opening
+                the sheet, and lets them prune one at a time without
+                re-opening it. */}
+            {(selectedCities.length > 0 || categoryFilter.length > 0) && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-4 px-1">
+                {selectedCities.map((c) => (
+                  <span
+                    key={`city-${c}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-peach-100 text-peach-700 text-[11px] font-bold rounded-full border border-peach-200/60"
                   >
-                    <span className="inline-flex items-center gap-2 min-w-0 truncate">
-                      <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
-                      상세 필터 · 详细筛选
+                    📍 {c}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedCities(
+                          selectedCities.filter((x) => x !== c)
+                        )
+                      }
+                      className="hover:text-peach-900"
+                      aria-label={`remove ${c}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {categoryFilter.map((c) => {
+                  const label =
+                    c === "__none__"
+                      ? "❓ 미분류"
+                      : isKnownPlaceCategory(c)
+                        ? `${categoryEmojiOf(c)} ${t(`category.${c}`)}`
+                        : `${categoryEmojiOf(c)} ${c}`;
+                  return (
+                    <span
+                      key={`cat-${c}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-100 text-rose-700 text-[11px] font-bold rounded-full border border-rose-200/60"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCategoryFilter(
+                            categoryFilter.filter((x) => x !== c)
+                          )
+                        }
+                        className="hover:text-rose-900"
+                        aria-label={`remove ${c}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </span>
-                    <span className="inline-flex items-center gap-1.5 flex-shrink-0">
-                      {isActive && (
-                        <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
-                          {activeCount}
-                        </span>
-                      )}
-                      <ChevronDown className="w-4 h-4 text-ink-400" />
-                    </span>
-                  </button>
-                );
-              })()}
-            </div>
-
-            {/* Old "도시별" chip strip retired — selectedCity now lives
-                in its own GroupedMultiSelect dropdown alongside sort
-                + category, so the same modal UX covers all three. */}
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCities([]);
+                    setCategoryFilter([]);
+                  }}
+                  className="text-[11px] text-ink-400 font-bold ml-1 hover:text-ink-600 underline underline-offset-2"
+                >
+                  모두 지우기 · 全部清除
+                </button>
+              </div>
+            )}
 
             {placesLoading && (
               <p className="text-ink-500 py-8 text-center text-sm">
@@ -2105,3 +2165,4 @@ export function RouletteModal({
     </div>
   );
 }
+
