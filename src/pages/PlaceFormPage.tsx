@@ -200,6 +200,26 @@ export default function PlaceFormPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!couple || !user) return;
+
+    // Inline validation: instead of a dead disabled button (forcing the
+    // user to hunt for the missing field), we let the user submit, find
+    // the first invalid section, and scroll/focus it. The per-field
+    // error text already renders inline; this just adds the discovery.
+    const firstErrorEl = document.querySelector<HTMLElement>(
+      "[data-form-error='true']"
+    );
+    if (firstErrorEl) {
+      firstErrorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Try to focus an interactive descendant if there's one (text
+      // input most useful) — otherwise the scroll-into-view alone is
+      // a clear-enough nudge.
+      const focusTarget = firstErrorEl.querySelector<
+        HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement
+      >("input, textarea, button[type='button']");
+      focusTarget?.focus({ preventScroll: true });
+      return;
+    }
+
     const isHome = mode === "home";
     // In home mode the place inherits the couple's saved home address /
     // coordinates so the entry shows up at the right spot on the map.
@@ -408,7 +428,7 @@ export default function PlaceFormPage() {
           />
         </div>
 
-        <div>
+        <div data-form-error={categories.length === 0 ? "true" : undefined}>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             카테고리 · 种类 *
           </label>
@@ -538,31 +558,17 @@ export default function PlaceFormPage() {
           </span>
         </button>
 
-        {(() => {
-          // Home-mode requires every non-empty inline food to have at
-          // least one category picked too — otherwise the bulk insert
-          // below creates rows that land in the "❓ 미분류" bucket.
-          const homeFoodsIncomplete =
-            mode === "home" &&
-            !isEdit &&
-            homeFoods.some(
-              (f) => f.name.trim().length > 0 && f.categories.length === 0
-            );
-          const cantSave =
-            upsert.isPending ||
-            upsertFood.isPending ||
-            categories.length === 0 ||
-            homeFoodsIncomplete;
-          return (
-            <button
-              type="submit"
-              className="btn-primary w-full"
-              disabled={cantSave}
-            >
-              저장 · 保存
-            </button>
-          );
-        })()}
+        {/* Save button stays active for valid + invalid alike — onSubmit
+            does the validation up front and scrolls to the first
+            offending field. The only reason to disable is an in-flight
+            mutation, which we want to gate to prevent double-submits. */}
+        <button
+          type="submit"
+          className="btn-primary w-full"
+          disabled={upsert.isPending || upsertFood.isPending}
+        >
+          저장 · 保存
+        </button>
       </form>
     </div>
   );
@@ -620,8 +626,15 @@ function HomeFoodCard({
   onChangeChef: (v: ChefRole) => void;
   onChangeCategories: (v: string[]) => void;
 }) {
+  // A row-level error: the food has a name typed in but no category
+  // picked, which would land it in 미분류 on the bulk-insert.
+  const incomplete =
+    food.name.trim().length > 0 && food.categories.length === 0;
   return (
-    <div className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative space-y-3">
+    <div
+      data-form-error={incomplete ? "true" : undefined}
+      className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative space-y-3"
+    >
       {removable && (
         <button
           type="button"
@@ -653,6 +666,11 @@ function HomeFoodCard({
           value={food.categories}
           onChange={onChangeCategories}
         />
+        {incomplete && (
+          <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
+            종류를 하나 이상 골라주세요 · 请至少选择一个种类
+          </p>
+        )}
       </div>
 
       <div>

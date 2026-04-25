@@ -595,6 +595,17 @@ export default function HomePage() {
             >
               <Search className="w-5 h-5" />
             </button>
+            {/* 룰렛 — moved out of the bottom FAB cluster so the
+                timeline isn't covered by two oversized circles. */}
+            <button
+              type="button"
+              onClick={() => setRouletteOpen(true)}
+              className="p-3 bg-cream-100/70 rounded-full text-peach-500 hover:bg-cream-200 transition border border-cream-200/50"
+              aria-label="random pick"
+              title="운명의 룰렛 · 听天由命"
+            >
+              <Dice5 className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -844,22 +855,17 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* Floating action cluster — sits above bottom nav + device safe area */}
+      {/* Floating action — single +/북마크 button on the right. The
+          룰렛 button moved up to the header icon cluster so the bottom
+          stays uncluttered and the timeline list isn't covered by two
+          big circular buttons. */}
       <div
         className="fixed left-0 right-0 z-30 pointer-events-none px-5"
         style={{
           bottom: "calc(env(safe-area-inset-bottom, 0px) + 6rem)",
         }}
       >
-        <div className="max-w-md mx-auto flex justify-between items-end">
-          <button
-            type="button"
-            onClick={() => setRouletteOpen(true)}
-            className="pointer-events-auto w-16 h-16 rounded-full bg-white/95 backdrop-blur border border-peach-100 text-peach-500 shadow-airy flex items-center justify-center active:scale-90 transition hover:scale-105 hover:border-peach-200"
-            aria-label="random pick"
-          >
-            <Dice5 className="w-7 h-7" />
-          </button>
+        <div className="max-w-md mx-auto flex justify-end items-end">
           {tab === "timeline" ? (
             <Link
               to="/places/new"

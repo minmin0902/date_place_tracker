@@ -153,6 +153,23 @@ export default function FoodFormPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!placeId) return;
+
+    // Inline validation: scroll to the first invalid section + focus it
+    // instead of leaving the user with a dead disabled save button.
+    // Per-field error text already renders below each invalid field;
+    // this just makes "what did I miss?" obvious.
+    const firstErrorEl = document.querySelector<HTMLElement>(
+      "[data-form-error='true']"
+    );
+    if (firstErrorEl) {
+      firstErrorEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusTarget = firstErrorEl.querySelector<
+        HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement
+      >("input, textarea, button[type='button']");
+      focusTarget?.focus({ preventScroll: true });
+      return;
+    }
+
     // Storage convention: my_rating belongs to created_by, partner_rating
     // belongs to the other partner. If the current viewer is NOT the
     // creator (editing someone else's food), swap the form values so the
@@ -231,7 +248,7 @@ export default function FoodFormPage() {
           />
         </div>
 
-        <div>
+        <div data-form-error={categories.length === 0 ? "true" : undefined}>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             카테고리 · 种类 *
           </label>
@@ -370,12 +387,13 @@ export default function FoodFormPage() {
           />
         </div>
 
+        {/* Always-active save: onSubmit validates + scrolls to first
+            offending field. Only disabled while a mutation is mid-flight
+            so we never double-submit. */}
         <button
           type="submit"
           className="btn-primary w-full"
-          disabled={
-            upsert.isPending || !name.trim() || categories.length === 0
-          }
+          disabled={upsert.isPending}
         >
           저장 · 保存
         </button>

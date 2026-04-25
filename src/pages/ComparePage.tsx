@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -302,10 +302,37 @@ export default function ComparePage() {
   const [activeTab, setActiveTab] = useState<TabId>("fame");
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
+  // Tracks the carousel card the user is currently centered on so the
+  // dot-pagination indicator below knows which dot to fill. We don't
+  // ever read this from the cards themselves — it's purely an indicator.
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [activeCardIdx, setActiveCardIdx] = useState(0);
 
   const updateCardConfig = (next: CardConfig) => {
     setCardConfig(next);
     saveCardConfig(next);
+  };
+
+  // Find the card whose center is closest to the carousel viewport
+  // center on every scroll tick. More robust than slot-math because it
+  // handles irregular card widths (e.g. when only one card is visible).
+  const onCarouselScroll = () => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const cards = el.querySelectorAll<HTMLDivElement>(":scope > div");
+    if (cards.length === 0) return;
+    const center = el.scrollLeft + el.clientWidth / 2;
+    let best = 0;
+    let bestDist = Infinity;
+    cards.forEach((card, i) => {
+      const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+      const dist = Math.abs(cardCenter - center);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    });
+    setActiveCardIdx(best);
   };
 
   const rows: Row[] = useMemo(() => {
@@ -426,10 +453,7 @@ export default function ComparePage() {
           the gesture. Card visibility + order is fully user-controlled
           via the ⚙️ button below the carousel. */}
       <div className="pt-5 pb-4">
-        <div className="flex items-center justify-between mb-2 px-6">
-          <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase">
-            👉 가로로 스와이프 · 滑动查看
-          </p>
+        <div className="flex items-center justify-end mb-2 px-6">
           <button
             type="button"
             onClick={() => setCardEditorOpen(true)}
@@ -440,6 +464,8 @@ export default function ComparePage() {
           </button>
         </div>
         <div
+          ref={carouselRef}
+          onScroll={onCarouselScroll}
           className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5 pb-2"
           style={{ scrollPaddingInline: "1.25rem" }}
         >
@@ -477,6 +503,37 @@ export default function ComparePage() {
               );
             })}
         </div>
+
+        {/* Pagination dots — replaces the old "👉 가로로 스와이프"
+            text hint. Tells the user at a glance how many cards there
+            are and which one they're on. Active dot expands to a small
+            pill so the cue is visible without color alone. */}
+        {(() => {
+          const visible = cardConfig.order.filter(
+            (id) => !cardConfig.hidden.includes(id)
+          );
+          // Mirror the same chef-card visibility check the carousel
+          // applies so the dot count matches what's actually rendered.
+          const renderedCount = visible.filter((id) => {
+            if (id !== "chef") return true;
+            return diningFilter !== "out" && homeRows.length > 0;
+          }).length;
+          if (renderedCount <= 1) return null;
+          return (
+            <div className="flex items-center justify-center gap-1.5 mt-1">
+              {Array.from({ length: renderedCount }).map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 rounded-full transition-all duration-200 ${
+                    i === activeCardIdx
+                      ? "w-5 bg-peach-400"
+                      : "w-1.5 bg-cream-200"
+                  }`}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {cardEditorOpen && (
