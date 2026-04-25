@@ -38,6 +38,8 @@ export function GroupedMultiSelect({
   triggerClassName,
   title,
   emptyHint,
+  singleSelect = false,
+  allowEmpty = false,
 }: {
   options: GroupedMultiSelectEntry[];
   value: string[];
@@ -48,6 +50,14 @@ export function GroupedMultiSelect({
   title?: string;
   // Helper line under the title (e.g. for forms requiring a pick).
   emptyHint?: string;
+  // Single-select mode: tapping any option REPLACES the selection
+  // with just that option and auto-closes the modal. Group bulk-toggle
+  // is hidden in this mode (rollup makes no sense for a single value).
+  singleSelect?: boolean;
+  // When true (and singleSelect), the modal also shows an explicit
+  // "전체 해제" / "전체 선택 안 함" affordance so the user can clear
+  // the single-pick. Otherwise single-pick must always carry a value.
+  allowEmpty?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -77,11 +87,23 @@ export function GroupedMultiSelect({
   }, [open]);
 
   function toggleOne(v: string) {
+    if (singleSelect) {
+      // Single-pick: tapping the active row clears (only when allowed)
+      // or is a no-op; tapping any other row replaces the selection.
+      if (value[0] === v) {
+        if (allowEmpty) onChange([]);
+      } else {
+        onChange([v]);
+      }
+      setOpen(false);
+      return;
+    }
     if (value.includes(v)) onChange(value.filter((x) => x !== v));
     else onChange([...value, v]);
   }
 
   function setGroupAll(group: GroupedOption, on: boolean) {
+    if (singleSelect) return; // bulk-toggle disabled in single-pick mode
     const groupValues = new Set(group.options.map((o) => o.value));
     if (on) {
       // Add any group children that aren't already selected.
@@ -207,14 +229,23 @@ export function GroupedMultiSelect({
                     key={`g-${idx}`}
                     className="rounded-2xl border border-cream-200 overflow-hidden"
                   >
-                    <CheckboxRow
-                      label={entry.groupLabel}
-                      state={headerState}
-                      onClick={() => setGroupAll(entry, !allOn)}
-                      bold
-                      tone="header"
-                    />
-                    <div className="bg-cream-50/40 border-t border-cream-100">
+                    {singleSelect ? (
+                      // Single-pick mode: group header is just a label,
+                      // not a tri-state. Bulk-toggle has no meaning when
+                      // only one row may be selected.
+                      <div className="bg-white px-3 py-2 text-[12px] font-bold text-ink-700 break-keep border-b border-cream-100">
+                        {entry.groupLabel}
+                      </div>
+                    ) : (
+                      <CheckboxRow
+                        label={entry.groupLabel}
+                        state={headerState}
+                        onClick={() => setGroupAll(entry, !allOn)}
+                        bold
+                        tone="header"
+                      />
+                    )}
+                    <div className="bg-cream-50/40">
                       {entry.options.map((o) => {
                         const checked = value.includes(o.value);
                         return (
@@ -235,20 +266,38 @@ export function GroupedMultiSelect({
             </div>
 
             <div className="border-t border-cream-200 px-4 py-3 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => onChange([])}
-                disabled={value.length === 0}
-                className="text-[12px] font-bold text-ink-500 hover:text-ink-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                전체 해제 · 清空
-              </button>
+              {singleSelect ? (
+                allowEmpty ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange([]);
+                      setOpen(false);
+                    }}
+                    disabled={value.length === 0}
+                    className="text-[12px] font-bold text-ink-500 hover:text-ink-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    선택 해제 · 清空
+                  </button>
+                ) : (
+                  <span />
+                )
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  disabled={value.length === 0}
+                  className="text-[12px] font-bold text-ink-500 hover:text-ink-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  전체 해제 · 清空
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 className="px-4 py-2 bg-ink-900 text-white rounded-xl text-[12px] font-bold hover:bg-ink-700 transition"
               >
-                완료 · 完成 ({value.length})
+                완료 · 完成{singleSelect ? "" : ` (${value.length})`}
               </button>
             </div>
           </div>

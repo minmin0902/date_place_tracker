@@ -7,7 +7,6 @@ import { PullIndicator } from "@/components/PullIndicator";
 import {
   BookmarkPlus,
   CheckCircle2,
-  ChevronDown,
   Dice5,
   Grid3x3,
   Heart,
@@ -47,7 +46,17 @@ import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
-type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc" | "city";
+// Sort modes only — "도시별" used to live here as a 5th option but
+// graduated to its own standalone filter (selectedCity) so the sort
+// picker stays a clean "pick one of four orderings".
+type ViewMode = "date" | "dateAsc" | "scoreDesc" | "scoreAsc";
+
+const SORT_OPTIONS: GroupedMultiSelectEntry[] = [
+  { value: "date", label: "최근순 · 最新到旧", emoji: "🕘" },
+  { value: "dateAsc", label: "오래된순 · 最旧到新", emoji: "📅" },
+  { value: "scoreDesc", label: "별점 높은순 · 评分高到低", emoji: "⭐" },
+  { value: "scoreAsc", label: "별점 낮은순 · 评分低到高", emoji: "🥄" },
+];
 // Type filter — works alongside ViewMode so users can combine
 // "집밥만 보기" with "별점 높은순".
 type DiningFilter = "all" | "out" | "home";
@@ -66,7 +75,9 @@ type StoredFilters = {
   revisitOnly?: boolean;
   unratedOnly?: boolean;
   diningFilter?: DiningFilter;
-  viewMode?: ViewMode;
+  // string (not ViewMode) so legacy sessions with a now-removed
+  // value like "city" don't widen the live ViewMode union.
+  viewMode?: string;
   // v1 used a single string for category — kept here so old saved
   // sessions can be migrated on read. v2 switched to a string[] so
   // users can multi-select groups (e.g. tap "🌏 아시안" → all 6
@@ -244,22 +255,30 @@ export default function HomePage() {
     initialFilters.current.unratedOnly ?? false
   );
   const [addWishlistOpen, setAddWishlistOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    initialFilters.current.viewMode ?? "date"
-  );
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    // Migrate v1 saved "city" mode (when sort + 도시별 lived in the
+    // same dropdown) to a plain date sort + leave city filtering to
+    // the standalone dropdown.
+    const stored = initialFilters.current.viewMode;
+    if (stored === "date" || stored === "dateAsc" || stored === "scoreDesc" || stored === "scoreAsc") {
+      return stored;
+    }
+    return "date";
+  });
   const [diningFilter, setDiningFilter] = useState<DiningFilter>(
     initialFilters.current.diningFilter ?? "all"
   );
-  // Multi-select category filter. Empty array = no filter. "__none__"
-  // is a sentinel for "uncategorized only". Other values are either
-  // built-in PLACE_CATEGORIES keys or freeform "기타" strings the
-  // user typed in. baseList ORs across the selection.
+  // Multi-select category filter (modal popover). Empty array = no
+  // filter. "__none__" = uncategorized only. Other values are built-in
+  // PLACE_CATEGORIES keys or freeform "기타" strings. baseList ORs
+  // across the selection. Group headers in the picker bulk-toggle all
+  // children at once — that's the UX trade-off that warranted bringing
+  // the modal back instead of a native <select>.
   const [categoryFilter, setCategoryFilter] = useState<string[]>(() => {
     const stored = initialFilters.current;
     if (stored.categoryFilters && Array.isArray(stored.categoryFilters)) {
       return stored.categoryFilters;
     }
-    // Migrate v1 single-string format. "all" / undefined → empty array.
     const legacy = stored.categoryFilter;
     if (!legacy || legacy === "all") return [];
     return [legacy];
@@ -309,11 +328,11 @@ export default function HomePage() {
     getCategories(p).length === 0 ||
     (p.foods ?? []).some((f) => getCategories(f).length === 0);
 
-  // Build the category picker options dynamically. "미분류" sits at
-  // the top as a plain selectable row; built-in categories are bucketed
-  // by CATEGORY_GROUPS so tapping a group header bulk-selects every
-  // child; custom user strings ("기타" entries) land in their own
-  // trailing group.
+  // Build the native dropdown options. "전체" + "미분류" sit at the
+  // top; built-in categories are bucketed via <optgroup>. Each group
+  // also gets a "그룹 전체" rollup option as the FIRST entry inside
+  // the optgroup, so picking it filters by every child of that group
+  // (e.g. 🌏 아시안 전체 → 한식·일식·중식·... all match).
   const categoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
     const out: GroupedMultiSelectEntry[] = [];
     const hasUncategorized = (places ?? []).some(isPlaceUncategorized);
@@ -401,8 +420,8 @@ export default function HomePage() {
       list = list.filter((p) => p.is_home_cooked);
     if (categoryFilter.length > 0) {
       // Multi-select OR semantics: a place matches if any of its
-      // categories appear in the selection, OR — when "__none__" is
-      // selected — the place itself has no categories.
+      // categories appear in the selection, OR — when "__none__" is in
+      // the selection — the place itself has no categories.
       const wantNone = categoryFilter.includes("__none__");
       const concrete = categoryFilter.filter((v) => v !== "__none__");
       list = list.filter((p) => {
@@ -411,6 +430,9 @@ export default function HomePage() {
         const cats = getCategories(p);
         return concrete.some((c) => cats.includes(c));
       });
+    }
+    if (selectedCity) {
+      list = list.filter((p) => inferCity(p.address) === selectedCity);
     }
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -430,6 +452,7 @@ export default function HomePage() {
     unratedOnly,
     diningFilter,
     categoryFilter,
+    selectedCity,
     user?.id,
   ]);
 
@@ -450,12 +473,14 @@ export default function HomePage() {
   }, [baseList, viewMode]);
 
   // All cities present in the current (filtered) timeline — feeds the
-  // multi-select chip row when "도시별" is active.
+  // city filter dropdown. Always derived (no longer gated on viewMode)
+  // since "도시별" is now a standalone filter.
   const allCities = useMemo(() => {
-    if (viewMode !== "city") return [] as string[];
     const byCount = new Map<string, number>();
-    for (const p of filteredPlaces) {
-      const city = inferCity(p.address) ?? "기타 · 其他";
+    for (const p of baseList) {
+      if (!p.address) continue;
+      const city = inferCity(p.address);
+      if (!city) continue;
       byCount.set(city, (byCount.get(city) ?? 0) + 1);
     }
     return [...byCount.entries()]
@@ -463,30 +488,24 @@ export default function HomePage() {
         b[1] - a[1] !== 0 ? b[1] - a[1] : a[0].localeCompare(b[0])
       )
       .map(([c]) => c);
-  }, [filteredPlaces, viewMode]);
+  }, [baseList]);
 
   // Drop the selected city if it no longer exists in the current filter set.
   useEffect(() => {
-    if (viewMode !== "city" || !selectedCity) return;
+    if (!selectedCity) return;
     if (!allCities.includes(selectedCity)) setSelectedCity(null);
-  }, [allCities, viewMode, selectedCity]);
+  }, [allCities, selectedCity]);
 
-  // Group by inferred city for the city view. A selected city narrows the
-  // groups to just that one; null means "show all".
-  const cityGroups = useMemo(() => {
-    if (viewMode !== "city") return null;
-    const bucket = new Map<string, PlaceWithFoods[]>();
-    for (const p of filteredPlaces) {
-      const city = inferCity(p.address) ?? "기타 · 其他";
-      if (selectedCity && selectedCity !== city) continue;
-      if (!bucket.has(city)) bucket.set(city, []);
-      bucket.get(city)!.push(p);
-    }
-    return [...bucket.entries()].sort((a, b) => {
-      const byCount = b[1].length - a[1].length;
-      return byCount !== 0 ? byCount : a[0].localeCompare(b[0]);
-    });
-  }, [filteredPlaces, viewMode, selectedCity]);
+  // City filter as a flat option list for the dropdown picker.
+  const cityOptions = useMemo<GroupedMultiSelectEntry[]>(
+    () =>
+      allCities.map((c) => ({
+        value: c,
+        label: c,
+        emoji: "📍",
+      })),
+    [allCities]
+  );
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
@@ -601,11 +620,8 @@ export default function HomePage() {
                   {filteredPlaces.length}
                 </span>
               </h2>
-              {/* List ↔ grid layout toggle. Hidden when 도시별 view is
-                  active because city groups don't make sense in a 2-col
-                  photo grid. */}
-              {viewMode !== "city" && (
-                <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
+              {/* List ↔ grid layout toggle. */}
+              <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
                   <LayoutToggle
                     active={listLayout === "list"}
                     onClick={() => setListLayout("list")}
@@ -618,8 +634,7 @@ export default function HomePage() {
                     icon={<Grid3x3 className="w-4 h-4" />}
                     label="그리드 뷰 · 网格"
                   />
-                </div>
-              )}
+              </div>
             </div>
             {/* Quick toggles row — single horizontal scroll line so the
                 two pills never wrap and stack the title down. Narrow
@@ -678,62 +693,39 @@ export default function HomePage() {
                 />
               </div>
 
-              <div className="flex gap-2">
-                <FilterDropdown
-                  value={viewMode}
-                  onChange={(v) => setViewMode(v as ViewMode)}
-                  options={[
-                    { value: "date", label: "최근순 · 最新到旧" },
-                    { value: "dateAsc", label: "오래된순 · 最旧到新" },
-                    { value: "scoreDesc", label: "별점 높은순 · 评分高到低" },
-                    { value: "scoreAsc", label: "별점 낮은순 · 评分低到高" },
-                    { value: "city", label: "도시별 · 按城市" },
-                  ]}
+              <div className="grid grid-cols-3 gap-2">
+                <GroupedMultiSelect
+                  title="정렬 · 排序"
+                  placeholder="최근순 · 最新"
+                  singleSelect
+                  options={SORT_OPTIONS}
+                  value={[viewMode]}
+                  onChange={(next) => {
+                    if (next.length > 0) setViewMode(next[0] as ViewMode);
+                  }}
                 />
-                <div className="relative flex-1 min-w-0">
-                  <GroupedMultiSelect
-                    title="카테고리 필터 · 类别筛选"
-                    placeholder="모든 종류 · 全部"
-                    options={categoryOptions}
-                    value={categoryFilter}
-                    onChange={setCategoryFilter}
-                  />
-                </div>
+                <GroupedMultiSelect
+                  title="도시 · 城市"
+                  placeholder="모든 도시 · 全部城市"
+                  singleSelect
+                  allowEmpty
+                  options={cityOptions}
+                  value={selectedCity ? [selectedCity] : []}
+                  onChange={(next) => setSelectedCity(next[0] ?? null)}
+                />
+                <GroupedMultiSelect
+                  title="카테고리 · 类别"
+                  placeholder="모든 종류 · 全部"
+                  options={categoryOptions}
+                  value={categoryFilter}
+                  onChange={setCategoryFilter}
+                />
               </div>
             </div>
 
-            {viewMode === "city" && allCities.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-5 px-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCity(null)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap ${
-                    selectedCity === null
-                      ? "bg-ink-900 text-white border-ink-900"
-                      : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
-                  }`}
-                >
-                  전체 · 全部
-                </button>
-                {allCities.map((c) => {
-                  const active = selectedCity === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setSelectedCity(active ? null : c)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] sm:text-[12px] font-semibold transition border whitespace-nowrap flex items-center gap-1 ${
-                        active
-                          ? "bg-peach-100 text-peach-500 border-peach-200/70 shadow-sm"
-                          : "bg-white text-ink-500 border-cream-200/60 hover:bg-cream-50"
-                      }`}
-                    >
-                      📍 {c}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Old "도시별" chip strip retired — selectedCity now lives
+                in its own GroupedMultiSelect dropdown alongside sort
+                + category, so the same modal UX covers all three. */}
 
             {placesLoading && (
               <p className="text-ink-500 py-8 text-center text-sm">
@@ -774,37 +766,7 @@ export default function HomePage() {
               );
             })()}
 
-            {viewMode === "city" && cityGroups ? (
-              <div className="mt-2 space-y-6">
-                {cityGroups.length === 0 && selectedCity && (
-                  <EmptyState
-                    emoji="📍"
-                    text="선택한 도시에 기록이 없어요 · 这个城市还没有记录"
-                  />
-                )}
-                {cityGroups.map(([city, list]) => (
-                  <div key={city}>
-                    <h3 className="font-sans font-bold text-sm text-ink-700 mb-2 px-1 flex items-center gap-2">
-                      <span>{city}</span>
-                      <span className="text-ink-400 text-xs font-number font-bold">
-                        {list.length}
-                      </span>
-                    </h3>
-                    <div>
-                      {list.map((p, idx) => (
-                        <TimelineItem
-                          key={p.id}
-                          place={p}
-                          locale={i18n.language}
-                          isLast={idx === list.length - 1}
-                          viewerId={user?.id}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : listLayout === "grid" ? (
+            {listLayout === "grid" ? (
               <div className="mt-2 grid grid-cols-2 gap-3">
                 {filteredPlaces.map((p) => (
                   <TimelineGridItem
@@ -926,51 +888,8 @@ function SegmentButton({
 
 // Generic dropdown styled to look like the filter pills. Uses a real
 // <select> for native picker UX (especially on iOS) and overlays our
-// own ChevronDown to mask the OS arrow without needing extra global CSS.
-// Each entry is either a plain option or a group containing options.
-// Native <optgroup> renders the group label as a non-selectable header
-// in the OS picker on iOS / Android / desktop, giving us hierarchical
-// look (아시안 > 한식, 일식 …) without a custom dropdown widget.
-type DropdownEntry =
-  | { value: string; label: string }
-  | { groupLabel: string; options: { value: string; label: string }[] };
-
-function FilterDropdown({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: DropdownEntry[];
-}) {
-  return (
-    <div className="relative flex-1 min-w-0">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-white border border-cream-200/80 rounded-xl pl-3 pr-8 py-2.5 text-[12px] font-bold text-ink-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-peach-100 focus:border-peach-300 transition appearance-none truncate"
-      >
-        {options.map((entry, idx) =>
-          "groupLabel" in entry ? (
-            <optgroup key={`g-${idx}`} label={entry.groupLabel}>
-              {entry.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </optgroup>
-          ) : (
-            <option key={entry.value} value={entry.value}>
-              {entry.label}
-            </option>
-          )
-        )}
-      </select>
-      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 pointer-events-none" />
-    </div>
-  );
-}
+// (FilterDropdown removed — replaced by GroupedMultiSelect for sort,
+//  city, and category so all three filters share the same modal UX.)
 
 function TabButton({
   active,
