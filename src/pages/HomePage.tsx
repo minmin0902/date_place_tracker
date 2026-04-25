@@ -17,6 +17,7 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  Utensils,
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,7 +65,10 @@ type ListFilter =
   | "partnerOnly";
 // Visual layout for the timeline list. "list" is the original timeline
 // card; "grid" is a 2-col photo-first feed. Independent from ViewMode.
-type ListLayout = "list" | "grid";
+// "menu" added so users can flip the timeline from "list of restaurants"
+// to "list of menu items I rated" — same place-level filters apply,
+// but the row is one card per food instead of per place.
+type ListLayout = "list" | "grid" | "menu";
 
 // Persist filter state across navigation in this tab session — so
 // "내 별점 안 줬어요" + "외식" + "별점 높은순" is preserved when the
@@ -512,6 +516,77 @@ export default function HomePage() {
     return list;
   }, [baseList, viewMode]);
 
+  // Menu-view dataset — one entry per food across all baseList places.
+  // listFilter is re-applied at the menu level so unrated/myOnly/
+  // partnerOnly only show the actually-matching menus inside a place
+  // (baseList just guarantees the place qualifies; the place might
+  // still hold mixed-eater foods).
+  type MenuEntry = {
+    food: PlaceWithFoods["foods"][number];
+    place: PlaceWithFoods;
+  };
+  const filteredMenus = useMemo<MenuEntry[]>(() => {
+    if (listLayout !== "menu") return [];
+    const out: MenuEntry[] = [];
+    for (const p of baseList) {
+      for (const f of p.foods ?? []) {
+        if (listFilter === "unrated") {
+          const eater = f.eater ?? (f.is_solo ? "creator" : "both");
+          if (eater !== "both") {
+            const isEater =
+              eater === "creator"
+                ? !f.created_by || f.created_by === user?.id
+                : f.created_by !== user?.id;
+            if (!isEater) continue;
+          }
+          if (ratingsForViewer(f, user?.id).myRating != null) continue;
+        } else if (listFilter === "myOnly") {
+          if (viewerOnlyEater(f, user?.id) !== "me") continue;
+        } else if (listFilter === "partnerOnly") {
+          if (viewerOnlyEater(f, user?.id) !== "partner") continue;
+        }
+        // 'revisit' is place-level so baseList already enforced it;
+        // every food inside a revisit place qualifies.
+        if (query.trim()) {
+          // Make sure menu rows still match the search: the place
+          // itself might match (name/address/memo) without this food
+          // matching. In menu mode we want the matching FOODS only,
+          // unless the user typed a place keyword that hits everything.
+          const q = query.toLowerCase();
+          const placeHay =
+            `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
+          const foodHit = f.name.toLowerCase().includes(q);
+          if (!placeHay.includes(q) && !foodHit) continue;
+        }
+        out.push({ food: f, place: p });
+      }
+    }
+    if (viewMode === "scoreDesc") {
+      out.sort(
+        (a, b) =>
+          (b.food.my_rating ?? 0) +
+          (b.food.partner_rating ?? 0) -
+          ((a.food.my_rating ?? 0) + (a.food.partner_rating ?? 0))
+      );
+    } else if (viewMode === "scoreAsc") {
+      out.sort(
+        (a, b) =>
+          (a.food.my_rating ?? 0) +
+          (a.food.partner_rating ?? 0) -
+          ((b.food.my_rating ?? 0) + (b.food.partner_rating ?? 0))
+      );
+    } else if (viewMode === "dateAsc") {
+      out.sort((a, b) =>
+        a.place.date_visited > b.place.date_visited ? 1 : -1
+      );
+    } else {
+      out.sort((a, b) =>
+        a.place.date_visited < b.place.date_visited ? 1 : -1
+      );
+    }
+    return out;
+  }, [baseList, listLayout, listFilter, viewMode, query, user?.id]);
+
   // All cities present across the user's full place list — derived
   // from raw `places`, NOT from baseList. Using baseList was a bug:
   // baseList already has selectedCities applied, so picking one city
@@ -656,20 +731,28 @@ export default function HomePage() {
                   {filteredPlaces.length}
                 </span>
               </h2>
-              {/* List ↔ grid layout toggle. */}
+              {/* List ↔ grid ↔ menu layout toggle. Menu mode flattens
+                  the timeline to one card per food instead of one per
+                  place; same filters apply. */}
               <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
-                  <LayoutToggle
-                    active={listLayout === "list"}
-                    onClick={() => setListLayout("list")}
-                    icon={<List className="w-4 h-4" />}
-                    label="리스트 뷰 · 列表"
-                  />
-                  <LayoutToggle
-                    active={listLayout === "grid"}
-                    onClick={() => setListLayout("grid")}
-                    icon={<Grid3x3 className="w-4 h-4" />}
-                    label="그리드 뷰 · 网格"
-                  />
+                <LayoutToggle
+                  active={listLayout === "list"}
+                  onClick={() => setListLayout("list")}
+                  icon={<List className="w-4 h-4" />}
+                  label="리스트 뷰 · 列表"
+                />
+                <LayoutToggle
+                  active={listLayout === "grid"}
+                  onClick={() => setListLayout("grid")}
+                  icon={<Grid3x3 className="w-4 h-4" />}
+                  label="그리드 뷰 · 网格"
+                />
+                <LayoutToggle
+                  active={listLayout === "menu"}
+                  onClick={() => setListLayout("menu")}
+                  icon={<Utensils className="w-4 h-4" />}
+                  label="메뉴 뷰 · 菜单"
+                />
               </div>
             </div>
             {/* 1) 모두 / 외식 / 집밥 — 옛 큰 segment row 그대로 복원. */}
@@ -939,6 +1022,25 @@ export default function HomePage() {
                   />
                 ))}
               </div>
+            ) : listLayout === "menu" ? (
+              filteredMenus.length === 0 ? (
+                <EmptyState
+                  emoji="🍽️"
+                  text="조건에 맞는 메뉴가 없어요 · 没有符合的菜"
+                />
+              ) : (
+                <div className="mt-2 space-y-2.5">
+                  {filteredMenus.map((m) => (
+                    <MenuRow
+                      key={`${m.place.id}-${m.food.id}`}
+                      food={m.food}
+                      place={m.place}
+                      locale={i18n.language}
+                      viewerId={user?.id}
+                    />
+                  ))}
+                </div>
+              )
             ) : (
               <div className="mt-2">
                 {filteredPlaces.map((p, idx) => (
@@ -1399,6 +1501,137 @@ function LayoutToggle({
     >
       {icon}
     </button>
+  );
+}
+
+// ---------- menu row (one card per food in menu view) ----------
+
+// Compact food-centric card: food name + the place it came from on
+// the left, score on the right. Tap routes to the place detail since
+// food editing/photos live there. Same theme treatment (peach for
+// 외식 / teal for 집밥) as TimelineItem so the two views feel related.
+function MenuRow({
+  food,
+  place,
+  locale,
+  viewerId,
+}: {
+  food: PlaceWithFoods["foods"][number];
+  place: PlaceWithFoods;
+  locale: string;
+  viewerId: string | undefined;
+}) {
+  const { t } = useTranslation();
+  const isHome = !!place.is_home_cooked;
+  const theme = timelineTheme(isHome);
+  const view = ratingsForViewer(food, viewerId);
+  // Score depends on who ate. For solo foods the non-eater isn't
+  // supposed to rate, so don't double-count or surface a "평가 전"
+  // nag when only one side is filled in.
+  const eaterPre: "both" | "me" | "partner" = (() => {
+    const stored = food.eater ?? (food.is_solo ? "creator" : "both");
+    if (stored === "both") return "both";
+    const viewerIsCreator =
+      !food.created_by || food.created_by === viewerId;
+    if (stored === "creator") return viewerIsCreator ? "me" : "partner";
+    return viewerIsCreator ? "partner" : "me";
+  })();
+  const total: number | null = (() => {
+    if (eaterPre === "both") {
+      return food.my_rating != null && food.partner_rating != null
+        ? food.my_rating + food.partner_rating
+        : null;
+    }
+    // Solo: rating × 2 so the /10 scale stays consistent. Whichever
+    // rating slot belongs to the eater.
+    const soloRating =
+      eaterPre === "me" ? view.myRating : view.partnerRating;
+    return soloRating != null ? soloRating * 2 : null;
+  })();
+  // eaterPre (computed above for the score block) is reused for the
+  // 단독 식사 badge so we only walk the eater logic once per row.
+  const eaterRole = eaterPre;
+  const photo = food.photo_urls?.[0] ?? food.photo_url ?? null;
+  const foodCats = getCategories(food);
+  return (
+    <Link
+      to={`/places/${place.id}`}
+      className={`flex gap-3 items-center rounded-2xl p-3 border shadow-soft active:scale-[0.99] transition ${theme.card} ${theme.cardBorder}`}
+    >
+      <div
+        className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center text-2xl border ${theme.img}`}
+      >
+        {photo ? (
+          <img
+            src={photo}
+            alt={food.name}
+            className="w-full h-full object-cover"
+          />
+        ) : isHome ? (
+          "🍳"
+        ) : (
+          categoryIcon(foodCats[0] ?? place.category)
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-ink-900 text-[14px] truncate">
+          {food.name}
+        </p>
+        <p className="text-[11px] text-ink-500 truncate flex items-center gap-1">
+          <MapPin className={`w-3 h-3 flex-shrink-0 ${theme.addrIcon}`} />
+          <span className="truncate">{place.name}</span>
+          <span className="text-ink-300 mx-0.5">·</span>
+          <span className="font-number flex-shrink-0">
+            {formatDate(place.date_visited, locale)}
+          </span>
+        </p>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+          {foodCats.slice(0, 2).map((c) => (
+            <span
+              key={c}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-white/90 text-ink-600 border border-cream-200/60"
+            >
+              {isKnownPlaceCategory(c) ? t(`category.${c}`) : c}
+            </span>
+          ))}
+          {eaterRole === "me" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-peach-50 text-peach-600 border border-peach-200 font-bold">
+              🙋‍♂️ 나만 · 我独享
+            </span>
+          )}
+          {eaterRole === "partner" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 border border-rose-200 font-bold">
+              🙋‍♀️ 짝꿍만 · 宝宝独享
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex-shrink-0 text-right">
+        {total !== null ? (
+          <>
+            <span className="block text-xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
+              {total.toFixed(1)}
+            </span>
+            <span className="text-[9px] text-ink-400 font-number">/ 10</span>
+          </>
+        ) : eaterPre === "both" ? (
+          // Both-eater food still missing a rating — surface the gap
+          // so the user knows there's something to fill in.
+          view.myRating == null ? (
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              ✏️ 평가 전
+            </span>
+          ) : (
+            <span className="text-[10px] text-ink-400">짝꿍 대기</span>
+          )
+        ) : (
+          // Solo food (나만 / 짝꿍만) without a rating — eater simply
+          // hasn't logged a score yet. No "평가해야 됨" nag, just a
+          // light dash.
+          <span className="text-[10px] text-ink-400 font-number">-</span>
+        )}
+      </div>
+    </Link>
   );
 }
 
