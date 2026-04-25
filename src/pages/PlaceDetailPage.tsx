@@ -11,7 +11,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
-import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
+import {
+  chefForViewer,
+  formatDate,
+  getCategories,
+  ratingsForViewer,
+} from "@/lib/utils";
 import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoComment } from "@/components/MemoComment";
@@ -488,13 +493,21 @@ function FoodCard({
                 custom strings render as-is, missing → amber CTA Link
                 pointing at the edit form so the user can tag it. */}
             <FoodCategoryChip food={food} placeId={placeId} />
-            {food.chef && (
-              <ChefBadge
-                chef={food.chef}
-                myDisplay={myDisplay}
-                partnerDisplay={partnerDisplay}
-              />
-            )}
+            {/* Always go through chefForViewer — stored value is from
+                the creator's perspective, so binding food.chef directly
+                to a 내가/짝꿍 label would render wrong for the other
+                partner. */}
+            {(() => {
+              const chefView = chefForViewer(food, user?.id);
+              if (!chefView) return null;
+              return (
+                <ChefBadge
+                  chef={chefView}
+                  myDisplay={myDisplay}
+                  partnerDisplay={partnerDisplay}
+                />
+              );
+            })()}
             {/* Solo-eat badge — surfaces who ate alone so you don't
                 wonder why one rating is missing. */}
             {isSolo && (

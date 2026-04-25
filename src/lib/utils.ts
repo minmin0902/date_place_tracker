@@ -60,6 +60,29 @@ export function ratingsForViewer(
     : { myRating: food.partner_rating, partnerRating: food.my_rating };
 }
 
+// Same swap rule as ratingsForViewer, applied to foods.chef. The
+// stored value is from the row creator's perspective:
+//   'me'       — foods.created_by user cooked
+//   'partner'  — the other partner cooked
+//   'together' — perspective-free, never swapped
+// Anywhere the UI binds a chef value to a "내가/짝꿍/같이" label, it
+// MUST go through this helper — otherwise both partners see "내가
+// 만들었어!" on the same row, since me/partner is local to the
+// viewer's session.
+export function chefForViewer(
+  food: {
+    chef?: "me" | "partner" | "together" | null;
+    created_by?: string | null;
+  },
+  viewerId: string | undefined
+): "me" | "partner" | "together" | null {
+  const c = food.chef ?? null;
+  if (!c || c === "together") return c;
+  if (!viewerId || !food.created_by) return c;
+  if (food.created_by === viewerId) return c;
+  return c === "me" ? "partner" : "me";
+}
+
 export function formatDate(date: string | Date, locale: string) {
   let d: Date;
   if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
