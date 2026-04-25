@@ -39,6 +39,10 @@ import {
   isKnownPlaceCategory,
 } from "@/lib/constants";
 import { CategoryChips } from "@/components/CategoryChips";
+import {
+  GroupedMultiSelect,
+  type GroupedMultiSelectEntry,
+} from "@/components/GroupedMultiSelect";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -63,7 +67,12 @@ type StoredFilters = {
   unratedOnly?: boolean;
   diningFilter?: DiningFilter;
   viewMode?: ViewMode;
+  // v1 used a single string for category — kept here so old saved
+  // sessions can be migrated on read. v2 switched to a string[] so
+  // users can multi-select groups (e.g. tap "🌏 아시안" → all 6
+  // children selected at once).
   categoryFilter?: string;
+  categoryFilters?: string[];
   selectedCity?: string | null;
   query?: string;
   showSearch?: boolean;
@@ -241,13 +250,20 @@ export default function HomePage() {
   const [diningFilter, setDiningFilter] = useState<DiningFilter>(
     initialFilters.current.diningFilter ?? "all"
   );
-  // Category filter — "all" means no filter; "__none__" filters to
-  // places without a category set; otherwise the value is either a
-  // built-in PLACE_CATEGORIES key OR a freeform "기타" string typed
-  // by the user. All three cases are handled in baseList below.
-  const [categoryFilter, setCategoryFilter] = useState<string>(
-    initialFilters.current.categoryFilter ?? "all"
-  );
+  // Multi-select category filter. Empty array = no filter. "__none__"
+  // is a sentinel for "uncategorized only". Other values are either
+  // built-in PLACE_CATEGORIES keys or freeform "기타" strings the
+  // user typed in. baseList ORs across the selection.
+  const [categoryFilter, setCategoryFilter] = useState<string[]>(() => {
+    const stored = initialFilters.current;
+    if (stored.categoryFilters && Array.isArray(stored.categoryFilters)) {
+      return stored.categoryFilters;
+    }
+    // Migrate v1 single-string format. "all" / undefined → empty array.
+    const legacy = stored.categoryFilter;
+    if (!legacy || legacy === "all") return [];
+    return [legacy];
+  });
   const [selectedCity, setSelectedCity] = useState<string | null>(
     initialFilters.current.selectedCity ?? null
   );
@@ -267,7 +283,7 @@ export default function HomePage() {
       unratedOnly,
       viewMode,
       diningFilter,
-      categoryFilter,
+      categoryFilters: categoryFilter,
       selectedCity,
       listLayout,
     });
@@ -293,30 +309,34 @@ export default function HomePage() {
     getCategories(p).length === 0 ||
     (p.foods ?? []).some((f) => getCategories(f).length === 0);
 
-  // Build the category dropdown options dynamically. "all" + 미분류
-  // sit at the top as plain options; built-in categories are bucketed
-  // by CATEGORY_GROUPS so the native picker shows hierarchy via
-  // <optgroup>; custom user strings ("기타" entries) land in their
-  // own trailing group.
-  const categoryOptions = useMemo<DropdownEntry[]>(() => {
-    const out: DropdownEntry[] = [];
-    out.push({ value: "all", label: "모든 종류 · 全部" });
+  // Build the category picker options dynamically. "미분류" sits at
+  // the top as a plain selectable row; built-in categories are bucketed
+  // by CATEGORY_GROUPS so tapping a group header bulk-selects every
+  // child; custom user strings ("기타" entries) land in their own
+  // trailing group.
+  const categoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
+    const out: GroupedMultiSelectEntry[] = [];
     const hasUncategorized = (places ?? []).some(isPlaceUncategorized);
     if (hasUncategorized) {
-      out.push({ value: "__none__", label: "❓ 카테고리 미설정 · 未分类" });
+      out.push({
+        value: "__none__",
+        label: "카테고리 미설정 · 未分类",
+        emoji: "❓",
+      });
     }
     for (const g of CATEGORY_GROUPS) {
       out.push({
         groupLabel: `${g.ko} · ${g.zh}`,
         options: g.keys.map((c) => ({
           value: c,
-          label: `${categoryEmojiOf(c)} ${t(`category.${c}`)}`,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
         })),
       });
     }
     // Custom — collect unique non-built-in category strings from
     // every category attached to every place. Tucked into a single
-    // "내가 직접 입력한 · 自定义" group at the end.
+    // "✏️ 직접 입력 · 自定义" group at the end.
     const customs = new Set<string>();
     for (const p of places ?? []) {
       for (const c of getCategories(p)) {
@@ -329,25 +349,27 @@ export default function HomePage() {
         groupLabel: "✏️ 직접 입력 · 自定义",
         options: [...customs]
           .sort()
-          .map((c) => ({ value: c, label: `${categoryEmojiOf(c)} ${c}` })),
+          .map((c) => ({ value: c, label: c, emoji: categoryEmojiOf(c) })),
       });
     }
     return out;
   }, [places, t]);
 
-  // Drop the categoryFilter back to "all" if the user deletes every
-  // place that used a now-invalid custom category, otherwise the chip
-  // would silently filter to zero rows.
+  // Drop any selected category that no longer exists (e.g. user
+  // deleted every place tagged with a custom string). Otherwise the
+  // hidden orphan would silently filter to zero rows.
   useEffect(() => {
-    if (categoryFilter === "all") return;
-    // Flatten grouped + plain entries to check whether the chosen
-    // value still exists somewhere in the dropdown.
-    const present = categoryOptions.some((entry) =>
-      "groupLabel" in entry
-        ? entry.options.some((o) => o.value === categoryFilter)
-        : entry.value === categoryFilter
-    );
-    if (!present) setCategoryFilter("all");
+    if (categoryFilter.length === 0) return;
+    const known = new Set<string>();
+    for (const entry of categoryOptions) {
+      if ("groupLabel" in entry) {
+        for (const o of entry.options) known.add(o.value);
+      } else {
+        known.add(entry.value);
+      }
+    }
+    const cleaned = categoryFilter.filter((v) => known.has(v));
+    if (cleaned.length !== categoryFilter.length) setCategoryFilter(cleaned);
   }, [categoryOptions, categoryFilter]);
 
   // Base list: filter first, then sort per viewMode below.
@@ -377,14 +399,18 @@ export default function HomePage() {
     if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
     else if (diningFilter === "home")
       list = list.filter((p) => p.is_home_cooked);
-    if (categoryFilter === "__none__") {
-      list = list.filter(isPlaceUncategorized);
-    } else if (categoryFilter !== "all") {
-      // Match if the chosen category is in the place's multi-select
-      // (or matches the legacy singleton via getCategories fallback).
-      list = list.filter((p) =>
-        getCategories(p).includes(categoryFilter)
-      );
+    if (categoryFilter.length > 0) {
+      // Multi-select OR semantics: a place matches if any of its
+      // categories appear in the selection, OR — when "__none__" is
+      // selected — the place itself has no categories.
+      const wantNone = categoryFilter.includes("__none__");
+      const concrete = categoryFilter.filter((v) => v !== "__none__");
+      list = list.filter((p) => {
+        if (wantNone && isPlaceUncategorized(p)) return true;
+        if (concrete.length === 0) return false;
+        const cats = getCategories(p);
+        return concrete.some((c) => cats.includes(c));
+      });
     }
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -664,11 +690,15 @@ export default function HomePage() {
                     { value: "city", label: "도시별 · 按城市" },
                   ]}
                 />
-                <FilterDropdown
-                  value={categoryFilter}
-                  onChange={setCategoryFilter}
-                  options={categoryOptions}
-                />
+                <div className="relative flex-1 min-w-0">
+                  <GroupedMultiSelect
+                    title="카테고리 필터 · 类别筛选"
+                    placeholder="모든 종류 · 全部"
+                    options={categoryOptions}
+                    value={categoryFilter}
+                    onChange={setCategoryFilter}
+                  />
+                </div>
               </div>
             </div>
 
@@ -710,34 +740,39 @@ export default function HomePage() {
                 로딩 중... · 加载中...
               </p>
             )}
-            {!placesLoading && filteredPlaces.length === 0 && (
-              <EmptyState
-                emoji={
-                  unratedOnly
-                    ? "✏️"
-                    : categoryFilter === "__none__"
-                      ? "❓"
-                      : revisitOnly
-                        ? "💖"
-                        : diningFilter === "home"
-                          ? "🍳"
-                          : "🍽️"
-                }
-                text={
-                  unratedOnly
-                    ? "모든 메뉴에 별점을 다 줬어요! · 所有菜都打过分啦！"
-                    : categoryFilter === "__none__"
-                      ? "카테고리 미설정 항목이 없어요 · 没有未分类的记录"
-                      : revisitOnly
-                        ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
-                        : diningFilter === "home"
-                          ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
-                          : diningFilter === "out"
-                            ? "아직 외식 기록이 없어요 · 还没有探店记录"
-                            : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
-                }
-              />
-            )}
+            {!placesLoading && filteredPlaces.length === 0 && (() => {
+              const onlyUncategorized =
+                categoryFilter.length === 1 &&
+                categoryFilter[0] === "__none__";
+              return (
+                <EmptyState
+                  emoji={
+                    unratedOnly
+                      ? "✏️"
+                      : onlyUncategorized
+                        ? "❓"
+                        : revisitOnly
+                          ? "💖"
+                          : diningFilter === "home"
+                            ? "🍳"
+                            : "🍽️"
+                  }
+                  text={
+                    unratedOnly
+                      ? "모든 메뉴에 별점을 다 줬어요! · 所有菜都打过分啦！"
+                      : onlyUncategorized
+                        ? "카테고리 미설정 항목이 없어요 · 没有未分类的记录"
+                        : revisitOnly
+                          ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
+                          : diningFilter === "home"
+                            ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
+                            : diningFilter === "out"
+                              ? "아직 외식 기록이 없어요 · 还没有探店记录"
+                              : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
+                  }
+                />
+              );
+            })()}
 
             {viewMode === "city" && cityGroups ? (
               <div className="mt-2 space-y-6">

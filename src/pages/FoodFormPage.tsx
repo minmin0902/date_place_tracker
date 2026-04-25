@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlace, useUpsertFood } from "@/hooks/usePlaces";
 import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
-import { CategoryChips } from "@/components/CategoryChips";
+import {
+  GroupedMultiSelect,
+  type GroupedMultiSelectEntry,
+} from "@/components/GroupedMultiSelect";
 import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
-import { FOOD_CATEGORIES } from "@/lib/constants";
+import { FOOD_CATEGORIES, categoryEmojiOf } from "@/lib/constants";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
 
@@ -45,6 +49,21 @@ export default function FoodFormPage() {
   const { data: couple } = useCouple();
   const { data: place } = usePlace(placeId);
   const upsert = useUpsertFood();
+  const { t } = useTranslation();
+
+  // Food categories are a flat 5-item list (메인 / 사이드 / 디저트 /
+  // 드링크 / 기타) so the dropdown shows them as plain rows — no
+  // groups needed. Same widget as the place form keeps the picker UX
+  // consistent across the app.
+  const foodCategoryOptions = useMemo<GroupedMultiSelectEntry[]>(
+    () =>
+      FOOD_CATEGORIES.map((c) => ({
+        value: c,
+        label: t(`category.${c}`),
+        emoji: categoryEmojiOf(c),
+      })),
+    [t]
+  );
 
   const existing = place?.foods.find((f) => f.id === foodId);
 
@@ -216,13 +235,12 @@ export default function FoodFormPage() {
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             카테고리 · 种类 *
           </label>
-          <CategoryChips
-            multiple
-            options={FOOD_CATEGORIES}
+          <GroupedMultiSelect
+            title="카테고리 · 种类"
+            placeholder="종류 선택 · 选择种类"
+            options={foodCategoryOptions}
             value={categories}
             onChange={setCategories}
-            scope="category"
-            customKey="other"
           />
           {categories.length === 0 && (
             <p className="text-[11px] text-rose-500 mt-1.5 font-medium">

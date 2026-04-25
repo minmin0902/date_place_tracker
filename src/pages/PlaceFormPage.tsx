@@ -7,12 +7,16 @@ import { usePlace, useUpsertFood, useUpsertPlace } from "@/hooks/usePlaces";
 import { fetchWishlistItem, useDeleteWishlist } from "@/hooks/useWishlist";
 import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
-import { CategoryChips } from "@/components/CategoryChips";
+import {
+  GroupedMultiSelect,
+  type GroupedMultiSelectEntry,
+} from "@/components/GroupedMultiSelect";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { LocationPicker } from "@/components/LocationPicker";
-import { PLACE_CATEGORIES } from "@/lib/constants";
+import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
 import { FOOD_CATEGORIES } from "@/lib/constants";
+import { useTranslation } from "react-i18next";
 import { getCategories } from "@/lib/utils";
 
 type HomeFoodDraft = {
@@ -44,6 +48,21 @@ export default function PlaceFormPage() {
   const upsert = useUpsertPlace();
   const upsertFood = useUpsertFood();
   const deleteWishlist = useDeleteWishlist();
+  const { t } = useTranslation();
+
+  // Pre-built grouped picker options. Same shape as the homepage filter
+  // so the picker UI is identical — just multi-select with no "all"
+  // sentinel since this is form data, not a filter.
+  const builtinCategoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
+    return CATEGORY_GROUPS.map((g) => ({
+      groupLabel: `${g.ko} · ${g.zh}`,
+      options: g.keys.map((c) => ({
+        value: c,
+        label: t(`category.${c}`),
+        emoji: categoryEmojiOf(c),
+      })),
+    }));
+  }, [t]);
 
   // 'out' = 외식 (locationpicker + address) / 'home' = 집밥 (multi-food + chef)
   const [mode, setMode] = useState<"out" | "home">("out");
@@ -393,13 +412,10 @@ export default function PlaceFormPage() {
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             카테고리 · 种类 *
           </label>
-          <CategoryChips
-            multiple
-            options={PLACE_CATEGORIES}
+          <PlaceCategoryPicker
             value={categories}
             onChange={setCategories}
-            scope="category"
-            customKey="other"
+            options={builtinCategoryOptions}
           />
           {categories.length === 0 && (
             <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
@@ -627,19 +643,15 @@ function HomeFoodCard({
       </div>
 
       {/* Per-food category — required so the menu doesn't end up in the
-          "❓ 미분류" bucket later. Compact chip row keeps the home-mode
-          card from getting tall. */}
+          "❓ 미분류" bucket later. Same dropdown as the standalone food
+          form so the picker UX is consistent. */}
       <div>
         <p className="text-[11px] font-bold text-ink-400 mb-1.5">
           종류 · 种类 *
         </p>
-        <CategoryChips
-          multiple
-          options={FOOD_CATEGORIES}
+        <FoodCategoryDropdown
           value={food.categories}
           onChange={onChangeCategories}
-          scope="category"
-          customKey="other"
         />
       </div>
 
@@ -714,5 +726,187 @@ function ChefButton({
         {labelKo} · {labelZh}
       </span>
     </button>
+  );
+}
+
+// Composed category picker: GroupedMultiSelect for built-in cuisine
+// types + a separate text input for freeform "직접 입력" tags. Kept
+// here instead of in components/ because the freeform-text wrinkle is
+// specific to forms — the timeline filter doesn't allow freeform.
+function PlaceCategoryPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  options: GroupedMultiSelectEntry[];
+}) {
+  const builtInSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of options) {
+      if ("groupLabel" in e) {
+        for (const o of e.options) set.add(o.value);
+      } else {
+        set.add(e.value);
+      }
+    }
+    return set;
+  }, [options]);
+
+  const builtIns = value.filter((v) => builtInSet.has(v));
+  const customs = value.filter((v) => !builtInSet.has(v));
+
+  const [draft, setDraft] = useState("");
+
+  function handleBuiltInChange(next: string[]) {
+    // Preserve any custom entries the user typed earlier so dropdown
+    // changes don't wipe them.
+    onChange([...next, ...customs]);
+  }
+
+  function addCustom() {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    if (value.includes(trimmed)) {
+      setDraft("");
+      return;
+    }
+    onChange([...value, trimmed]);
+    setDraft("");
+  }
+
+  function removeCustom(c: string) {
+    onChange(value.filter((v) => v !== c));
+  }
+
+  return (
+    <div className="space-y-2">
+      <GroupedMultiSelect
+        title="카테고리 · 种类"
+        placeholder="카테고리 선택 · 选择类别"
+        options={options}
+        value={builtIns}
+        onChange={handleBuiltInChange}
+      />
+
+      {builtIns.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {builtIns.map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onChange(value.filter((x) => x !== v))}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-peach-100 text-peach-500 text-[11px] font-bold border border-peach-200/70"
+            >
+              <CategoryChipLabel value={v} options={options} />
+              <span className="text-ink-400 hover:text-rose-500">×</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addCustom();
+            }
+          }}
+          maxLength={40}
+          placeholder="✏️ 직접 입력 · 自定义"
+          className="input-base flex-1 text-[12px] py-2"
+        />
+        <button
+          type="button"
+          onClick={addCustom}
+          disabled={!draft.trim()}
+          className="px-3 py-2 rounded-xl bg-cream-100 text-ink-700 text-[12px] font-bold hover:bg-cream-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          추가 · 添加
+        </button>
+      </div>
+
+      {customs.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {customs.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => removeCustom(c)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cream-100 text-ink-700 text-[11px] font-bold border border-cream-200"
+            >
+              ✏️ {c}
+              <span className="text-ink-400 hover:text-rose-500">×</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryChipLabel({
+  value,
+  options,
+}: {
+  value: string;
+  options: GroupedMultiSelectEntry[];
+}) {
+  for (const e of options) {
+    if ("groupLabel" in e) {
+      const hit = e.options.find((o) => o.value === value);
+      if (hit) {
+        return (
+          <span>
+            {hit.emoji ? `${hit.emoji} ` : ""}
+            {hit.label}
+          </span>
+        );
+      }
+    } else if (e.value === value) {
+      return (
+        <span>
+          {e.emoji ? `${e.emoji} ` : ""}
+          {e.label}
+        </span>
+      );
+    }
+  }
+  return <span>{value}</span>;
+}
+
+// Inline food-category dropdown used by the home-mode HomeFoodCard.
+// Shares the same widget as the standalone FoodFormPage so the picker
+// looks identical wherever the user is logging a dish.
+function FoodCategoryDropdown({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const options = useMemo<GroupedMultiSelectEntry[]>(
+    () =>
+      FOOD_CATEGORIES.map((c) => ({
+        value: c,
+        label: t(`category.${c}`),
+        emoji: categoryEmojiOf(c),
+      })),
+    [t]
+  );
+  return (
+    <GroupedMultiSelect
+      title="카테고리 · 种类"
+      placeholder="종류 선택 · 选择种类"
+      options={options}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
