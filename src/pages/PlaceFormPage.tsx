@@ -614,13 +614,17 @@ export default function PlaceFormPage() {
               메모 · 备注
             </label>
             {/* Tag the memo with whichever partner is typing, so detail
-                pages render it as a comment from the right person. */}
-            {memo.trim().length > 0 && (
+                pages render it as a comment from the right person.
+                Always mounted (just faded) so IME composition isn't
+                disrupted by DOM mutations near the textarea. */}
+            <div
+              className={`transition-opacity ${memo.trim().length > 0 ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            >
               <MemoAuthorPicker
                 value={memoAuthorId}
                 onChange={setMemoAuthorId}
               />
-            )}
+            </div>
           </div>
           <textarea
             className="input-base min-h-[100px]"
@@ -833,16 +837,22 @@ function HomeFoodCard({
 
       {/* Per-menu memo. Optional — short note about how it turned out
           ("육수 좀 더 줄였어야"). Submitted to the foods row alongside
-          the bulk-insert. */}
+          the bulk-insert.
+          The author picker stays mounted even when the memo is empty
+          so iOS Safari's Chinese/Korean IME doesn't see the DOM near
+          the textarea mutate mid-composition (which used to clobber
+          the in-progress input — felt like a sudden refresh). */}
       <div>
         <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
           <p className="text-[11px] font-bold text-ink-400">메모 · 备注</p>
-          {food.memo.trim().length > 0 && (
+          <div
+            className={`transition-opacity ${food.memo.trim().length > 0 ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          >
             <MemoAuthorPicker
               value={food.memo_author_id}
               onChange={onChangeMemoAuthor}
             />
-          )}
+          </div>
         </div>
         <textarea
           className="input-base min-h-[60px] text-[13px]"

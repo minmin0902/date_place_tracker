@@ -217,14 +217,17 @@ export function MemoThread({
               <span className="break-words">{photoErr}</span>
             </div>
           )}
-          {body.trim().length > 0 && (
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-[10px] text-ink-400 font-medium">
-                누가 썼어? · 谁写的?
-              </span>
-              <MemoAuthorPicker value={authorId} onChange={setAuthorId} />
-            </div>
-          )}
+          {/* Always mounted (just faded) so iOS Safari's IME doesn't
+              see DOM mutate next to the textarea mid-composition —
+              that used to clobber Chinese / Korean input partway. */}
+          <div
+            className={`flex items-center justify-between gap-2 flex-wrap transition-opacity ${body.trim().length > 0 ? "opacity-100" : "opacity-0 pointer-events-none h-0 overflow-hidden"}`}
+          >
+            <span className="text-[10px] text-ink-400 font-medium">
+              누가 썼어? · 谁写的?
+            </span>
+            <MemoAuthorPicker value={authorId} onChange={setAuthorId} />
+          </div>
         </div>
       )}
     </div>

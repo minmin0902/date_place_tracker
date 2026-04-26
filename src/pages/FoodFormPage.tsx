@@ -535,12 +535,16 @@ export default function FoodFormPage() {
             <label className="block text-sm font-bold text-ink-700">
               메모 · 备注
             </label>
-            {memo.trim().length > 0 && (
+            {/* Always mounted; faded out when memo empty. Mount/unmount
+                used to disrupt iOS Safari's Chinese IME composition. */}
+            <div
+              className={`transition-opacity ${memo.trim().length > 0 ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            >
               <MemoAuthorPicker
                 value={memoAuthorId}
                 onChange={setMemoAuthorId}
               />
-            )}
+            </div>
           </div>
           <textarea
             className="input-base min-h-[80px]"
