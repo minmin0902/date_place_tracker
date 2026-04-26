@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { useVisualViewport } from "@/hooks/useVisualViewportHeight";
 
 // Lightweight bilingual confirm dialog. Fixed overlay + centered card
 // with two buttons. Locks body scroll while open so iOS Safari doesn't
@@ -35,6 +36,9 @@ export function ConfirmDialog({
   // ref-counts so a confirm popping above an already-open sheet
   // doesn't double-toggle and unlock the wrong layer.
   useBodyScrollLock(open);
+  // Anchor to the visible viewport so the dialog stays centered above
+  // the iOS keyboard (which `dvh` and `inset-0` ignore).
+  const vv = useVisualViewport(open);
 
   // Esc key closes — keyboard users + desktop testing get an out.
   useEffect(() => {
@@ -53,8 +57,19 @@ export function ConfirmDialog({
       ? "bg-rose-400 hover:bg-rose-500 text-white"
       : "bg-peach-400 hover:bg-peach-500 text-white";
 
+  const wrapperStyle: React.CSSProperties = vv
+    ? {
+        position: "fixed",
+        left: 0,
+        right: 0,
+        top: vv.offsetTop,
+        height: vv.height,
+        zIndex: 60,
+      }
+    : { position: "fixed", inset: 0, zIndex: 60 };
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-5">
+    <div className="flex items-center justify-center p-5" style={wrapperStyle}>
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm animate-fade"
         onClick={busy ? undefined : onCancel}

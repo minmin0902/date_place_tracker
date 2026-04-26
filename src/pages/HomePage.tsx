@@ -48,6 +48,7 @@ import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { useVisualViewport } from "@/hooks/useVisualViewportHeight";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -2050,6 +2051,13 @@ function WishlistAddSheet({
   // the page through, and made the form refuse to scroll past the
   // first viewport on Safari).
   useBodyScrollLock();
+  // Track the actually-visible area. iOS Safari keyboard occlusion
+  // doesn't shrink `dvh`, AND `fixed inset-0` extends behind the
+  // keyboard — so `items-end` was pinning the card flush with the
+  // keyboard edge. Sizing the wrapper to the visualViewport rect
+  // anchors it to the visible area instead, so the save button
+  // stays above the keyboard.
+  const vv = useVisualViewport();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -2071,24 +2079,38 @@ function WishlistAddSheet({
     }
   }
 
+  // Anchor the wrapper to the visualViewport rect so the modal lives
+  // inside the actually-visible area on iOS — `fixed inset-0` extends
+  // behind the keyboard, which was pinning the save button under it.
+  const wrapperStyle: React.CSSProperties = vv
+    ? {
+        position: "fixed",
+        left: 0,
+        right: 0,
+        top: vv.offsetTop,
+        height: vv.height,
+        zIndex: 50,
+      }
+    : { position: "fixed", inset: 0, zIndex: 50 };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-5">
+    <div className="flex items-end sm:items-center justify-center sm:p-5" style={wrapperStyle}>
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      {/* Explicit-height flex column. The card is forced to 90vh on
-          mobile / 80vh on desktop so the save footer ALWAYS has a
-          fixed slot at the bottom regardless of how much the form
-          contains. Earlier sticky-bottom and nested-flex variants
-          both failed on certain desktop heights — sometimes the
-          inner flex didn't shrink, sometimes the sticky element had
-          no bottom to stick to. Hard heights are uglier on tiny
-          forms but bulletproof everywhere. The form lives in a
-          dedicated scroll region between header and footer. */}
+      {/* Card sized as a fraction of the visible viewport (vv.height
+          when available, dvh fallback). On mobile we leave a small
+          gap above so the backdrop is still visible; on desktop the
+          card is centered with breathing room. The save footer is
+          flex-shrink-0 so it always claims its slot at the bottom. */}
       <div
-        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col h-[90dvh] sm:h-[85dvh] overflow-hidden"
-        style={{ overscrollBehavior: "contain" }}
+        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+        style={{
+          overscrollBehavior: "contain",
+          height: vv ? `${Math.max(vv.height - 24, vv.height * 0.7)}px` : "90dvh",
+          maxHeight: vv ? `${vv.height}px` : "90dvh",
+        }}
       >
         {/* Header — fixed at top, never scrolls. */}
         <div className="flex-shrink-0 flex items-center justify-between p-5 pb-3 border-b border-cream-100 bg-white">
@@ -2397,6 +2419,12 @@ export function RouletteModal({
     if (changed) setCityFilter(next);
   }, [cityFilter, availableCities]);
 
+  // Lock the page underneath while the roulette is open, and track the
+  // visible viewport so the spin button stays above the keyboard / URL
+  // bar collapse on iOS — same fix as WishlistAddSheet.
+  useBodyScrollLock(open);
+  const vv = useVisualViewport(open);
+
   // Reset on open/close, and seed a teaser pick when the pool changes.
   // setCityFilter must use the functional form and bail out when the Set
   // is already empty — passing `new Set()` unconditionally creates a new
@@ -2455,8 +2483,19 @@ export function RouletteModal({
     </button>
   );
 
+  const wrapperStyle: React.CSSProperties = vv
+    ? {
+        position: "fixed",
+        left: 0,
+        right: 0,
+        top: vv.offsetTop,
+        height: vv.height,
+        zIndex: 50,
+      }
+    : { position: "fixed", inset: 0, zIndex: 50 };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="flex items-end sm:items-center justify-center p-0 sm:p-4" style={wrapperStyle}>
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
@@ -2466,8 +2505,12 @@ export function RouletteModal({
           action footer so the spin button is always reachable no
           matter how many category / city chips render. */}
       <div
-        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm shadow-2xl flex flex-col h-[90dvh] sm:h-[85dvh] overflow-hidden"
-        style={{ overscrollBehavior: "contain" }}
+        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm shadow-2xl flex flex-col overflow-hidden"
+        style={{
+          overscrollBehavior: "contain",
+          height: vv ? `${Math.max(vv.height - 24, vv.height * 0.7)}px` : "90dvh",
+          maxHeight: vv ? `${vv.height}px` : "90dvh",
+        }}
       >
         {/* Header — fixed at top, never scrolls. */}
         <div className="flex-shrink-0 relative px-5 pt-5 pb-3 border-b border-cream-100 bg-white">
