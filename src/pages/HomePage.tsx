@@ -1124,7 +1124,11 @@ export default function HomePage() {
         )}
 
         {tab === "wishlist" && (
-          <WishlistView items={filteredWishlist} couple_id={couple?.id} />
+          <WishlistView
+            items={filteredWishlist}
+            couple_id={couple?.id}
+            onAdd={() => setAddWishlistOpen(true)}
+          />
         )}
       </main>
 
@@ -1836,9 +1840,14 @@ function TimelineGridItem({
 function WishlistView({
   items,
   couple_id,
+  onAdd,
 }: {
   items: WishlistPlace[];
   couple_id: string | undefined;
+  // Empty-state CTA — taps anywhere on the placeholder card open the
+  // add sheet. Plumbed in from the parent so the WishlistAddSheet
+  // state lives in one place (next to the FAB that toggles it too).
+  onAdd: () => void;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -1899,6 +1908,8 @@ function WishlistView({
       <EmptyState
         emoji="📝"
         text="위시리스트를 채워봐요 · 赶紧种种草吧"
+        hint="여기를 눌러서 추가 · 点这里添加"
+        onClick={onAdd}
       />
     );
   }
@@ -2173,13 +2184,43 @@ function WishlistAddSheet({
 
 // ---------- generic empty ----------
 
-function EmptyState({ emoji, text }: { emoji: string; text: string }) {
-  return (
-    <div className="py-14 text-center bg-white rounded-3xl border border-dashed border-cream-200">
+function EmptyState({
+  emoji,
+  text,
+  onClick,
+  hint,
+}: {
+  emoji: string;
+  text: string;
+  // When provided, the empty state renders as a tappable button so
+  // users can act on it directly (e.g. tapping the empty wishlist
+  // box opens the add sheet). Without onClick it stays a plain div.
+  onClick?: () => void;
+  // Optional secondary line — usually a CTA cue like "탭해서 추가".
+  hint?: string;
+}) {
+  const className =
+    "py-14 px-5 text-center bg-white rounded-3xl border border-dashed border-cream-200 w-full" +
+    (onClick
+      ? " cursor-pointer active:scale-[0.98] hover:border-peach-200 hover:bg-peach-50/30 transition"
+      : "");
+  const content = (
+    <>
       <div className="text-5xl mb-3">{emoji}</div>
       <p className="text-ink-500 text-sm">{text}</p>
-    </div>
+      {hint && (
+        <p className="text-peach-500 text-[11px] font-bold mt-2">{hint}</p>
+      )}
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+  return <div className={className}>{content}</div>;
 }
 
 // Timeline placeholder rendered while usePlaces is in-flight. Three
