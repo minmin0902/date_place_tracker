@@ -90,6 +90,78 @@ export function useDeleteWishlist() {
   });
 }
 
+// Move an existing place row back into the wishlist — for when a
+// place was logged ("다녀왔어요") prematurely and the user actually
+// wants it sitting in 가볼래 again. Inserts a wishlist row from the
+// place's metadata, then deletes the place (cascades drop foods +
+// memos + notifications by FK on delete cascade).
+//
+// We don't try to be clever here — the user has explicitly opted in
+// via a confirm dialog, so destructive cleanup of the place row is
+// the desired effect.
+export function useMovePlaceToWishlist() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: async (input: {
+      placeId: string;
+      coupleId: string;
+      name: string;
+      category: string | null;
+      memo: string | null;
+      address: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    }) => {
+      if (!user) throw new Error("not authenticated");
+      if (ALLOW_NO_AUTH) {
+        // localDb mode: best-effort mirror — add to wishlist, drop
+        // the place via the existing local helper.
+        const { deletePlace } = await import("@/lib/localDb");
+        addLocalWishlist({
+          coupleId: input.coupleId,
+          userId: user.id,
+          name: input.name,
+          category: input.category,
+          memo: input.memo,
+          address: input.address,
+          latitude: input.latitude,
+          longitude: input.longitude,
+        });
+        deletePlace(input.placeId);
+        return;
+      }
+      // Two-step: insert wishlist first, then delete place. Order
+      // matters — if the place delete failed AFTER the wishlist
+      // insert, we'd have a duplicate to clean up by hand, but the
+      // user wouldn't lose data. The reverse order would risk losing
+      // the place metadata if the wishlist insert later failed.
+      const { error: insertErr } = await supabase
+        .from("wishlist_places")
+        .insert({
+          couple_id: input.coupleId,
+          name: input.name,
+          category: input.category,
+          memo: input.memo,
+          address: input.address,
+          latitude: input.latitude,
+          longitude: input.longitude,
+          created_by: user.id,
+        });
+      if (insertErr) throw insertErr;
+      const { error: deleteErr } = await supabase
+        .from("places")
+        .delete()
+        .eq("id", input.placeId);
+      if (deleteErr) throw deleteErr;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wishlist"] });
+      qc.invalidateQueries({ queryKey: ["places"] });
+    },
+  });
+}
+
 // Fetch a single wishlist item — used by PlaceFormPage to prefill when a
 // user clicks "다녀왔어요" on a wishlist card.
 export async function fetchWishlistItem(

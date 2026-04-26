@@ -46,6 +46,7 @@ import { FilterSheet, type SortValue } from "@/components/FilterSheet";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -289,9 +290,17 @@ export default function HomePage() {
   // load happens before the first render and isn't re-evaluated on
   // every state change.
   const initialFilters = useRef<StoredFilters>(loadFilters());
-  const [tab, setTab] = useState<Tab>(
-    initialFilters.current.tab ?? "timeline"
-  );
+  // URL param wins over the session-stored tab — that way deep-links
+  // like /?tab=wishlist (e.g. after "place → wishlist 이동") land on
+  // the correct tab instead of whatever the user last viewed.
+  const initialTab: Tab = (() => {
+    if (typeof window !== "undefined") {
+      const param = new URLSearchParams(window.location.search).get("tab");
+      if (param === "wishlist" || param === "timeline") return param;
+    }
+    return initialFilters.current.tab ?? "timeline";
+  })();
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [query, setQuery] = useState(initialFilters.current.query ?? "");
   const [showSearch, setShowSearch] = useState(
     initialFilters.current.showSearch ?? false
@@ -1838,6 +1847,11 @@ function WishlistView({
   const upsertPlace = useUpsertPlace();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // The item the user is hovering on the "다녀왔어" confirm dialog —
+  // null means no dialog open. Two-step so a stray tap doesn't yank
+  // a wishlist entry into the timeline + delete it.
+  const [confirmingVisit, setConfirmingVisit] =
+    useState<WishlistPlace | null>(null);
 
   async function onDelete(id: string) {
     if (!confirm(t("common.confirmDelete"))) return;
@@ -1903,10 +1917,31 @@ function WishlistView({
             item={item}
             busy={busyId === item.id}
             onDelete={() => void onDelete(item.id)}
-            onMarkVisited={() => void onMarkVisited(item)}
+            // Two-step: tap → open confirm dialog. The actual mutation
+            // only fires when the user picks "yes" in the dialog.
+            onMarkVisited={() => setConfirmingVisit(item)}
           />
         ))}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmingVisit}
+        title={
+          confirmingVisit
+            ? `${confirmingVisit.name}, 다녀왔어요? · 真的去过这里了吗？`
+            : ""
+        }
+        body="기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요. · 会跳到记录页面，路过的话先看看也行。"
+        confirmLabel="응! 다녀왔어 · 嗯，去过了！"
+        cancelLabel="先看看 · 좀 더 볼게"
+        busy={!!confirmingVisit && busyId === confirmingVisit.id}
+        onCancel={() => setConfirmingVisit(null)}
+        onConfirm={() => {
+          const target = confirmingVisit;
+          setConfirmingVisit(null);
+          if (target) void onMarkVisited(target);
+        }}
+      />
     </>
   );
 }
@@ -1996,6 +2031,18 @@ function WishlistAddSheet({
   const [address, setAddress] = useState<string>("");
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Lock the body scroll while the sheet is open. Without this, iOS
+  // Safari treats both the body AND the sheet's overflow-y-auto as
+  // scrollable, and the touch handler bias to the body — so the form
+  // inside the sheet refuses to scroll past the first viewport.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

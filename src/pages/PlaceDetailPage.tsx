@@ -1,16 +1,26 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Heart, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  BookmarkPlus,
+  Heart,
+  MapPin,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import {
   useDeleteFood,
   useDeletePlace,
   usePlace,
   useUpsertPlace,
 } from "@/hooks/usePlaces";
+import { useMovePlaceToWishlist } from "@/hooks/useWishlist";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   chefForViewer,
   formatDate,
@@ -35,6 +45,10 @@ export default function PlaceDetailPage() {
   const deletePlace = useDeletePlace();
   const deleteFood = useDeleteFood();
   const upsertPlace = useUpsertPlace();
+  const moveToWishlist = useMovePlaceToWishlist();
+  // Two-step gate for "send back to wishlist" — destructive op (drops
+  // the place + its foods + memos) so the confirm dialog is required.
+  const [confirmMoveBack, setConfirmMoveBack] = useState(false);
 
   async function toggleRevisit() {
     if (!place || !user || !couple) return;
@@ -151,6 +165,28 @@ export default function PlaceDetailPage() {
     await deleteFood.mutateAsync(fid);
   }
 
+  async function onConfirmMoveToWishlist() {
+    if (!place || !couple) return;
+    if (moveToWishlist.isPending) return;
+    try {
+      await moveToWishlist.mutateAsync({
+        placeId: place.id,
+        coupleId: couple.id,
+        name: place.name,
+        category: place.category,
+        memo: place.memo,
+        address: place.address,
+        latitude: place.latitude,
+        longitude: place.longitude,
+      });
+      setConfirmMoveBack(false);
+      navigate("/?tab=wishlist", { replace: true });
+    } catch (e) {
+      console.error("[PlaceDetailPage] move to wishlist failed:", e);
+      setConfirmMoveBack(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -159,6 +195,22 @@ export default function PlaceDetailPage() {
         back
         right={
           <div className="flex gap-1">
+            {/* "Send back to wishlist" — only on non-home places.
+                Useful when the user tapped 다녀왔어요 too early or
+                changed their mind and wants the entry back in the
+                planning bucket. Destructive (drops the place +
+                foods + memos) so two-step via ConfirmDialog. */}
+            {!place.is_home_cooked && (
+              <button
+                type="button"
+                onClick={() => setConfirmMoveBack(true)}
+                className="btn-ghost !p-2.5 text-amber-500 active:scale-90 transition-transform"
+                aria-label="move back to wishlist"
+                title="위시리스트로 다시 · 移回种草"
+              >
+                <BookmarkPlus className="w-5 h-5" />
+              </button>
+            )}
             <Link
               to={`/places/${place.id}/edit`}
               className="btn-ghost !p-2.5 active:scale-90 transition-transform"
@@ -376,6 +428,18 @@ export default function PlaceDetailPage() {
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={confirmMoveBack}
+        title={`${place.name}, 위시리스트로 다시 보낼까요? · 移回种草清单？`}
+        body="이 기록과 메뉴, 별점, 사진, 메모 댓글이 같이 사라져요. 위시리스트엔 이름·주소·카테고리·메모만 남아요. · 这条记录连同菜品、评分、照片和留言会一起删除。种草清单只保留名字、地址、类别和备注。"
+        confirmLabel="응, 보내자 · 嗯，移回吧"
+        cancelLabel="先看看 · 좀 더 둘게"
+        tone="rose"
+        busy={moveToWishlist.isPending}
+        onCancel={() => setConfirmMoveBack(false)}
+        onConfirm={() => void onConfirmMoveToWishlist()}
+      />
     </div>
   );
 }
