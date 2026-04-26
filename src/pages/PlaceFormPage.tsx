@@ -18,7 +18,6 @@ import {
   CATEGORY_GROUPS,
   categoryEmojiOf,
   FOOD_CATEGORIES,
-  HOME_FOOD_AUTHOR_CATEGORIES,
   PREMADE_FOOD_CATEGORIES,
 } from "@/lib/constants";
 import type { ChefRole } from "@/lib/database.types";
@@ -1071,13 +1070,11 @@ function CategoryChipLabel({
 // Shares the same widget as the standalone FoodFormPage so the picker
 // looks identical wherever the user is logging a dish.
 //
-// Home mode adds two extra clusters on top of the default food types:
-//   - 누가 만들었어 / 谁做的: by_me, by_partner
-//   - 완제품 / 成品: frozen, bread, premade_other
-// The chef toggle still lives separately on HomeFoodCard for the
-// my/partner/together rating split — these category tags exist so a
-// dish can also be filed by source (homemade vs ready-made) on the
-// timeline filter.
+// Home mode adds the 완제품 cluster on top of the default food types.
+// (We used to also expose "by_me / by_partner" here, but those
+// duplicated the chef toggle and confusingly didn't actually populate
+// foods.chef — pulled out in favor of the toggle being the single
+// source of truth for "who cooked this".)
 function FoodCategoryDropdown({
   value,
   onChange,
@@ -1095,14 +1092,6 @@ function FoodCategoryDropdown({
         label: t(`category.${c}`),
         emoji: categoryEmojiOf(c),
       })),
-      {
-        groupLabel: "🧑‍🍳 누가 만들었어 · 谁做的",
-        options: HOME_FOOD_AUTHOR_CATEGORIES.map((c) => ({
-          value: c,
-          label: t(`category.${c}`),
-          emoji: categoryEmojiOf(c),
-        })),
-      },
       {
         groupLabel: "📦 완제품 · 成品",
         options: PREMADE_FOOD_CATEGORIES.map((c) => ({
