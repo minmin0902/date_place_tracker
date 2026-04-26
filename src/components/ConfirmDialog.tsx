@@ -65,13 +65,20 @@ export function ConfirmDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 bg-white w-full max-w-sm rounded-3xl shadow-lift border border-cream-200 p-5 animate-fade-up"
+        className="relative z-10 bg-white w-full max-w-sm rounded-3xl shadow-lift border border-cream-200 p-5 animate-fade-up overflow-hidden"
       >
-        <h2 className="text-[16px] font-bold text-ink-900 break-keep leading-snug mb-1">
+        {/* Prominent universal heading at the top — sets the tone
+            ("are you sure?") before the specific question lands so
+            the user mentally braces for a confirm regardless of how
+            long the per-call title is. */}
+        <p className="text-[22px] font-black text-ink-900 leading-tight mb-2 break-words">
+          정말요? · 你确定吗？
+        </p>
+        <h2 className="text-[14px] font-bold text-ink-700 leading-snug mb-1 break-words [overflow-wrap:anywhere]">
           {title}
         </h2>
         {body && (
-          <p className="text-[12px] text-ink-500 leading-snug break-keep">
+          <p className="text-[12px] text-ink-500 leading-snug break-words [overflow-wrap:anywhere]">
             {body}
           </p>
         )}
@@ -80,7 +87,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="flex-1 py-2.5 rounded-2xl border border-cream-200 bg-cream-50 text-ink-700 font-bold text-[13px] active:scale-95 hover:bg-cream-100 transition disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-2xl border border-cream-200 bg-cream-50 text-ink-700 font-bold text-[13px] active:scale-95 hover:bg-cream-100 transition disabled:opacity-50 break-words"
           >
             {cancelLabel}
           </button>
@@ -88,7 +95,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className={`flex-1 py-2.5 rounded-2xl font-bold text-[13px] shadow-soft active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed ${confirmCls}`}
+            className={`flex-1 py-2.5 rounded-2xl font-bold text-[13px] shadow-soft active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed break-words ${confirmCls}`}
           >
             {busy ? "…" : confirmLabel}
           </button>

@@ -2081,101 +2081,123 @@ function WishlistAddSheet({
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
+      {/* Single scrolling card with sticky top header + sticky bottom
+          save button. The previous nested-flex layout dropped the
+          save button off-screen on desktop because the form's flex-1
+          didn't shrink as expected inside the modal column. Sticky
+          children are simpler and bulletproof: header always at top,
+          save button always at bottom, form scrolls between them. */}
+      <div
+        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto"
+        style={{ overscrollBehavior: "contain" }}
+      >
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur flex items-center justify-between p-5 pb-3 border-b border-cream-100">
           <h2 className="font-sans font-bold text-lg">
             위시리스트 · 种草清单
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 bg-cream-100 rounded-full text-ink-500"
+            className="p-2 bg-cream-100 rounded-full text-ink-500 active:scale-90 transition"
             aria-label="close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.location")}
-            </label>
-            <LocationPicker
-              value={coord}
-              label={placeLabel}
-              onChange={(v) => {
-                setCoord(v);
-                if (!v) setPlaceLabel(null);
-              }}
-              onPlaceSelected={(p) => {
-                setPlaceLabel(p.name || null);
-                if (!name) setName(p.name);
-                if (!address) setAddress(p.address);
-              }}
-            />
+        <form onSubmit={submit}>
+          <div className="px-5 py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+                {t("place.location")}
+              </label>
+              <LocationPicker
+                value={coord}
+                label={placeLabel}
+                onChange={(v) => {
+                  setCoord(v);
+                  if (!v) setPlaceLabel(null);
+                }}
+                onPlaceSelected={(p) => {
+                  setPlaceLabel(p.name || null);
+                  if (!name) setName(p.name);
+                  if (!address) setAddress(p.address);
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+                이름 · 店名 *
+              </label>
+              <input
+                className="input-base"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="예) 남산 뷰 카페 / 例：南山景观咖啡"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+                {t("place.address")}
+              </label>
+              <input
+                className="input-base"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder={t("place.addressPh")}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+                {t("place.category")}
+              </label>
+              <CategoryChips
+                options={PLACE_CATEGORIES}
+                value={category}
+                onChange={setCategory}
+                scope="category"
+                customKey="other"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+                메모 · 备注
+              </label>
+              <textarea
+                className="input-base min-h-[70px]"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="인스타에서 봤음! · 在小红书上看到的"
+              />
+            </div>
+
+            {err && <p className="text-xs text-rose-500">{err}</p>}
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              이름 · 店名 *
-            </label>
-            <input
-              className="input-base"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="예) 남산 뷰 카페 / 例：南山景观咖啡"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.address")}
-            </label>
-            <input
-              className="input-base"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder={t("place.addressPh")}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.category")}
-            </label>
-            <CategoryChips
-              options={PLACE_CATEGORIES}
-              value={category}
-              onChange={setCategory}
-              scope="category"
-              customKey="other"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              메모 · 备注
-            </label>
-            <textarea
-              className="input-base min-h-[70px]"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="인스타에서 봤음! · 在小红书上看到的"
-            />
-          </div>
-
-          {err && <p className="text-xs text-rose-500">{err}</p>}
-
-          <button
-            type="submit"
-            disabled={!name.trim() || add.isPending}
-            className="btn-primary w-full"
+          {/* Sticky footer — pinned to the bottom of the visible
+              region while scrolling, so the user always has the
+              save action in reach. safe-area-inset padding keeps
+              clear of the iPhone home bar. */}
+          <div
+            className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-cream-100 p-5 pt-3"
+            style={{
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+            }}
           >
-            <BookmarkPlus className="w-5 h-5" />
-            저장 · 存起来
-          </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || add.isPending}
+              className="btn-primary w-full"
+            >
+              <BookmarkPlus className="w-5 h-5" />
+              저장 · 存起来
+            </button>
+          </div>
         </form>
       </div>
     </div>
