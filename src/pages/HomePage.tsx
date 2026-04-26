@@ -47,6 +47,7 @@ import { MediaThumb } from "@/components/MediaThumb";
 import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { LocationPicker } from "@/components/LocationPicker";
 
@@ -2043,17 +2044,12 @@ function WishlistAddSheet({
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // Lock the body scroll while the sheet is open. Without this, iOS
-  // Safari treats both the body AND the sheet's overflow-y-auto as
-  // scrollable, and the touch handler bias to the body — so the form
-  // inside the sheet refuses to scroll past the first viewport.
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  // Freeze the page underneath while the sheet is open. The hook
+  // does the iOS-safe position:fixed trick (plain overflow:hidden
+  // wasn't enough — touch events on the modal edges still scrolled
+  // the page through, and made the form refuse to scroll past the
+  // first viewport on Safari).
+  useBodyScrollLock();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -2076,22 +2072,26 @@ function WishlistAddSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-5">
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      {/* Single scrolling card with sticky top header + sticky bottom
-          save button. The previous nested-flex layout dropped the
-          save button off-screen on desktop because the form's flex-1
-          didn't shrink as expected inside the modal column. Sticky
-          children are simpler and bulletproof: header always at top,
-          save button always at bottom, form scrolls between them. */}
+      {/* Explicit-height flex column. The card is forced to 90vh on
+          mobile / 80vh on desktop so the save footer ALWAYS has a
+          fixed slot at the bottom regardless of how much the form
+          contains. Earlier sticky-bottom and nested-flex variants
+          both failed on certain desktop heights — sometimes the
+          inner flex didn't shrink, sometimes the sticky element had
+          no bottom to stick to. Hard heights are uglier on tiny
+          forms but bulletproof everywhere. The form lives in a
+          dedicated scroll region between header and footer. */}
       <div
-        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto"
+        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col h-[90dvh] sm:h-[85dvh] overflow-hidden"
         style={{ overscrollBehavior: "contain" }}
       >
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur flex items-center justify-between p-5 pb-3 border-b border-cream-100">
+        {/* Header — fixed at top, never scrolls. */}
+        <div className="flex-shrink-0 flex items-center justify-between p-5 pb-3 border-b border-cream-100 bg-white">
           <h2 className="font-sans font-bold text-lg">
             위시리스트 · 种草清单
           </h2>
@@ -2105,99 +2105,106 @@ function WishlistAddSheet({
           </button>
         </div>
 
-        <form onSubmit={submit}>
-          <div className="px-5 py-4 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-                {t("place.location")}
-              </label>
-              <LocationPicker
-                value={coord}
-                label={placeLabel}
-                onChange={(v) => {
-                  setCoord(v);
-                  if (!v) setPlaceLabel(null);
-                }}
-                onPlaceSelected={(p) => {
-                  setPlaceLabel(p.name || null);
-                  if (!name) setName(p.name);
-                  if (!address) setAddress(p.address);
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-                이름 · 店名 *
-              </label>
-              <input
-                className="input-base"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="예) 남산 뷰 카페 / 例：南山景观咖啡"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-                {t("place.address")}
-              </label>
-              <input
-                className="input-base"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder={t("place.addressPh")}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-                {t("place.category")}
-              </label>
-              <CategoryChips
-                options={PLACE_CATEGORIES}
-                value={category}
-                onChange={setCategory}
-                scope="category"
-                customKey="other"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-                메모 · 备注
-              </label>
-              <textarea
-                className="input-base min-h-[70px]"
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                placeholder="인스타에서 봤음! · 在小红书上看到的"
-              />
-            </div>
-
-            {err && <p className="text-xs text-rose-500">{err}</p>}
+        {/* Scrollable middle. min-h-0 + flex-1 lets it shrink so the
+            inner overflow actually triggers when content overflows. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.location")}
+            </label>
+            <LocationPicker
+              value={coord}
+              label={placeLabel}
+              onChange={(v) => {
+                setCoord(v);
+                if (!v) setPlaceLabel(null);
+              }}
+              onPlaceSelected={(p) => {
+                setPlaceLabel(p.name || null);
+                if (!name) setName(p.name);
+                if (!address) setAddress(p.address);
+              }}
+            />
           </div>
 
-          {/* Sticky footer — pinned to the bottom of the visible
-              region while scrolling, so the user always has the
-              save action in reach. safe-area-inset padding keeps
-              clear of the iPhone home bar. */}
-          <div
-            className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-cream-100 p-5 pt-3"
-            style={{
-              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
-            }}
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              이름 · 店名 *
+            </label>
+            <input
+              id="wishlist-name"
+              form="wishlist-add-form"
+              className="input-base"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예) 남산 뷰 카페 / 例：南山景观咖啡"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.address")}
+            </label>
+            <input
+              form="wishlist-add-form"
+              className="input-base"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder={t("place.addressPh")}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              {t("place.category")}
+            </label>
+            <CategoryChips
+              options={PLACE_CATEGORIES}
+              value={category}
+              onChange={setCategory}
+              scope="category"
+              customKey="other"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
+              메모 · 备注
+            </label>
+            <textarea
+              form="wishlist-add-form"
+              className="input-base min-h-[70px]"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="인스타에서 봤음! · 在小红书上看到的"
+            />
+          </div>
+
+          {err && <p className="text-xs text-rose-500 break-words">{err}</p>}
+        </div>
+
+        {/* Footer — fixed at bottom. Submit button uses the
+            form="..." attribute so the form lives elsewhere
+            (inputs in the scroll area) but Enter / button click
+            still posts the same form. safe-area-inset clears the
+            iPhone home bar. */}
+        <form
+          id="wishlist-add-form"
+          onSubmit={submit}
+          className="flex-shrink-0 border-t border-cream-100 bg-white p-5 pt-3"
+          style={{
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+          }}
+        >
+          <button
+            type="submit"
+            disabled={!name.trim() || add.isPending}
+            className="btn-primary w-full"
           >
-            <button
-              type="submit"
-              disabled={!name.trim() || add.isPending}
-              className="btn-primary w-full"
-            >
-              <BookmarkPlus className="w-5 h-5" />
-              저장 · 存起来
-            </button>
-          </div>
+            <BookmarkPlus className="w-5 h-5" />
+            저장 · 存起来
+          </button>
         </form>
       </div>
     </div>
@@ -2454,31 +2461,35 @@ export function RouletteModal({
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
+      {/* Same explicit-height + flex-column pattern as WishlistAddSheet:
+          card has a fixed slot for header / scroll body / sticky
+          action footer so the spin button is always reachable no
+          matter how many category / city chips render. */}
       <div
-        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm p-5 sm:p-6 shadow-2xl overflow-y-auto"
-        style={{
-          maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 1rem)",
-          paddingBottom:
-            "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
-        }}
+        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm shadow-2xl flex flex-col h-[90dvh] sm:h-[85dvh] overflow-hidden"
+        style={{ overscrollBehavior: "contain" }}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 p-2 bg-cream-100 rounded-full text-ink-500 hover:bg-cream-200 transition"
-          aria-label="close"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="text-center mb-3 mt-1">
-          <div className="text-3xl sm:text-4xl mb-1.5">🤔</div>
-          <h2 className="text-lg sm:text-xl font-sans font-bold text-ink-900 tracking-tight">
-            오늘 뭐 먹지? · 今天吃啥？
-          </h2>
+        {/* Header — fixed at top, never scrolls. */}
+        <div className="flex-shrink-0 relative px-5 pt-5 pb-3 border-b border-cream-100 bg-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-3 right-3 p-2 bg-cream-100 rounded-full text-ink-500 hover:bg-cream-200 active:scale-90 transition"
+            aria-label="close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="text-center">
+            <div className="text-3xl mb-1">🤔</div>
+            <h2 className="text-base sm:text-lg font-sans font-bold text-ink-900 tracking-tight">
+              오늘 뭐 먹지? · 今天吃啥？
+            </h2>
+          </div>
         </div>
 
-        {/* source tabs */}
+        {/* Scrollable middle — tabs + chips + display. min-h-0 lets
+            this child actually shrink so inner overflow kicks in. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3">
         <div className="flex bg-cream-100 p-1 rounded-xl mb-2.5">
           {sourceButton(
             "revisit",
@@ -2611,8 +2622,16 @@ export function RouletteModal({
             </p>
           )}
         </div>
+        </div>
 
-        <div className="flex gap-2">
+        {/* Footer — pinned at bottom. Spin + go-to buttons always
+            reachable regardless of how many chips render above. */}
+        <div
+          className="flex-shrink-0 border-t border-cream-100 bg-white px-5 pt-3 flex gap-2"
+          style={{
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+          }}
+        >
           {picked && !spinning && pool.length > 0 && (
             <Link
               to={picked.linkTo}

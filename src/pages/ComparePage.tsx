@@ -151,6 +151,18 @@ type Row = {
   createdBy: string | null;
 };
 
+// Restaurant-level aggregate used by the fame card's "by-place"
+// view + by PlaceFameCard. Lives at module scope so the renderer
+// component can type its props cleanly.
+type FamePlace = {
+  placeId: string;
+  placeName: string;
+  rows: Row[];
+  avgMine: number;
+  avgPartner: number;
+  total: number;
+};
+
 // ---------- 푸드 BTI ----------
 //
 // Categories alone don't carry tags like "spicy" or "meat", so the BTI
@@ -330,6 +342,9 @@ export default function ComparePage() {
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("fame");
+  // Sub-toggle inside the fame tab: 메뉴 (per-food) vs 레스토랑
+  // (place-level aggregate). Same source rows, different reduction.
+  const [fameView, setFameView] = useState<"menu" | "restaurant">("menu");
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tracks the carousel card the user is currently centered on so the
@@ -419,6 +434,40 @@ export default function ComparePage() {
     .sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
   const fameTop = fameAll.slice(0, 3);
   const fameRest = fameAll.slice(3);
+
+  // Restaurant-level fame: aggregate by placeId, then keep places
+  // where BOTH partners' average across the place's foods is ≥ FAME.
+  // A place earns its slot only if every couple-rated food landed
+  // strong on average — single-stand-out menu doesn't count, the
+  // whole spot has to taste right.
+  const famePlaces: FamePlace[] = useMemo(() => {
+    const groups = new Map<string, FamePlace>();
+    for (const r of filteredRows) {
+      if (!groups.has(r.placeId)) {
+        groups.set(r.placeId, {
+          placeId: r.placeId,
+          placeName: r.placeName,
+          rows: [],
+          avgMine: 0,
+          avgPartner: 0,
+          total: 0,
+        });
+      }
+      groups.get(r.placeId)!.rows.push(r);
+    }
+    const out: FamePlace[] = [];
+    for (const g of groups.values()) {
+      g.avgMine = g.rows.reduce((s, r) => s + r.mine, 0) / g.rows.length;
+      g.avgPartner =
+        g.rows.reduce((s, r) => s + r.partner, 0) / g.rows.length;
+      g.total = g.avgMine + g.avgPartner;
+      if (g.avgMine >= FAME && g.avgPartner >= FAME) out.push(g);
+    }
+    out.sort((a, b) => b.total - a.total);
+    return out;
+  }, [filteredRows]);
+  const famePlacesTop = famePlaces.slice(0, 3);
+  const famePlacesRest = famePlaces.slice(3);
 
   const neverAgain = [...filteredRows]
     .filter((r) => r.mine <= LOW && r.partner <= LOW)
@@ -683,45 +732,130 @@ export default function ComparePage() {
           <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
             {activeTab === "fame" && (
               <ListPanel
-                titleKo="둘 다 4.5점 이상 — 우리의 레전드 메뉴"
-                titleZh="俩人都给了4.5+，封神级！"
-                empty={fameAll.length === 0}
-                emptyText="아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
+                titleKo={
+                  fameView === "menu"
+                    ? "둘 다 4.5점 이상 — 우리의 레전드 메뉴"
+                    : "둘 다 평균 4.5점 이상 — 우리의 레전드 식당"
+                }
+                titleZh={
+                  fameView === "menu"
+                    ? "俩人都给了4.5+，封神级菜品！"
+                    : "俩人均分都给了4.5+，封神级店铺！"
+                }
+                empty={
+                  fameView === "menu"
+                    ? fameAll.length === 0
+                    : famePlaces.length === 0
+                }
+                emptyText={
+                  fameView === "menu"
+                    ? "아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
+                    : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
+                }
               >
-                {fameTop.map((r, idx) => (
-                  <FoodCard
-                    key={r.foodId}
-                    r={r}
-                    showTotal
-                    yyds
-                    badge={`🏆 TOP ${idx + 1}`}
-                    myDisplay={myDisplay}
-                    partnerDisplay={partnerDisplay}
-                  />
-                ))}
-                {fameRest.length > 0 && (
-                  <div className="pt-2 mt-2">
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
-                      <span className="text-[12px] font-bold text-rose-500">
-                        천생연분 · 双向奔赴
-                      </span>
-                      <span className="text-[10px] text-ink-400 font-number">
-                        {fameRest.length}
-                      </span>
-                    </div>
-                    <ExpandableList items={fameRest} initial={5}>
-                      {(r) => (
-                        <FoodCard
-                          key={r.foodId}
-                          r={r}
-                          showTotal
-                          myDisplay={myDisplay}
-                          partnerDisplay={partnerDisplay}
-                        />
-                      )}
-                    </ExpandableList>
-                  </div>
+                {/* Menu vs restaurant sub-toggle. Sticky right above
+                    the list so the user can flip view while scrolling
+                    without losing the option above the fold. */}
+                <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setFameView("menu")}
+                    className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+                      fameView === "menu"
+                        ? "bg-white shadow-sm text-ink-900 border border-cream-200"
+                        : "text-ink-500"
+                    }`}
+                  >
+                    🍽️ 메뉴별 · 按菜品
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFameView("restaurant")}
+                    className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+                      fameView === "restaurant"
+                        ? "bg-white shadow-sm text-ink-900 border border-cream-200"
+                        : "text-ink-500"
+                    }`}
+                  >
+                    🏠 식당별 · 按店铺
+                  </button>
+                </div>
+
+                {fameView === "menu" && (
+                  <>
+                    {fameTop.map((r, idx) => (
+                      <FoodCard
+                        key={r.foodId}
+                        r={r}
+                        showTotal
+                        yyds
+                        badge={`🏆 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {fameRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            천생연분 · 双向奔赴
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {fameRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList items={fameRest} initial={5}>
+                          {(r) => (
+                            <FoodCard
+                              key={r.foodId}
+                              r={r}
+                              showTotal
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {fameView === "restaurant" && (
+                  <>
+                    {famePlacesTop.map((p, idx) => (
+                      <PlaceFameCard
+                        key={p.placeId}
+                        p={p}
+                        badge={`🏆 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {famePlacesRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            우리의 단골감 · 心头好店铺
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {famePlacesRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList items={famePlacesRest} initial={5}>
+                          {(p) => (
+                            <PlaceFameCard
+                              key={p.placeId}
+                              p={p}
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
                 )}
               </ListPanel>
             )}
@@ -2128,6 +2262,76 @@ function FoodCard({
           />
         </div>
       )}
+    </Link>
+  );
+}
+
+// Restaurant-level fame card — same visual language as FoodCard but
+// reduces over a place's couple-rated foods. Total displays the sum
+// of avg-mine + avg-partner, kept on the same /10 scale FoodCard uses
+// so the two views read consistently when the user toggles between
+// 메뉴별 / 식당별 inside the fame tab.
+function PlaceFameCard({
+  p,
+  badge,
+  myDisplay,
+  partnerDisplay,
+}: {
+  p: FamePlace;
+  badge?: string;
+  myDisplay: string;
+  partnerDisplay: string;
+}) {
+  const total = p.avgMine + p.avgPartner;
+  // Top-3 places get the gold gradient; the rest of the list falls
+  // back to the standard cream card so the trophy slots read as
+  // distinctly elevated.
+  const yyds = !!badge;
+  const cardCls = yyds
+    ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
+    : "bg-white border-cream-200 shadow-soft";
+  return (
+    <Link
+      to={`/places/${p.placeId}`}
+      className={`block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
+    >
+      {yyds && (
+        <div className="mb-2">
+          <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">
+            {badge}
+          </span>
+        </div>
+      )}
+      <div className="flex items-start justify-between gap-3 pr-1">
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-ink-900 text-base truncate">
+            {p.placeName}
+          </p>
+          <p className="text-xs text-ink-500 truncate mt-0.5">
+            🍽️ {p.rows.length}개·道 평균 · 平均
+          </p>
+        </div>
+        <div className="flex-shrink-0 text-right">
+          <span className="block text-2xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
+            {total.toFixed(1)}
+          </span>
+          <span className="text-[10px] text-ink-400 font-number">/ 10</span>
+        </div>
+      </div>
+      <div className="flex gap-3 mt-3">
+        <RatingTile
+          label={myDisplay}
+          value={p.avgMine}
+          tone="peach"
+          leading={p.avgMine >= p.avgPartner}
+        />
+        <RatingTile
+          label={partnerDisplay}
+          value={p.avgPartner}
+          tone="rose"
+          leading={p.avgPartner >= p.avgMine}
+        />
+      </div>
     </Link>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 // Lightweight bilingual confirm dialog. Fixed overlay + centered card
 // with two buttons. Locks body scroll while open so iOS Safari doesn't
@@ -30,14 +31,10 @@ export function ConfirmDialog({
   // so the user can't double-fire.
   busy?: boolean;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  // Freeze the page underneath while the dialog is open. The hook
+  // ref-counts so a confirm popping above an already-open sheet
+  // doesn't double-toggle and unlock the wrong layer.
+  useBodyScrollLock(open);
 
   // Esc key closes — keyboard users + desktop testing get an out.
   useEffect(() => {
