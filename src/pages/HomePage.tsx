@@ -824,7 +824,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setFilterSheetOpen(true)}
-                    className={`flex-1 min-w-0 inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition shadow-sm break-keep ${
+                    className={`flex-1 min-w-0 inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition active:scale-[0.98] shadow-sm break-keep ${
                       isActive
                         ? "bg-peach-50 border-peach-200 text-peach-700"
                         : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
@@ -843,7 +843,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setShowSearch((v) => !v)}
-                    className={`flex-shrink-0 px-4 rounded-2xl border text-[13px] font-bold transition shadow-sm ${
+                    className={`flex-shrink-0 px-4 rounded-2xl border text-[13px] font-bold transition active:scale-95 shadow-sm ${
                       showSearch
                         ? "bg-peach-50 border-peach-200 text-peach-700"
                         : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
@@ -864,7 +864,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => toggleListFilter("revisit")}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
                   listFilter === "revisit"
                     ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -878,7 +878,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => toggleListFilter("unrated")}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
                   listFilter === "unrated"
                     ? "bg-amber-50 text-amber-700 border-amber-200/70 shadow-[0_2px_10px_rgba(217,119,6,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -890,7 +890,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => toggleListFilter("myOnly")}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
                   listFilter === "myOnly"
                     ? "bg-peach-50 text-peach-600 border-peach-200/70 shadow-[0_2px_10px_rgba(248,149,112,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -901,7 +901,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => toggleListFilter("partnerOnly")}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all border whitespace-nowrap ${
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] sm:text-[13px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
                   listFilter === "partnerOnly"
                     ? "bg-rose-50 text-rose-500 border-rose-200/60 shadow-[0_2px_10px_rgba(244,114,182,0.15)]"
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
@@ -1008,11 +1008,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {placesLoading && (
-              <p className="text-ink-500 py-8 text-center text-sm">
-                로딩 중... · 加载中...
-              </p>
-            )}
+            {placesLoading && <TimelineSkeleton />}
             {!placesLoading && filteredPlaces.length === 0 && (() => {
               const onlyUncategorized =
                 categoryFilter.length === 1 &&
@@ -1252,7 +1248,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative pb-3 text-[12px] sm:text-[13px] font-semibold transition whitespace-nowrap text-center flex-1 min-w-0 truncate ${
+      className={`relative pb-3 text-[12px] sm:text-[13px] font-semibold transition whitespace-nowrap text-center flex-1 min-w-0 truncate active:scale-95 ${
         active ? activeText : "text-ink-400 hover:text-ink-700"
       }`}
     >
@@ -2120,6 +2116,29 @@ function EmptyState({ emoji, text }: { emoji: string; text: string }) {
     <div className="py-14 text-center bg-white rounded-3xl border border-dashed border-cream-200">
       <div className="text-5xl mb-3">{emoji}</div>
       <p className="text-ink-500 text-sm">{text}</p>
+    </div>
+  );
+}
+
+// Timeline placeholder rendered while usePlaces is in-flight. Three
+// rough card skeletons match the actual list silhouette so the layout
+// doesn't pop in once the data lands.
+function TimelineSkeleton() {
+  return (
+    <div className="space-y-3 animate-pulse">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 bg-white rounded-3xl border border-cream-200 p-4"
+        >
+          <div className="w-20 h-20 rounded-2xl bg-cream-100 flex-shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="h-4 w-2/3 rounded bg-cream-100" />
+            <div className="h-3 w-1/2 rounded bg-cream-100" />
+            <div className="h-3 w-1/3 rounded bg-cream-100" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

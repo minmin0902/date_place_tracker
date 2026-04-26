@@ -38,6 +38,9 @@ export default function PlaceDetailPage() {
 
   async function toggleRevisit() {
     if (!place || !user || !couple) return;
+    // Guard against rapid double-taps which used to fire two mutations
+    // in flight (sometimes flipping the value back to where it started).
+    if (upsertPlace.isPending) return;
     await upsertPlace.mutateAsync({
       id: place.id,
       coupleId: couple.id,
@@ -136,12 +139,14 @@ export default function PlaceDetailPage() {
 
   async function onDeletePlace() {
     if (!place) return;
+    if (deletePlace.isPending) return;
     if (!confirm(t("common.confirmDelete"))) return;
     await deletePlace.mutateAsync(place.id);
     navigate("/", { replace: true });
   }
 
   async function onDeleteFood(fid: string) {
+    if (deleteFood.isPending) return;
     if (!confirm(t("common.confirmDelete"))) return;
     await deleteFood.mutateAsync(fid);
   }
@@ -156,14 +161,14 @@ export default function PlaceDetailPage() {
           <div className="flex gap-1">
             <Link
               to={`/places/${place.id}/edit`}
-              className="btn-ghost !p-2"
+              className="btn-ghost !p-2.5 active:scale-90 transition-transform"
               aria-label="edit"
             >
               <Pencil className="w-5 h-5" />
             </Link>
             <button
               onClick={() => void onDeletePlace()}
-              className="btn-ghost !p-2 text-rose-400"
+              className="btn-ghost !p-2.5 text-rose-400 active:scale-90 transition-transform"
               aria-label="delete"
             >
               <Trash2 className="w-5 h-5" />

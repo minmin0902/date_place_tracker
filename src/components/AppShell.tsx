@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Home, Map, Scale, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,7 @@ function NavItem({
 
 export function AppShell() {
   const { t } = useTranslation();
+  const location = useLocation();
   // Sync the OS home-screen icon badge with the unread count so the
   // red dot clears immediately when the user marks notifications read.
   useAppBadge();
@@ -46,7 +47,14 @@ export function AppShell() {
           paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)",
         }}
       >
-        <Outlet />
+        {/* Keying on pathname retriggers the fade+rise on every nav.
+            Uses our custom .animate-fade-up keyframe (defined in
+            index.css) — tailwindcss-animate isn't installed in this
+            project so the typical `animate-in fade-in` shorthand
+            silently no-ops. */}
+        <div key={location.pathname} className="animate-fade-up">
+          <Outlet />
+        </div>
       </main>
       {/* z-20 sits ABOVE the timeline dots (z-[1]) so they don't peek
           through the nav, and BELOW the floating dice/add cluster

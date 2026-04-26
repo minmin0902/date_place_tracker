@@ -102,9 +102,12 @@ function NotificationItem({ item }: { item: NotificationRow }) {
 
   // On row tap: mark as read + navigate. Mark first (fire-and-forget)
   // so the unread badge updates immediately even if navigation happens
-  // before the network round-trip finishes.
+  // before the network round-trip finishes. Guard against rapid taps
+  // firing the mutation twice while the first round-trip is in flight.
   function onTap() {
-    if (!item.read_at) void markRead.mutateAsync(item.id);
+    if (!item.read_at && !markRead.isPending) {
+      void markRead.mutateAsync(item.id);
+    }
     if (linkTo) navigate(linkTo);
   }
 

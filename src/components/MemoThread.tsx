@@ -121,7 +121,7 @@ export function MemoThread({
             <button
               type="button"
               onClick={() => void onDelete(m.id)}
-              className="p-1 rounded-full text-ink-300 hover:text-rose-400 hover:bg-rose-50 transition flex-shrink-0"
+              className="p-2 -m-1 rounded-full text-ink-300 hover:text-rose-400 hover:bg-rose-50 active:scale-90 transition flex-shrink-0"
               aria-label="delete memo"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -165,10 +165,10 @@ export function MemoThread({
                       onClick={() =>
                         setPhotos(photos.filter((p) => p !== url))
                       }
-                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white shadow flex items-center justify-center"
+                      className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center active:scale-90 transition"
                       aria-label="remove"
                     >
-                      <X className="w-2.5 h-2.5" />
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 );
