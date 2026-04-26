@@ -313,6 +313,11 @@ export default function ComparePage() {
     meProfileQuery.data?.partner_nickname?.trim() ||
     partnerProfileQuery.data?.nickname?.trim() ||
     "짝꿍";
+  // Avatar URLs piped into the stat cards so each tile shows the
+  // partner's actual profile photo next to their nickname (or null →
+  // tile falls back to a colored initial bubble).
+  const myAvatarUrl = meProfileQuery.data?.avatar_url ?? null;
+  const partnerAvatarUrl = partnerProfileQuery.data?.avatar_url ?? null;
   const qc = useQueryClient();
   const { pull, refreshing, manualRefreshing, onManualRefresh } =
     useRefreshControls(() =>
@@ -487,7 +492,7 @@ export default function ComparePage() {
         <div
           ref={carouselRef}
           onScroll={onCarouselScroll}
-          className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5 pb-2"
+          className="flex items-start overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-3 px-5 pb-2"
           style={{ scrollPaddingInline: "1.25rem" }}
         >
           {cardConfig.order
@@ -512,6 +517,9 @@ export default function ComparePage() {
                       viewerId={user?.id}
                       myDisplay={myDisplay}
                       partnerDisplay={partnerDisplay}
+                      myAvatarUrl={myAvatarUrl}
+                      partnerAvatarUrl={partnerAvatarUrl}
+                      isActive={i === activeCardIdx}
                     />
                   </div>
                 );
@@ -538,6 +546,9 @@ export default function ComparePage() {
                       rows={filteredRows}
                       myDisplay={myDisplay}
                       partnerDisplay={partnerDisplay}
+                      myAvatarUrl={myAvatarUrl}
+                      partnerAvatarUrl={partnerAvatarUrl}
+                      isActive={i === activeCardIdx}
                     />
                   )}
                   {id === "roulette" && (
@@ -790,13 +801,20 @@ function TasteDiagnosisCard({
   // is open. Switching tabs clears the expansion implicitly because
   // the keys (BtiKey vs cat string) don't collide in practice.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  // Card height adapts to the carousel: when this slide is the
-  // centered (active) one, the breakdown body opens up taller so
-  // more ranks read at a glance. When the user swipes away, it
-  // shrinks back so neighboring cards aren't dwarfed mid-scroll.
-  // Drilldown rows get folded too — keeps the inactive snapshot tidy.
+  // Manual "더 보기" toggle for the rank rectangle. Compact by
+  // default (180px scrollable); expanded grows to 320px so the user
+  // sees more ranks at a glance without internal scrolling.
+  const [breakdownExpanded, setBreakdownExpanded] = useState(false);
+
+  // Carousel-aware reset: as soon as this card stops being the
+  // centered slide, fold every interactive expansion (the rank
+  // rectangle + any per-row drilldown) so the swipe transition
+  // reads cleanly and the next visit starts in a tidy state.
   useEffect(() => {
-    if (!isActive) setExpandedKey(null);
+    if (!isActive) {
+      setExpandedKey(null);
+      setBreakdownExpanded(false);
+    }
   }, [isActive]);
 
   // ----- sync % -----
@@ -947,7 +965,7 @@ function TasteDiagnosisCard({
 
   if (rows.length === 0 || btiStats.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[180px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[420px]">
         <Dna className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
           입맛 진단 준비 중 · 口味诊断准备中
@@ -975,7 +993,7 @@ function TasteDiagnosisCard({
         : { gradient: "from-rose-400 to-pink-500", chip: "bg-rose-50 text-rose-500 border-rose-200" };
 
   return (
-    <div className="relative bg-white rounded-3xl p-4 border border-cream-200 shadow-airy overflow-hidden h-full flex flex-col">
+    <div className="relative bg-white rounded-3xl p-4 border border-cream-200 shadow-airy overflow-hidden h-full flex flex-col min-h-[420px]">
       <div
         className={`absolute -top-12 -right-12 w-44 h-44 rounded-full bg-gradient-to-br ${topProfile.gradient} opacity-[0.08] blur-2xl pointer-events-none`}
       />
@@ -984,20 +1002,22 @@ function TasteDiagnosisCard({
         우리의 입맛 진단 · 口味诊断
       </h3>
 
-      {/* BTI verdict — 큰 이모지 + 그라데이션 타이틀 + 인용구. */}
-      <div className="relative z-10 flex flex-col items-center text-center pb-2">
-        <div className="text-4xl drop-shadow-sm leading-none mb-1">
+      {/* BTI verdict — kept compact so the diagnosis card matches
+          the unified 420px height the carousel locks to. Larger
+          emoji + bigger title only on expand if we ever want it. */}
+      <div className="relative z-10 flex flex-col items-center text-center pb-1">
+        <div className="text-3xl drop-shadow-sm leading-none">
           {topProfile.emoji}
         </div>
         <h2
-          className={`text-[17px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight break-keep leading-tight`}
+          className={`text-[15px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight break-keep leading-tight mt-0.5`}
         >
           {topProfile.titleKo}{" "}
-          <span className="text-ink-400 text-[11px] font-bold align-middle">
+          <span className="text-ink-400 text-[10px] font-bold align-middle">
             · {topProfile.titleZh}
           </span>
         </h2>
-        <p className="text-[11px] font-medium text-ink-500 mt-1 break-keep leading-snug px-1">
+        <p className="text-[10px] font-medium text-ink-500 break-keep leading-snug px-1 mt-0.5">
           “{topProfile.descKo}”
         </p>
       </div>
@@ -1063,13 +1083,12 @@ function TasteDiagnosisCard({
         </button>
       </div>
 
-      {/* Breakdown body — height tracks the carousel state. When
-          this card is the active (centered) slide it opens up to
-          ~3-4 rows; sliding away snaps back to the compact 88px so
-          the off-screen neighbors don't peek a tall, unbalanced
-          rectangle while the user is scrolling. */}
+      {/* Breakdown body — compact (~3-4 rows scrollable) by default,
+          taller when the user taps "더 보기". `transition-[height]`
+          so the toggle and the carousel auto-collapse both feel
+          like one motion instead of a hard snap. */}
       <div
-        className={`relative z-10 ${isActive ? "h-[180px]" : "h-[88px]"} transition-[height] duration-200 ease-out overflow-y-auto hide-scrollbar text-ink-500 border border-cream-100 rounded-lg bg-cream-50/40 px-2 py-1.5`}
+        className={`relative z-10 ${breakdownExpanded ? "h-[320px]" : "h-[160px]"} transition-[height] duration-200 ease-out overflow-y-auto hide-scrollbar text-ink-500 border border-cream-100 rounded-lg bg-cream-50/40 px-2 py-1.5`}
       >
         {breakdownTab === "bti" ? (
           <div className="space-y-2">
@@ -1213,6 +1232,20 @@ function TasteDiagnosisCard({
           </div>
         )}
       </div>
+
+      {/* Manual expand/collapse toggle. Carousel auto-collapses this
+          when the card stops being centered (see useEffect above) so
+          neighbors don't render a tall rectangle while peeking. */}
+      <button
+        type="button"
+        onClick={() => setBreakdownExpanded((v) => !v)}
+        className="relative z-10 mt-1.5 w-full text-[11px] font-bold text-ink-500 hover:text-ink-700 inline-flex items-center justify-center gap-1 py-1 rounded-lg hover:bg-cream-50 transition"
+      >
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform ${breakdownExpanded ? "rotate-180" : ""}`}
+        />
+        {breakdownExpanded ? "접기 · 收起" : "더 보기 · 展开"}
+      </button>
     </div>
   );
 }
@@ -1246,11 +1279,49 @@ function ContributingFoodRow({ r }: { r: Row }) {
 // chef enum is stored from the food creator's perspective, so we
 // swap to viewer perspective per row before tallying.
 
+// Tiny circular avatar for the chef card. Used both inline with the
+// share-row labels (sm) and as a header above the per-chef score
+// tiles (md). Falls back to a colored initial-letter bubble when
+// the user hasn't uploaded a photo.
+function ChefAvatar({
+  url,
+  name,
+  tone,
+  size = "sm",
+}: {
+  url: string | null;
+  name: string;
+  tone: "peach" | "rose";
+  size?: "sm" | "md";
+}) {
+  const initial = Array.from(name)[0] ?? "·";
+  const box = size === "md" ? "w-9 h-9 text-[13px]" : "w-4 h-4 text-[8px]";
+  const fallback =
+    tone === "peach"
+      ? "bg-peach-100 text-peach-500 border-peach-200"
+      : "bg-rose-100 text-rose-500 border-rose-200";
+  return (
+    <span
+      className={`${box} rounded-full overflow-hidden border flex-shrink-0 inline-flex items-center justify-center font-black ${url ? "border-cream-200" : fallback}`}
+      aria-hidden
+    >
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <span>{initial}</span>
+      )}
+    </span>
+  );
+}
+
 function HomeChefCard({
   rows,
   viewerId,
   myDisplay,
   partnerDisplay,
+  myAvatarUrl,
+  partnerAvatarUrl,
+  isActive,
 }: {
   rows: Row[];
   viewerId: string | undefined;
@@ -1258,8 +1329,22 @@ function HomeChefCard({
   // labels show the actual names instead of "나 · 我" / "짝꿍 · 宝宝".
   myDisplay: string;
   partnerDisplay: string;
+  // Public storage URLs from each profile. null → tile renders a
+  // colored initial-letter bubble instead.
+  myAvatarUrl: string | null;
+  partnerAvatarUrl: string | null;
+  // True when this card is the centered slide. Off-screen → fold
+  // the expanded chef-detail row so neighboring cards don't peek a
+  // tall, asymmetric rectangle.
+  isActive: boolean;
 }) {
+  // Compact by default — user taps a tile to dive into that chef's
+  // dish list. Carousel-aware reset below auto-collapses on swipe.
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
+
+  useEffect(() => {
+    if (!isActive) setExpanded(null);
+  }, [isActive]);
 
   const stats = useMemo(() => {
     const myRows: Row[] = [];
@@ -1329,7 +1414,7 @@ function HomeChefCard({
   const togetherShare = total ? (togetherCount / total) * 100 : 0;
 
   return (
-    <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-4 border border-teal-200 shadow-airy h-full flex flex-col">
+    <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-4 border border-teal-200 shadow-airy h-full flex flex-col min-h-[420px]">
       <h3 className="font-sans font-bold text-teal-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-teal-200/50 pb-2 break-keep">
         <ChefHat className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
         우리집 미슐랭 · 家庭米其林
@@ -1359,6 +1444,11 @@ function HomeChefCard({
         </div>
         <div className="grid grid-cols-3 gap-1 text-[10px] font-bold text-ink-700 text-center">
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
+            <ChefAvatar
+              url={myAvatarUrl}
+              name={myDisplay}
+              tone="peach"
+            />
             <span className="truncate">{myDisplay}</span>
             <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
               {myCount}
@@ -1371,6 +1461,11 @@ function HomeChefCard({
             </span>
           </span>
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
+            <ChefAvatar
+              url={partnerAvatarUrl}
+              name={partnerDisplay}
+              tone="rose"
+            />
             <span className="truncate">{partnerDisplay}</span>
             <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
               {partnerCount}
@@ -1411,7 +1506,8 @@ function HomeChefCard({
                 : ""
             }`}
           >
-            <span className="text-[10px] font-bold text-peach-500 mb-0.5">
+            <ChefAvatar url={myAvatarUrl} name={myDisplay} tone="peach" size="md" />
+            <span className="text-[10px] font-bold text-peach-500 mb-0.5 mt-1">
               {myDisplay} 요리 · {myDisplay}做的
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
@@ -1439,7 +1535,8 @@ function HomeChefCard({
                 : ""
             }`}
           >
-            <span className="text-[10px] font-bold text-rose-500 mb-0.5">
+            <ChefAvatar url={partnerAvatarUrl} name={partnerDisplay} tone="rose" size="md" />
+            <span className="text-[10px] font-bold text-rose-500 mb-0.5 mt-1">
               {partnerDisplay} 요리 · {partnerDisplay}做的
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
@@ -1474,12 +1571,28 @@ function RatingStats({
   rows,
   myDisplay,
   partnerDisplay,
+  myAvatarUrl,
+  partnerAvatarUrl,
+  isActive,
 }: {
   rows: Row[];
   myDisplay: string;
   partnerDisplay: string;
+  // Profile photos for the per-person stat tiles. null → fallback
+  // to a colored initial-letter bubble.
+  myAvatarUrl: string | null;
+  partnerAvatarUrl: string | null;
+  // Centered-slide flag from the carousel. Off-screen → fold the
+  // expanded contributing-foods list so the card snaps back to its
+  // compact footprint while the user is mid-swipe.
+  isActive: boolean;
 }) {
+  // Compact by default — tap a tile to dive into that side's foods.
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
+
+  useEffect(() => {
+    if (!isActive) setExpanded(null);
+  }, [isActive]);
 
   // Pre-sort once per side; toggling between tiles just flips which
   // ordering is shown.
@@ -1494,7 +1607,7 @@ function RatingStats({
 
   if (rows.length === 0) {
     return (
-      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[180px]">
+      <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[420px]">
         <Scale className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
           별점 요정은 누구? · 谁是打分小天使？
@@ -1523,10 +1636,12 @@ function RatingStats({
       : "fairy";
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-4 border border-indigo-100 shadow-airy h-full flex flex-col">
-      <h3 className="font-sans font-bold text-ink-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-indigo-100 pb-2 break-keep">
+    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-3xl p-4 border border-indigo-100 shadow-airy h-full flex flex-col min-h-[420px]">
+      <h3 className="font-sans font-bold text-ink-900 text-[12px] flex items-center gap-1.5 mb-2.5 border-b border-indigo-100 pb-2 whitespace-nowrap overflow-hidden">
         <Scale className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-        별점 요정 vs 깐깐징어 · 打分天使 vs 严格考官
+        <span className="truncate">
+          별점 요정 vs 깐깐징어 · 打分天使 vs 严格考官
+        </span>
       </h3>
 
       {/* Center the tiles vertically when nothing is expanded so the
@@ -1540,6 +1655,7 @@ function RatingStats({
         <div className="grid grid-cols-2 gap-2">
           <PersonStatTile
             person={myDisplay}
+            avatarUrl={myAvatarUrl}
             tone="peach"
             avg={avgMine}
             role={myRole}
@@ -1549,6 +1665,7 @@ function RatingStats({
           />
           <PersonStatTile
             person={partnerDisplay}
+            avatarUrl={partnerAvatarUrl}
             tone="rose"
             avg={avgPartner}
             role={partnerRole}
@@ -1603,6 +1720,7 @@ function RatingStats({
 
 function PersonStatTile({
   person,
+  avatarUrl,
   tone,
   avg,
   role,
@@ -1611,6 +1729,9 @@ function PersonStatTile({
   onToggle,
 }: {
   person: string;
+  // Storage URL for the partner's profile photo. Null → tile renders
+  // a colored initial-letter bubble using the tone color.
+  avatarUrl: string | null;
   tone: "peach" | "rose";
   avg: number;
   role: "fairy" | "strict" | "tie";
@@ -1649,12 +1770,34 @@ function PersonStatTile({
     : dimmed
       ? "scale-95 opacity-60"
       : "";
+  // Avatar bubble — uploaded photo if present, else colored initial.
+  // Sized to fit on top of the tile without pushing content off; the
+  // tile keeps its previous footprint.
+  const initial = Array.from(person)[0] ?? "·";
+  const avatarFallbackCls =
+    tone === "peach"
+      ? "bg-peach-100 text-peach-500 border-peach-200"
+      : "bg-rose-100 text-rose-500 border-rose-200";
   return (
     <button
       type="button"
       onClick={onToggle}
       className={`rounded-xl p-2 border ${accentCls} ${interactCls} flex flex-col items-center text-center shadow-sm hover:shadow transition-all duration-300 ease-out w-full`}
     >
+      <div
+        className={`w-7 h-7 rounded-full overflow-hidden border flex items-center justify-center font-black text-[11px] mb-1 ${avatarUrl ? "border-cream-200" : avatarFallbackCls}`}
+        aria-hidden
+      >
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span>{initial}</span>
+        )}
+      </div>
       <div className={`text-[11px] font-bold ${personCls} mb-0.5`}>
         {person}
       </div>
@@ -2185,7 +2328,7 @@ function RouletteCard({
 }) {
   const total = revisitCount + wishlistCount;
   return (
-    <div className="relative bg-gradient-to-br from-peach-50 to-rose-50 rounded-3xl p-5 border border-peach-200/70 shadow-airy h-full flex flex-col min-h-[240px] overflow-hidden">
+    <div className="relative bg-gradient-to-br from-peach-50 to-rose-50 rounded-3xl p-5 border border-peach-200/70 shadow-airy h-full flex flex-col min-h-[420px] overflow-hidden">
       <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-gradient-to-br from-peach-300 to-rose-300 opacity-25 blur-2xl pointer-events-none" />
 
       <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-peach-200/60 pb-3 break-keep">
