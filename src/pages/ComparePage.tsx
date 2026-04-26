@@ -812,15 +812,21 @@ function TasteDiagnosisCard({
   // sees more ranks at a glance without internal scrolling.
   const [breakdownExpanded, setBreakdownExpanded] = useState(false);
 
-  // Carousel-aware reset: as soon as this card stops being the
-  // centered slide, fold every interactive expansion (the rank
-  // rectangle + any per-row drilldown) so the swipe transition
-  // reads cleanly and the next visit starts in a tidy state.
+  // Carousel-aware reset: when this card stops being the centered
+  // slide, fold every expansion so the next visit starts tidy.
+  //
+  // Critical: we delay the collapse until AFTER scroll settles. Doing
+  // it synchronously while the user's finger is still mid-swipe would
+  // shrink the card height under iOS Safari's snap-mandatory engine,
+  // which then re-evaluates the snap target and could fling past the
+  // intended neighbor (jumping from 1 → 3 in one swipe).
   useEffect(() => {
-    if (!isActive) {
+    if (isActive) return;
+    const t = setTimeout(() => {
       setExpandedKey(null);
       setBreakdownExpanded(false);
-    }
+    }, 350);
+    return () => clearTimeout(t);
   }, [isActive]);
 
   // ----- sync % -----
@@ -1349,7 +1355,12 @@ function HomeChefCard({
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
 
   useEffect(() => {
-    if (!isActive) setExpanded(null);
+    if (isActive) return;
+    // Delay collapse until scroll settles — synchronous height changes
+    // mid-swipe trip the snap-mandatory engine and can fling the
+    // carousel past the next neighbor.
+    const t = setTimeout(() => setExpanded(null), 350);
+    return () => clearTimeout(t);
   }, [isActive]);
 
   const stats = useMemo(() => {
@@ -1625,7 +1636,12 @@ function RatingStats({
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
 
   useEffect(() => {
-    if (!isActive) setExpanded(null);
+    if (isActive) return;
+    // Delay collapse until scroll settles — synchronous height changes
+    // mid-swipe trip the snap-mandatory engine and can fling the
+    // carousel past the next neighbor.
+    const t = setTimeout(() => setExpanded(null), 350);
+    return () => clearTimeout(t);
   }, [isActive]);
 
   // Pre-sort once per side; toggling between tiles just flips which

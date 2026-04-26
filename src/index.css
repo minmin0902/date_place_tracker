@@ -97,15 +97,20 @@
      `animate-in fade-in slide-in-from-bottom-X` syntax expecting the
      tailwindcss-animate plugin, but it isn't installed (so those
      classes were silently no-op'd). These hand-rolled equivalents
-     make page transitions / modal slide-ins actually animate. */
+     make page transitions / modal slide-ins actually animate.
+     IMPORTANT: page-level wrapper animations (.animate-fade-up etc)
+     must NOT use `transform` — applying transform on an ancestor
+     creates a new containing block for fixed-positioned descendants,
+     which silently breaks every FAB / sticky / modal / pull
+     indicator inside the route. We learned this the hard way: the
+     wishlist FAB and pull indicator drifted off-screen until we
+     scrubbed the transform from the page-transition keyframe. */
   @keyframes ourtable-fade-up {
     from {
       opacity: 0;
-      transform: translateY(6px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
     }
   }
   @keyframes ourtable-fade-in {
@@ -116,6 +121,9 @@
       opacity: 1;
     }
   }
+  /* Local-only slide animations are still useful for tiny inline
+     transitions (the comment thread expand drilldown etc.) where the
+     animated subtree contains no fixed descendants. Use sparingly. */
   @keyframes ourtable-slide-up {
     from {
       transform: translateY(12px);
