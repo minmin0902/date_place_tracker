@@ -519,16 +519,25 @@ export default function HomePage() {
 
   const filteredPlaces = useMemo(() => {
     const list = [...baseList];
+    // Comparator for date-based sorts. date_visited is YYYY-MM-DD
+    // (no time), so same-day entries tie at the primary key. Break
+    // ties with created_at (insert order) so "most recently added"
+    // wins inside a single day — matches "lunch then dinner" order.
+    const byDateDesc = (a: PlaceWithFoods, b: PlaceWithFoods) => {
+      if (a.date_visited !== b.date_visited)
+        return a.date_visited < b.date_visited ? 1 : -1;
+      return a.created_at < b.created_at ? 1 : -1;
+    };
     if (viewMode === "scoreDesc") {
       list.sort((a, b) => (avgTotal(b) ?? -1) - (avgTotal(a) ?? -1));
     } else if (viewMode === "scoreAsc") {
       list.sort((a, b) => (avgTotal(a) ?? Infinity) - (avgTotal(b) ?? Infinity));
     } else if (viewMode === "dateAsc") {
-      list.sort((a, b) => (a.date_visited > b.date_visited ? 1 : -1));
+      list.sort((a, b) => -byDateDesc(a, b));
     } else {
       // Default "date" (최근순) and "city" both sort newest-first;
       // "city" also groups downstream so order inside a group is date-desc.
-      list.sort((a, b) => (a.date_visited < b.date_visited ? 1 : -1));
+      list.sort(byDateDesc);
     }
     return list;
   }, [baseList, viewMode]);
@@ -593,13 +602,19 @@ export default function HomePage() {
           ((b.food.my_rating ?? 0) + (b.food.partner_rating ?? 0))
       );
     } else if (viewMode === "dateAsc") {
-      out.sort((a, b) =>
-        a.place.date_visited > b.place.date_visited ? 1 : -1
-      );
+      // Same date_visited → fall back to place created_at ASC so
+      // earlier-added wins on ties.
+      out.sort((a, b) => {
+        if (a.place.date_visited !== b.place.date_visited)
+          return a.place.date_visited > b.place.date_visited ? 1 : -1;
+        return a.place.created_at > b.place.created_at ? 1 : -1;
+      });
     } else {
-      out.sort((a, b) =>
-        a.place.date_visited < b.place.date_visited ? 1 : -1
-      );
+      out.sort((a, b) => {
+        if (a.place.date_visited !== b.place.date_visited)
+          return a.place.date_visited < b.place.date_visited ? 1 : -1;
+        return a.place.created_at < b.place.created_at ? 1 : -1;
+      });
     }
     return out;
   }, [baseList, listLayout, listFilter, viewMode, query, user?.id]);

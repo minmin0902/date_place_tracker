@@ -30,7 +30,13 @@ export function usePlaces(coupleId: string | undefined) {
         .from("places")
         .select("*, foods(*)")
         .eq("couple_id", coupleId!)
-        .order("date_visited", { ascending: false });
+        // date_visited is YYYY-MM-DD only, so same-day entries (e.g.
+        // lunch + dinner on the same date) tied at the primary sort.
+        // Secondary sort by created_at DESC so the more recently
+        // added entry surfaces above the older one, matching the
+        // user's "most recent on top" mental model.
+        .order("date_visited", { ascending: false })
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as PlaceWithFoods[];
     },

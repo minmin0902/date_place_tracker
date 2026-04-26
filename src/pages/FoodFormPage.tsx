@@ -20,14 +20,9 @@ import {
   PREMADE_FOOD_CATEGORIES,
   categoryEmojiOf,
 } from "@/lib/constants";
+import { ChefHat, User, Users } from "lucide-react";
+import type { ChefRole } from "@/lib/database.types";
 
-// Whether any of the selected food categories is a 완제품 tag.
-// Premade items have no chef — the field gets cleared on save.
-function isPremadeFood(categories: string[]): boolean {
-  if (!categories || categories.length === 0) return false;
-  const set = new Set<string>(PREMADE_FOOD_CATEGORIES);
-  return categories.some((c) => set.has(c));
-}
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import type { EaterRole } from "@/lib/database.types";
 
@@ -110,6 +105,13 @@ export default function FoodFormPage() {
   const [memo, setMemo] = useState("");
   const [memoAuthorId, setMemoAuthorId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
+  // Chef toggle — only meaningful for home-cooked places. Stored
+  // from the row creator's perspective; the form is filled BY the
+  // creator (or by the partner editing later — same swap rules as
+  // PlaceFormPage's HomeFoodCard).
+  // Nullable so the user can deselect the active chef ("아무도 안
+  // 만든" — useful when re-editing a 완제품 dish to clear chef).
+  const [chef, setChef] = useState<ChefRole | null>("together");
   // Eater (viewer perspective): 'both' / 'me' / 'partner'. Drives the
   // segmented toggle. Translated to storage-relative EaterRole on save.
   const [viewerEater, setViewerEater] = useState<ViewerEater>("both");
@@ -132,6 +134,27 @@ export default function FoodFormPage() {
     setCategories(getCategories(existing));
     setMemo(existing.memo ?? "");
     setMemoAuthorId(existing.memo_author_id ?? null);
+    // Hydrate chef in the viewer's perspective. Same swap rule as
+    // ratingsForViewer: stored 'me' refers to created_by; if the
+    // viewer isn't the creator we flip me↔partner so the form's
+    // "내가/짝꿍" toggle reads correctly from each user's seat.
+    // null in storage → null here so the toggle starts deselected
+    // (e.g. premade dishes saved without a chef).
+    if (existing.chef == null) {
+      setChef(null);
+    } else if (existing.chef === "together") {
+      setChef("together");
+    } else {
+      const flipped =
+        existing.chef === "me"
+          ? viewerIsCreator
+            ? "me"
+            : "partner"
+          : viewerIsCreator
+            ? "partner"
+            : "me";
+      setChef(flipped);
+    }
     // Prefer the new `eater` enum; fall back to the legacy is_solo
     // boolean ('me' if true, 'both' if false) so older rows hydrate.
     const eaterStored: EaterRole = existing.eater
@@ -162,6 +185,7 @@ export default function FoodFormPage() {
       memoAuthorId,
       photos,
       viewerEater,
+      chef,
     }),
     [
       name,
@@ -172,6 +196,7 @@ export default function FoodFormPage() {
       memoAuthorId,
       photos,
       viewerEater,
+      chef,
     ]
   );
   const draft = useFormDraft({
@@ -198,6 +223,13 @@ export default function FoodFormPage() {
         saved.viewerEater === "partner"
       ) {
         setViewerEater(saved.viewerEater);
+      }
+      if (
+        saved.chef === "me" ||
+        saved.chef === "partner" ||
+        saved.chef === "together"
+      ) {
+        setChef(saved.chef);
       }
     },
   });
@@ -266,10 +298,28 @@ export default function FoodFormPage() {
         // On insert: stamp the current user. On update: preserve the
         // existing author so swap math stays consistent forever.
         created_by: ownerId,
-        // Premade dishes (frozen / bread / etc) have no chef. Clear
-        // any leftover value when the user switches a regular dish
-        // to a 완제품 tag mid-edit.
-        ...(isPremadeFood(categories) ? { chef: null } : {}),
+        // Chef: home-cooked places only. The viewer-perspective
+        // toggle gets translated back into storage convention
+        // (creator perspective) on save. null = explicitly
+        // deselected — propagated as null so the food drops out
+        // of both partners' chef rankings. Restaurant places omit
+        // the field entirely.
+        ...(place?.is_home_cooked
+          ? {
+              chef:
+                chef == null
+                  ? null
+                  : chef === "together"
+                    ? "together"
+                    : chef === "me"
+                      ? viewerIsCreator
+                        ? "me"
+                        : "partner"
+                      : viewerIsCreator
+                        ? "partner"
+                        : "me",
+            }
+          : {}),
         eater: eaterStored,
         // Keep the legacy boolean in sync for older client builds.
         is_solo: eaterStored !== "both",
@@ -358,6 +408,53 @@ export default function FoodFormPage() {
             sub={`${partnerDisplay}独享`}
           />
         </div>
+
+        {/* Chef toggle — shown for every home-cooked place, including
+            완제품 (frozen / bread / etc) so the user can optionally
+            credit a chef even on bought items. Tapping the active
+            option deselects it (chef=null), which removes the food
+            from both partners' chef rankings. */}
+        {place?.is_home_cooked && (
+          <div>
+            <p className="text-[12px] font-bold text-ink-700 mb-2 flex items-center gap-1.5">
+              <ChefHat className="w-4 h-4 text-teal-500" />
+              누가 요리했나요? · 谁掌勺？
+              <span className="text-[10px] font-medium text-ink-400 ml-auto">
+                선택 안 해도 돼요 · 可不选
+              </span>
+            </p>
+            <div className="flex gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100">
+              <FoodChefButton
+                active={chef === "me"}
+                onClick={() => setChef(chef === "me" ? null : "me")}
+                tone="peach"
+                icon={<User className="w-3.5 h-3.5" />}
+                labelKo={`${myDisplay}!`}
+                labelZh={`${myDisplay}做的`}
+              />
+              <FoodChefButton
+                active={chef === "partner"}
+                onClick={() =>
+                  setChef(chef === "partner" ? null : "partner")
+                }
+                tone="rose"
+                icon={<User className="w-3.5 h-3.5" />}
+                labelKo={`${partnerDisplay}!`}
+                labelZh={`${partnerDisplay}做的`}
+              />
+              <FoodChefButton
+                active={chef === "together"}
+                onClick={() =>
+                  setChef(chef === "together" ? null : "together")
+                }
+                tone="amber"
+                icon={<Users className="w-3.5 h-3.5" />}
+                labelKo="같이!"
+                labelZh="一起做"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="card p-4 space-y-4">
           {/* My rating slot — visible when I ate ('both' or 'me'). */}
@@ -501,6 +598,50 @@ function EaterSegment({
     >
       <span className="text-[12px] font-bold">{label}</span>
       <span className="text-[10px] opacity-70 font-medium mt-0.5">{sub}</span>
+    </button>
+  );
+}
+
+// Mirrors HomeFoodCard's chef segment in PlaceFormPage so the visual
+// language is consistent between the two home-food entry surfaces.
+function FoodChefButton({
+  active,
+  onClick,
+  tone,
+  icon,
+  labelKo,
+  labelZh,
+}: {
+  active: boolean;
+  onClick: () => void;
+  tone: "peach" | "rose" | "amber";
+  icon: React.ReactNode;
+  labelKo: string;
+  labelZh: string;
+}) {
+  const activeCls =
+    tone === "peach"
+      ? "bg-peach-50 border-peach-200 text-peach-600"
+      : tone === "rose"
+        ? "bg-rose-50 border-rose-200 text-rose-600"
+        : "bg-amber-50 border-amber-200 text-amber-700";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 py-1.5 px-1 rounded-lg border text-[11px] font-bold flex flex-col items-center gap-0.5 leading-tight transition-all min-w-0 ${
+        active
+          ? `${activeCls} shadow-sm`
+          : "border-transparent text-ink-500 hover:text-ink-700"
+      }`}
+    >
+      <span className="inline-flex items-center gap-1 truncate">
+        {icon}
+        <span className="truncate">{labelKo}</span>
+      </span>
+      <span className="text-[9px] opacity-70 font-medium truncate">
+        {labelZh}
+      </span>
     </button>
   );
 }

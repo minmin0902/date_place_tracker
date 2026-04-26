@@ -1377,19 +1377,35 @@ function HomeChefCard({
         partnerRows.push(r);
         partnerScoreSum += coupleAvg;
       } else {
+        // chef === 'together' — co-cooked. Both partners get credit
+        // in their per-chef rankings + average. The share viz keeps
+        // its own segment for visual context (myCount/partnerCount
+        // stay separate so the bar doesn't double-count).
         togetherCount++;
+        myRows.push(r);
+        partnerRows.push(r);
+        myScoreSum += coupleAvg;
+        partnerScoreSum += coupleAvg;
       }
     }
     // Sort each chef's foods by couple-avg desc so when expanded the
     // user sees their chef's best dishes first.
     myRows.sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
     partnerRows.sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+    // Solo counts drive the share viz so the 3-segment bar stays
+    // meaningful: peach=내 단독, amber=같이, rose=짝꿍 단독. Tile
+    // counts (myCount/partnerCount) include together so each tile
+    // shows the total dishes the user is credited for.
+    const mySoloCount = myRows.length - togetherCount;
+    const partnerSoloCount = partnerRows.length - togetherCount;
     const myCount = myRows.length;
     const partnerCount = partnerRows.length;
-    const total = myCount + partnerCount + togetherCount;
+    const total = mySoloCount + partnerSoloCount + togetherCount;
     return {
       myCount,
       partnerCount,
+      mySoloCount,
+      partnerSoloCount,
       togetherCount,
       total,
       myAvg: myCount > 0 ? myScoreSum / myCount : 0,
@@ -1402,6 +1418,8 @@ function HomeChefCard({
   const {
     myCount,
     partnerCount,
+    mySoloCount,
+    partnerSoloCount,
     togetherCount,
     total,
     myAvg,
@@ -1409,8 +1427,12 @@ function HomeChefCard({
     myRows,
     partnerRows,
   } = stats;
-  const myShare = total ? (myCount / total) * 100 : 0;
-  const partnerShare = total ? (partnerCount / total) * 100 : 0;
+  // Share viz reads solo counts so the 3-segment bar (me / together /
+  // partner) doesn't double-count together dishes. Tile counts elsewhere
+  // use the combined myCount/partnerCount which already include
+  // togethers — keeps "I cooked X dishes" honest about co-cooks.
+  const myShare = total ? (mySoloCount / total) * 100 : 0;
+  const partnerShare = total ? (partnerSoloCount / total) * 100 : 0;
   const togetherShare = total ? (togetherCount / total) * 100 : 0;
 
   return (
@@ -1451,7 +1473,7 @@ function HomeChefCard({
             />
             <span className="truncate">{myDisplay}</span>
             <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
-              {myCount}
+              {mySoloCount}
             </span>
           </span>
           <span className="inline-flex items-center justify-center gap-1 min-w-0">
@@ -1468,7 +1490,7 @@ function HomeChefCard({
             />
             <span className="truncate">{partnerDisplay}</span>
             <span className="font-number bg-white px-1 py-0.5 rounded shadow-sm flex-shrink-0">
-              {partnerCount}
+              {partnerSoloCount}
             </span>
           </span>
         </div>
