@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -7,8 +8,14 @@ import {
   CheckCheck,
   Heart,
   Star,
+  Plus,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import { PullIndicator } from "@/components/PullIndicator";
+import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
+import { useRefreshControls } from "@/hooks/useRefreshControls";
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -17,16 +24,81 @@ import {
 import { useActorDisplay } from "@/hooks/useProfile";
 import type { NotificationRow } from "@/lib/database.types";
 
+// Filter buckets — collapse the six raw notification kinds into five
+// user-facing categories so the chip row stays scannable. "메모" lumps
+// both legacy single-memo edits and threaded comments since the user
+// thinks of them as the same surface.
+type FilterKey = "all" | "place" | "memo" | "rating" | "revisit";
+
+const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell }[] = [
+  { key: "all", ko: "전체", zh: "全部", icon: Bell },
+  { key: "place", ko: "새 기록", zh: "新记录", icon: Plus },
+  { key: "memo", ko: "메모", zh: "留言", icon: MessageCircle },
+  { key: "rating", ko: "평점", zh: "打分", icon: Star },
+  { key: "revisit", ko: "또 갈래", zh: "想再去", icon: Heart },
+];
+
+function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
+  if (filter === "all") return true;
+  if (filter === "place") return kind === "place" || kind === "food";
+  if (filter === "memo") return kind === "memo" || kind === "memo_thread";
+  if (filter === "rating") return kind === "rating";
+  if (filter === "revisit") return kind === "revisit";
+  return true;
+}
+
 // Inbox: every notification triggered for the current user. Tapping
 // a row marks it read and deep-links to the source content. A "전부
 // 읽음" footer button clears the badge in one shot.
 export default function NotificationsPage() {
   const { data: items, isLoading } = useNotifications();
   const markAll = useMarkAllNotificationsRead();
+  const refreshAll = useGlobalRefresh();
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
+  const [filter, setFilter] = useState<FilterKey>("all");
+
   const unreadCount = (items ?? []).filter((n) => !n.read_at).length;
 
+  // Counts per filter bucket so each chip can show "(n)" — gives the
+  // user a quick read on what's piled up without tapping each chip.
+  const filterCounts = useMemo(() => {
+    const out: Record<FilterKey, number> = {
+      all: 0,
+      place: 0,
+      memo: 0,
+      rating: 0,
+      revisit: 0,
+    };
+    for (const n of items ?? []) {
+      out.all += 1;
+      for (const c of FILTER_CHIPS) {
+        if (c.key !== "all" && matchesFilter(n.kind, c.key)) out[c.key] += 1;
+      }
+    }
+    return out;
+  }, [items]);
+
+  const visibleItems = useMemo(() => {
+    if (!items) return [];
+    if (filter === "all") return items;
+    return items.filter((n) => matchesFilter(n.kind, filter));
+  }, [items, filter]);
+
   return (
-    <div>
+    <div className="relative">
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
       <PageHeader
         title="알림 · 通知"
         subtitle={
@@ -36,20 +108,82 @@ export default function NotificationsPage() {
         }
         back
         right={
-          unreadCount > 0 ? (
+          <div className="flex items-center gap-1">
+            {/* Manual refresh — same shared callback the pull gesture
+                uses, so a button tap and a pull both invalidate the
+                same scope (places / memos / notifications / etc). */}
             <button
               type="button"
-              onClick={() => void markAll.mutateAsync()}
-              disabled={markAll.isPending}
-              className="btn-ghost !px-3 !py-2 text-[12px] font-bold text-peach-500 disabled:opacity-50"
-              aria-label="mark all read"
-              title="전부 읽음 · 全部已读"
+              onClick={() => void onManualRefresh()}
+              disabled={manualRefreshing || refreshing}
+              className={`btn-ghost !p-2.5 active:scale-90 transition-transform ${
+                justFinished ? "text-sage-400" : ""
+              }`}
+              aria-label="refresh"
+              title="새로고침 · 刷新"
             >
-              <CheckCheck className="w-5 h-5" />
+              {justFinished ? (
+                <Check className="w-5 h-5 animate-fade" />
+              ) : (
+                <RefreshCw
+                  className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+                />
+              )}
             </button>
-          ) : undefined
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void markAll.mutateAsync()}
+                disabled={markAll.isPending}
+                className="btn-ghost !p-2.5 text-peach-500 disabled:opacity-50 active:scale-90 transition-transform"
+                aria-label="mark all read"
+                title="전부 읽음 · 全部已读"
+              >
+                <CheckCheck className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         }
       />
+
+      {/* Category filter — horizontal-scrollable chip row so adding a
+          new kind later doesn't crowd the bar. Active chip pops with
+          peach tint; counts beside the label give a quick at-a-glance
+          read of what's piled up. */}
+      <div className="px-5 pb-3">
+        <div className="flex gap-1.5 overflow-x-auto hide-scrollbar -mx-1 px-1">
+          {FILTER_CHIPS.map(({ key, ko, zh, icon: Icon }) => {
+            const active = filter === key;
+            const count = filterCounts[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
+                  active
+                    ? "bg-peach-50 text-peach-600 border-peach-200/80 shadow-[0_2px_10px_rgba(248,149,112,0.18)]"
+                    : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>
+                  {ko} · {zh}
+                </span>
+                {count > 0 && (
+                  <span
+                    className={`text-[10px] font-number font-bold px-1.5 py-0.5 rounded-full ${
+                      active ? "bg-peach-200/70 text-peach-700" : "bg-cream-100 text-ink-500"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="px-5 pb-8">
         {isLoading && (
@@ -58,9 +192,12 @@ export default function NotificationsPage() {
           </p>
         )}
         {!isLoading && (!items || items.length === 0) && <EmptyState />}
-        {!isLoading && items && items.length > 0 && (
+        {!isLoading && items && items.length > 0 && visibleItems.length === 0 && (
+          <FilteredEmptyState />
+        )}
+        {!isLoading && visibleItems.length > 0 && (
           <ul className="space-y-2">
-            {items.map((n) => (
+            {visibleItems.map((n) => (
               <NotificationItem key={n.id} item={n} />
             ))}
           </ul>
@@ -79,6 +216,23 @@ function EmptyState() {
       </p>
       <p className="text-xs text-ink-400">
         짝꿍이 뭔가 올리면 여기에 떠요 · 宝宝有动静就会显示在这里
+      </p>
+    </div>
+  );
+}
+
+// Distinct from EmptyState: there ARE notifications, just none in
+// the currently selected filter. Hint at clearing the filter so the
+// user doesn't think the inbox is empty.
+function FilteredEmptyState() {
+  return (
+    <div className="text-center py-12">
+      <div className="text-4xl mb-2">🔍</div>
+      <p className="text-sm font-bold text-ink-700 mb-1">
+        이 카테고리엔 알림이 없어요 · 该分类暂无通知
+      </p>
+      <p className="text-xs text-ink-400">
+        다른 카테고리 / 전체로 바꿔보세요 · 试试其他分类或「全部」
       </p>
     </div>
   );
