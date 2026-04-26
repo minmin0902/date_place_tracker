@@ -42,33 +42,37 @@ export default {
         },
       },
       fontFamily: {
-        // Pretendard Variable handles Korean + Latin. For Chinese glyphs,
-        // prefer Apple's bundled PingFang SC (installed on iPhone/Mac)
-        // before falling back to Noto Sans SC. This avoids the default
-        // SimSun look on Windows/Android while reading beautifully on iOS.
+        // Pretendard handles Korean + Latin. CJK fonts MUST come before
+        // -apple-system / system-ui — otherwise iOS Safari with a
+        // Korean system locale maps SF Pro's CJK fallback to a
+        // Korean-styled face, and Chinese characters render visibly
+        // off (slightly Japanese-looking strokes / wrong proportions).
+        // Same chain as index.css body so the .font-sans utility
+        // doesn't override the base body font with a worse stack.
         sans: [
           '"Pretendard Variable"',
           "Pretendard",
+          '"PingFang SC"',
+          '"Hiragino Sans GB"',
+          '"Noto Sans SC"',
+          '"Microsoft YaHei"',
           "-apple-system",
           "system-ui",
-          '"PingFang SC"',
-          '"Noto Sans SC"',
           "sans-serif",
         ],
         // Display goes serif: Gowun Batang for Korean, Noto Serif SC for
         // Chinese characters it doesn't cover.
-        display: [
-          '"Gowun Batang"',
-          '"Noto Serif SC"',
-          "serif",
-        ],
+        display: ['"Gowun Batang"', '"Noto Serif SC"', "serif"],
         // Rounded Latin for numbers / English accents — Quicksand on top,
         // then falls back to Pretendard so Korean/Chinese look consistent
-        // when mixed into the same span.
+        // when mixed into the same span. CJK ordering mirrors `sans`.
         number: [
           "Quicksand",
           '"Pretendard Variable"',
           "Pretendard",
+          '"PingFang SC"',
+          '"Hiragino Sans GB"',
+          '"Noto Sans SC"',
           "sans-serif",
         ],
       },
