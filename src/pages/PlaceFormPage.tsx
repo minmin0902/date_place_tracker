@@ -372,7 +372,18 @@ export default function PlaceFormPage() {
         place && typeof place === "object" && "id" in place
           ? (place as { id: string }).id
           : id;
-      navigate(`/places/${targetId}`, { replace: true });
+      // Wishlist-promoted out-mode entries land directly on the menu
+      // add screen — the "다녀왔어요" flow continues straight into
+      // logging what the couple ate. Home mode already bulk-creates
+      // its menus above, so it skips this and goes to the detail
+      // page. Edit mode also falls through.
+      const goToFoodNew = !!fromWishlistId && !isHome;
+      navigate(
+        goToFoodNew
+          ? `/places/${targetId}/foods/new`
+          : `/places/${targetId}`,
+        { replace: true }
+      );
     }
   }
 

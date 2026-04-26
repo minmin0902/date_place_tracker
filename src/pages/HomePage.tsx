@@ -26,23 +26,23 @@ import { useCouple } from "@/hooks/useCouple";
 import { useCoupleProfiles } from "@/hooks/useProfile";
 import {
   usePlaces,
-  useUpsertPlace,
   type PlaceWithFoods,
 } from "@/hooks/usePlaces";
 import {
-  useAddWishlist,
   useDeleteWishlist,
   useWishlist,
 } from "@/hooks/useWishlist";
 import type { WishlistPlace } from "@/lib/database.types";
 import {
   CATEGORY_GROUPS,
-  PLACE_CATEGORIES,
   categoryEmojiOf,
   isKnownPlaceCategory,
 } from "@/lib/constants";
-import { CategoryChips } from "@/components/CategoryChips";
 import { FilterSheet, type SortValue } from "@/components/FilterSheet";
+import {
+  GroupedMultiSelect,
+  type GroupedMultiSelectEntry,
+} from "@/components/GroupedMultiSelect";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -50,7 +50,6 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useVisualViewport } from "@/hooks/useVisualViewportHeight";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
-import { LocationPicker } from "@/components/LocationPicker";
 
 type Tab = "timeline" | "wishlist";
 // Sort modes only — "도시별" used to live here as a 5th option but
@@ -326,7 +325,6 @@ export default function HomePage() {
   // Helper: pick a chip if not active, otherwise clear it.
   const toggleListFilter = (next: Exclude<ListFilter, "none">) =>
     setListFilter((prev) => (prev === next ? "none" : next));
-  const [addWishlistOpen, setAddWishlistOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     // Migrate v1 saved "city" mode (when sort + 도시별 lived in the
     // same dropdown) to a plain date sort + leave city filtering to
@@ -1129,7 +1127,6 @@ export default function HomePage() {
           <WishlistView
             items={filteredWishlist}
             couple_id={couple?.id}
-            onAdd={() => setAddWishlistOpen(true)}
           />
         )}
       </main>
@@ -1154,14 +1151,13 @@ export default function HomePage() {
               <Plus className="w-7 h-7" />
             </Link>
           ) : (
-            <button
-              type="button"
-              onClick={() => setAddWishlistOpen(true)}
+            <Link
+              to="/wishlist/new"
               className="pointer-events-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-peach-400 text-white shadow-lift flex items-center justify-center active:scale-90 transition hover:scale-105"
               aria-label="add wishlist"
             >
               <BookmarkPlus className="w-7 h-7" />
-            </button>
+            </Link>
           )}
         </div>
       </div>
@@ -1199,13 +1195,6 @@ export default function HomePage() {
           setListFilter("none");
         }}
       />
-
-      {addWishlistOpen && couple && (
-        <WishlistAddSheet
-          coupleId={couple.id}
-          onClose={() => setAddWishlistOpen(false)}
-        />
-      )}
 
     </div>
   );
@@ -1451,6 +1440,7 @@ function TimelineItem({
                 src={place.photo_urls[0]}
                 alt={place.name}
                 className="w-full h-full object-cover"
+                clickable={false}
               />
             ) : isHome ? (
               "🍳"
@@ -1645,6 +1635,7 @@ function MenuRow({
             src={photo}
             alt={food.name}
             className="w-full h-full object-cover"
+            clickable={false}
           />
         ) : isHome ? (
           "🍳"
@@ -1778,6 +1769,7 @@ function TimelineGridItem({
             alt={place.name}
             className="w-full h-full object-cover"
             showPlayBadge
+            clickable={false}
           />
         ) : (
           <span className="text-6xl drop-shadow-sm">
@@ -1842,22 +1834,13 @@ function TimelineGridItem({
 function WishlistView({
   items,
   couple_id,
-  onAdd,
 }: {
   items: WishlistPlace[];
   couple_id: string | undefined;
-  // Empty-state CTA — taps anywhere on the placeholder card open the
-  // add sheet. Plumbed in from the parent so the WishlistAddSheet
-  // state lives in one place (next to the FAB that toggles it too).
-  onAdd: () => void;
 }) {
   const { t } = useTranslation();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const del = useDeleteWishlist();
-  const upsertPlace = useUpsertPlace();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   // The item the user is hovering on the "다녀왔어" confirm dialog —
   // null means no dialog open. Two-step so a stray tap doesn't yank
   // a wishlist entry into the timeline + delete it.
@@ -1869,38 +1852,13 @@ function WishlistView({
     await del.mutateAsync(id);
   }
 
-  async function onMarkVisited(item: WishlistPlace) {
-    if (!couple_id || !user) return;
-    setBusyId(item.id);
-    setErr(null);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const place = await upsertPlace.mutateAsync({
-        coupleId: couple_id,
-        userId: user.id,
-        values: {
-          name: item.name,
-          date_visited: today,
-          address: item.address,
-          category: item.category,
-          memo: item.memo,
-          want_to_revisit: false,
-          latitude: item.latitude,
-          longitude: item.longitude,
-          photo_urls: null,
-        },
-      });
-      await del.mutateAsync(item.id);
-      // Jump straight to the new place so the user can log foods / photos.
-      if (place && typeof place === "object" && "id" in place) {
-        navigate(`/places/${(place as { id: string }).id}`);
-      }
-    } catch (e: unknown) {
-      console.error("[WishlistView] mark visited failed:", e);
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusyId(null);
-    }
+  // Move a wishlist item to the timeline by routing through the same
+  // place-add form a fresh restaurant uses. PlaceFormPage prefills
+  // from `?fromWishlist=<id>` and (on success) deletes the wishlist
+  // row + jumps to /foods/new for the new place — the user picks up
+  // the menu-logging step right after.
+  function onMarkVisited(item: WishlistPlace) {
+    navigate(`/places/new?fromWishlist=${item.id}`);
   }
 
   if (!couple_id) return null;
@@ -1911,26 +1869,20 @@ function WishlistView({
         emoji="📝"
         text="위시리스트를 채워봐요 · 赶紧种种草吧"
         hint="여기를 눌러서 추가 · 点这里添加"
-        onClick={onAdd}
+        onClick={() => navigate("/wishlist/new")}
       />
     );
   }
 
   return (
     <>
-      {err && (
-        <p className="text-xs text-rose-500 mb-3 bg-rose-50 border border-rose-200 rounded-xl p-3">
-          {err}
-        </p>
-      )}
       <div className="space-y-3">
         {items.map((item) => (
           <WishlistCard
             key={item.id}
             item={item}
-            busy={busyId === item.id}
             onDelete={() => void onDelete(item.id)}
-            // Two-step: tap → open confirm dialog. The actual mutation
+            // Two-step: tap → open confirm dialog. The actual navigation
             // only fires when the user picks "yes" in the dialog.
             onMarkVisited={() => setConfirmingVisit(item)}
           />
@@ -1947,12 +1899,11 @@ function WishlistView({
         body="기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요. · 会跳到记录页面，路过的话先看看也行。"
         confirmLabel="응! 다녀왔어 · 嗯，去过了！"
         cancelLabel="先看看 · 좀 더 볼게"
-        busy={!!confirmingVisit && busyId === confirmingVisit.id}
         onCancel={() => setConfirmingVisit(null)}
         onConfirm={() => {
           const target = confirmingVisit;
           setConfirmingVisit(null);
-          if (target) void onMarkVisited(target);
+          if (target) onMarkVisited(target);
         }}
       />
     </>
@@ -1961,12 +1912,10 @@ function WishlistView({
 
 function WishlistCard({
   item,
-  busy,
   onDelete,
   onMarkVisited,
 }: {
   item: WishlistPlace;
-  busy: boolean;
   onDelete: () => void;
   onMarkVisited: () => void;
 }) {
@@ -2009,225 +1958,13 @@ function WishlistCard({
             <button
               type="button"
               onClick={onMarkVisited}
-              disabled={busy}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition"
             >
-              {busy ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-3.5 h-3.5" />
-              )}
-              {busy ? "옮기는 중… · 记录中…" : "다녀왔어요! · 拔草成功"}
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              다녀왔어요! · 种草成功
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------- wishlist add sheet ----------
-
-function WishlistAddSheet({
-  coupleId,
-  onClose,
-}: {
-  coupleId: string;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const add = useAddWishlist();
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
-  const [memo, setMemo] = useState("");
-  const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
-  const [address, setAddress] = useState<string>("");
-  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  // Freeze the page underneath while the sheet is open. The hook
-  // does the iOS-safe position:fixed trick (plain overflow:hidden
-  // wasn't enough — touch events on the modal edges still scrolled
-  // the page through, and made the form refuse to scroll past the
-  // first viewport on Safari).
-  useBodyScrollLock();
-  // Track the actually-visible area. iOS Safari keyboard occlusion
-  // doesn't shrink `dvh`, AND `fixed inset-0` extends behind the
-  // keyboard — so `items-end` was pinning the card flush with the
-  // keyboard edge. Sizing the wrapper to the visualViewport rect
-  // anchors it to the visible area instead, so the save button
-  // stays above the keyboard.
-  const vv = useVisualViewport();
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setErr(null);
-    try {
-      await add.mutateAsync({
-        coupleId,
-        name: name.trim(),
-        category,
-        memo: memo.trim() || null,
-        address: address.trim() || null,
-        latitude: coord?.lat ?? null,
-        longitude: coord?.lng ?? null,
-      });
-      onClose();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  // Anchor the wrapper to the visualViewport rect so the modal lives
-  // inside the actually-visible area on iOS — `fixed inset-0` extends
-  // behind the keyboard, which was pinning the save button under it.
-  const wrapperStyle: React.CSSProperties = vv
-    ? {
-        position: "fixed",
-        left: 0,
-        right: 0,
-        top: vv.offsetTop,
-        height: vv.height,
-        zIndex: 50,
-      }
-    : { position: "fixed", inset: 0, zIndex: 50 };
-
-  return (
-    <div className="flex items-end sm:items-center justify-center sm:p-5" style={wrapperStyle}>
-      <div
-        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      {/* Card sized as a fraction of the visible viewport (vv.height
-          when available, dvh fallback). On mobile we leave a small
-          gap above so the backdrop is still visible; on desktop the
-          card is centered with breathing room. The save footer is
-          flex-shrink-0 so it always claims its slot at the bottom. */}
-      <div
-        className="relative z-10 bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
-        style={{
-          overscrollBehavior: "contain",
-          height: vv ? `${Math.max(vv.height - 24, vv.height * 0.7)}px` : "90dvh",
-          maxHeight: vv ? `${vv.height}px` : "90dvh",
-        }}
-      >
-        {/* Header — fixed at top, never scrolls. */}
-        <div className="flex-shrink-0 flex items-center justify-between p-5 pb-3 border-b border-cream-100 bg-white">
-          <h2 className="font-sans font-bold text-lg">
-            위시리스트 · 种草清单
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 bg-cream-100 rounded-full text-ink-500 active:scale-90 transition"
-            aria-label="close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Scrollable middle. min-h-0 + flex-1 lets it shrink so the
-            inner overflow actually triggers when content overflows. */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.location")}
-            </label>
-            <LocationPicker
-              value={coord}
-              label={placeLabel}
-              onChange={(v) => {
-                setCoord(v);
-                if (!v) setPlaceLabel(null);
-              }}
-              onPlaceSelected={(p) => {
-                setPlaceLabel(p.name || null);
-                if (!name) setName(p.name);
-                if (!address) setAddress(p.address);
-              }}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              이름 · 店名 *
-            </label>
-            <input
-              id="wishlist-name"
-              form="wishlist-add-form"
-              className="input-base"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="예) 남산 뷰 카페 / 例：南山景观咖啡"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.address")}
-            </label>
-            <input
-              form="wishlist-add-form"
-              className="input-base"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder={t("place.addressPh")}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              {t("place.category")}
-            </label>
-            <CategoryChips
-              options={PLACE_CATEGORIES}
-              value={category}
-              onChange={setCategory}
-              scope="category"
-              customKey="other"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-ink-700">
-              메모 · 备注
-            </label>
-            <textarea
-              form="wishlist-add-form"
-              className="input-base min-h-[70px]"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="인스타에서 봤음! · 在小红书上看到的"
-            />
-          </div>
-
-          {err && <p className="text-xs text-rose-500 break-words">{err}</p>}
-        </div>
-
-        {/* Footer — fixed at bottom. Submit button uses the
-            form="..." attribute so the form lives elsewhere
-            (inputs in the scroll area) but Enter / button click
-            still posts the same form. safe-area-inset clears the
-            iPhone home bar. */}
-        <form
-          id="wishlist-add-form"
-          onSubmit={submit}
-          className="flex-shrink-0 border-t border-cream-100 bg-white p-5 pt-3"
-          style={{
-            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
-          }}
-        >
-          <button
-            type="submit"
-            disabled={!name.trim() || add.isPending}
-            className="btn-primary w-full"
-          >
-            <BookmarkPlus className="w-5 h-5" />
-            저장 · 存起来
-          </button>
-        </form>
       </div>
     </div>
   );
@@ -2377,6 +2114,35 @@ export function RouletteModal({
     }
     return Array.from(cats);
   }, [sourcePool, cityFilter]);
+
+  // GroupedMultiSelect options for the category dropdown — same shape
+  // as PlaceFormPage / FoodFormPage so the picker UI is identical.
+  // Filters CATEGORY_GROUPS to only show keys present in the current
+  // (source + city) pool, then appends any freeform / custom categories
+  // as flat options at the end.
+  const categoryDropdownOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
+    const available = new Set(availableCategories);
+    const out: GroupedMultiSelectEntry[] = [];
+    const known = new Set<string>();
+    for (const g of CATEGORY_GROUPS) {
+      const subset = g.keys.filter((k) => available.has(k));
+      for (const k of g.keys) known.add(k);
+      if (subset.length === 0) continue;
+      out.push({
+        groupLabel: `${g.ko} · ${g.zh}`,
+        options: subset.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      });
+    }
+    for (const c of availableCategories) {
+      if (known.has(c)) continue;
+      out.push({ value: c, label: c, emoji: "✏️" });
+    }
+    return out;
+  }, [availableCategories, t]);
 
   const availableCities = useMemo(() => {
     const byCount = new Map<string, number>();
@@ -2553,34 +2319,25 @@ export function RouletteModal({
           )}
         </div>
 
-        {/* category chips */}
-        <div className="mb-2">
-          <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
-            종류 · 种类
-          </p>
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              onClick={() => setCategoryFilter(null)}
-              className={`chip text-[11px] px-2.5 py-0.5 ${categoryFilter === null ? "chip-active" : ""}`}
-            >
-              전부 · 全部
-            </button>
-            {availableCategories.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() =>
-                  setCategoryFilter(categoryFilter === c ? null : c)
-                }
-                className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${categoryFilter === c ? "chip-active" : ""}`}
-              >
-                <span>{categoryIcon(c)}</span>
-                {t(`category.${c}`)}
-              </button>
-            ))}
+        {/* category dropdown — same picker the place / food forms use,
+            in singleSelect mode (roulette filters by one category at a
+            time). Empty selection = "전부 · 全部". */}
+        {availableCategories.length > 0 && (
+          <div className="mb-2">
+            <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
+              종류 · 种类
+            </p>
+            <GroupedMultiSelect
+              title="카테고리 · 种类"
+              placeholder="전부 · 全部"
+              options={categoryDropdownOptions}
+              value={categoryFilter ? [categoryFilter] : []}
+              onChange={(next) => setCategoryFilter(next[0] ?? null)}
+              singleSelect
+              allowEmpty
+            />
           </div>
-        </div>
+        )}
 
         {/* city chips — multi-select. Empty set = "all cities". */}
         {availableCities.length > 0 && (
