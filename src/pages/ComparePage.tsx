@@ -1354,6 +1354,12 @@ function HomeChefCard({
     let partnerScoreSum = 0;
 
     for (const r of rows) {
+      // chef=null means "no chef recorded" (e.g. premade dishes,
+      // legacy 메뉴 추가 rows before the toggle existed). Skip them
+      // entirely — counting them would push uncategorized foods into
+      // both partners' chef rankings, which is what made it look like
+      // "주디가 만든 게 내 요리에 떠 있다" earlier.
+      if (r.chef == null) continue;
       // Storage→viewer chef swap. created_by null → fall back to
       // viewer-is-creator (for legacy rows).
       let chefViewer: "me" | "partner" | "together" = "together";
