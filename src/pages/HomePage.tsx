@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { PullIndicator } from "@/components/PullIndicator";
 import {
   BookmarkPlus,
+  Check,
   CheckCircle2,
   Dice5,
   Grid3x3,
@@ -271,17 +272,18 @@ export default function HomePage() {
     meProfileQuery.data?.partner_nickname?.trim() ||
     partnerProfileQuery.data?.nickname?.trim() ||
     "짝꿍";
-  const qc = useQueryClient();
-  // Refresh covers everything the home tab cares about; pull gesture
-  // and manual header button share the same callback.
-  const { pull, refreshing, manualRefreshing, onManualRefresh } =
-    useRefreshControls(() =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: ["places"] }),
-        qc.invalidateQueries({ queryKey: ["wishlist"] }),
-        qc.invalidateQueries({ queryKey: ["couple"] }),
-      ])
-    );
+  // Single shared refresh covering every user-data query (places /
+  // wishlist / couple / memos / profile / notifications). Pull
+  // gesture and the header bell button drive the same callback.
+  const refreshAll = useGlobalRefresh();
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
 
   // Hydrate filters from sessionStorage exactly once. useRef so the
   // load happens before the first render and isn't re-evaluated on
@@ -686,7 +688,12 @@ export default function HomePage() {
 
   return (
     <div className="relative">
-      <PullIndicator pull={pull} refreshing={refreshing} />
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
@@ -707,13 +714,21 @@ export default function HomePage() {
               type="button"
               onClick={() => void onManualRefresh()}
               disabled={manualRefreshing || refreshing}
-              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
+              className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
+                justFinished
+                  ? "bg-sage-100/70 border-sage-200 text-sage-400"
+                  : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
+              }`}
               aria-label="refresh"
               title="새로고침 · 刷新"
             >
-              <RefreshCw
-                className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
-              />
+              {justFinished ? (
+                <Check className="w-5 h-5 animate-fade" />
+              ) : (
+                <RefreshCw
+                  className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
+                />
+              )}
             </button>
           </div>
         </div>

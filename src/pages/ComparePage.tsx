@@ -20,7 +20,6 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
@@ -29,6 +28,7 @@ import { useCoupleProfiles } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
 import { RouletteModal } from "@/pages/HomePage";
 
@@ -318,14 +318,15 @@ export default function ComparePage() {
   // tile falls back to a colored initial bubble).
   const myAvatarUrl = meProfileQuery.data?.avatar_url ?? null;
   const partnerAvatarUrl = partnerProfileQuery.data?.avatar_url ?? null;
-  const qc = useQueryClient();
-  const { pull, refreshing, manualRefreshing, onManualRefresh } =
-    useRefreshControls(() =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: ["places"] }),
-        qc.invalidateQueries({ queryKey: ["couple"] }),
-      ])
-    );
+  const refreshAll = useGlobalRefresh();
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("fame");
@@ -436,7 +437,12 @@ export default function ComparePage() {
 
   return (
     <div>
-      <PullIndicator pull={pull} refreshing={refreshing} />
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
       <PageHeader
         title="우리의 취향 지도 · 我们的口味地图"
         subtitle="서로의 입맛을 한눈에 · 一秒看懂咱俩的口味"

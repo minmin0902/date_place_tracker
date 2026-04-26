@@ -15,6 +15,7 @@ import { PullIndicator } from "@/components/PullIndicator";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { supabase } from "@/lib/supabase";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
@@ -246,17 +247,17 @@ export default function MapPage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const qc = useQueryClient();
-  // Map cares about places (markers) + couple (home pin), so refresh
-  // invalidates both. Wrapped in useRefreshControls so the same
-  // pull-to-refresh + manual button UX as HomePage applies here.
-  const { pull, refreshing, manualRefreshing, onManualRefresh } =
-    useRefreshControls(() =>
-      Promise.all([
-        qc.invalidateQueries({ queryKey: ["places"] }),
-        qc.invalidateQueries({ queryKey: ["couple"] }),
-      ])
-    );
+  // Same shared refresh callback HomePage uses — keeps "what counts
+  // as a refresh" consistent across every tab.
+  const refreshAll = useGlobalRefresh();
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
 
   // Breakdown for the debug panel: how many places are on the map vs
   // how many are stuck without coordinates and why.
@@ -331,7 +332,12 @@ export default function MapPage() {
 
   return (
     <div className="h-[calc(100vh-5rem)] flex flex-col">
-      <PullIndicator pull={pull} refreshing={refreshing} />
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
       <PageHeader
         title="우리의 맛집 지도 · 咱俩的美食宝藏图"
         right={
