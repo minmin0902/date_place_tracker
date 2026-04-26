@@ -97,6 +97,11 @@ export default function FoodFormPage() {
   const [memo, setMemo] = useState("");
   const [memoAuthorId, setMemoAuthorId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
+  // Recipe — only relevant for home-cooked places. Either field can
+  // stand alone: typed-out instructions, screenshot-only (e.g. saved
+  // from Instagram / Xiaohongshu), or both side-by-side.
+  const [recipeText, setRecipeText] = useState("");
+  const [recipePhotos, setRecipePhotos] = useState<string[]>([]);
   // Chef toggle — only meaningful for home-cooked places. Stored
   // from the row creator's perspective; the form is filled BY the
   // creator (or by the partner editing later — same swap rules as
@@ -162,6 +167,8 @@ export default function FoodFormPage() {
     } else if (existing.photo_url) {
       setPhotos([existing.photo_url]);
     }
+    setRecipeText(existing.recipe_text ?? "");
+    setRecipePhotos(existing.recipe_photo_urls ?? []);
   }, [existing, user?.id, viewerIsCreator]);
 
   // Draft: so if the user taps off mid-entry their typed rating / name
@@ -178,6 +185,8 @@ export default function FoodFormPage() {
       photos,
       viewerEater,
       chef,
+      recipeText,
+      recipePhotos,
     }),
     [
       name,
@@ -189,6 +198,8 @@ export default function FoodFormPage() {
       photos,
       viewerEater,
       chef,
+      recipeText,
+      recipePhotos,
     ]
   );
   const draft = useFormDraft({
@@ -223,6 +234,9 @@ export default function FoodFormPage() {
       ) {
         setChef(saved.chef);
       }
+      if (typeof saved.recipeText === "string") setRecipeText(saved.recipeText);
+      if (Array.isArray(saved.recipePhotos))
+        setRecipePhotos(saved.recipePhotos as string[]);
     },
   });
 
@@ -310,6 +324,11 @@ export default function FoodFormPage() {
                       : viewerIsCreator
                         ? "partner"
                         : "me",
+              // Recipe payload — only sent for home-cooked places so a
+              // restaurant edit doesn't clobber columns it never touches.
+              // Empty fields persist as null so future deletes work cleanly.
+              recipe_text: recipeText.trim() || null,
+              recipe_photo_urls: recipePhotos.length ? recipePhotos : null,
             }
           : {}),
         eater: eaterStored,
@@ -444,6 +463,45 @@ export default function FoodFormPage() {
                 labelKo="같이!"
                 labelZh="一起做"
               />
+            </div>
+          </div>
+        )}
+
+        {/* Recipe — home-cooked dishes only. Both fields optional, so
+            you can attach screenshots without writing anything (e.g.
+            saved a Xiaohongshu post and just want it referenced) or
+            type free-form notes without a screenshot. */}
+        {place?.is_home_cooked && (
+          <div className="card p-4 space-y-3 bg-rose-50/40 border-rose-100/70">
+            <div>
+              <p className="text-[12px] font-bold text-ink-700 mb-1.5 flex items-center gap-1.5">
+                📒 레시피 · 食谱
+                <span className="text-[10px] font-medium text-ink-400 ml-auto">
+                  안 써도 돼요 · 可不填
+                </span>
+              </p>
+              <textarea
+                className="input-base min-h-[90px] text-[13px]"
+                value={recipeText}
+                onChange={(e) => setRecipeText(e.target.value)}
+                placeholder="예) 양파 1개 다지고… · 例：洋葱切丁，热油爆香…"
+              />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-ink-400 mb-1.5">
+                레시피 스크린샷 · 食谱截图
+              </p>
+              {couple ? (
+                <PhotoUploader
+                  coupleId={couple.id}
+                  photos={recipePhotos}
+                  onChange={setRecipePhotos}
+                />
+              ) : (
+                <p className="text-[11px] text-ink-400">
+                  저장 후 사진을 올릴 수 있어요 · 保存后再添加照片
+                </p>
+              )}
             </div>
           </div>
         )}

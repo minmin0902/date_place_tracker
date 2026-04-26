@@ -85,6 +85,11 @@ export type Database = {
           // photo_urls for reads/writes.
           photo_url: string | null;
           photo_urls: string[] | null;
+          // Per-menu recipe — set only on home-cooked dishes. Either or
+          // both may be populated: text alone (typed-in instructions),
+          // screenshots alone (e.g. captured from Instagram), or both.
+          recipe_text: string | null;
+          recipe_photo_urls: string[] | null;
           chef: ChefRole | null;
           created_by: string | null;
           // Legacy boolean — superseded by `eater`. Kept for older
@@ -106,6 +111,8 @@ export type Database = {
           memo_updated_at?: string | null;
           photo_url?: string | null;
           photo_urls?: string[] | null;
+          recipe_text?: string | null;
+          recipe_photo_urls?: string[] | null;
           chef?: ChefRole | null;
           created_by?: string | null;
           is_solo?: boolean;

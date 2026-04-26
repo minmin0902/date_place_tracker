@@ -471,7 +471,7 @@ export default function PlaceFormPage() {
           </div>
         )}
 
-        <div>
+        <div data-form-error={!name.trim() ? "true" : undefined}>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             {mode === "home"
               ? "오늘의 식탁 이름 · 给这顿饭起个名 *"
@@ -488,6 +488,13 @@ export default function PlaceFormPage() {
             }
             required
           />
+          {!name.trim() && (
+            <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
+              {mode === "home"
+                ? "식탁 이름을 적어주세요 · 给这顿饭起个名吧"
+                : "상호명을 적어주세요 · 请输入店名"}
+            </p>
+          )}
         </div>
 
         <div>

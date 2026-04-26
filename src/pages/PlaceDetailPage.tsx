@@ -679,6 +679,39 @@ function FoodCard({
         </>
       )}
 
+      {/* Recipe block — home-cooked menus only. Renders typed-out
+          instructions + any saved screenshots. Hidden entirely when
+          both fields are empty so restaurant cards stay clean. */}
+      {(food.recipe_text ||
+        (food.recipe_photo_urls && food.recipe_photo_urls.length > 0)) && (
+        <div className="mt-3 rounded-2xl bg-rose-50/40 border border-rose-100/70 px-3 py-3 space-y-2">
+          <p className="text-[11px] font-bold text-rose-500 flex items-center gap-1.5">
+            📒 레시피 · 食谱
+          </p>
+          {food.recipe_text && (
+            <p className="text-[13px] text-ink-700 whitespace-pre-wrap break-words">
+              {food.recipe_text}
+            </p>
+          )}
+          {food.recipe_photo_urls && food.recipe_photo_urls.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {food.recipe_photo_urls.map((url) => (
+                <div
+                  key={url}
+                  className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 border border-cream-200 bg-ink-900"
+                >
+                  <MediaThumb
+                    src={url}
+                    className="w-full h-full object-cover"
+                    showPlayBadge
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Memo block — primary memo (typed in the create form) plus
           the thread of any extra memos either partner has added since.
           Rendered together inside a tinted box so the conversation

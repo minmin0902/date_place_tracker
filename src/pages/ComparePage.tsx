@@ -29,7 +29,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
-import { getCategories, ratingsForViewer } from "@/lib/utils";
+import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { RouletteModal } from "@/pages/HomePage";
 
 type DiningFilter = "all" | "out" | "home";
@@ -140,6 +140,10 @@ type Row = {
   foodId: string;
   placeId: string;
   placeName: string;
+  // Place's date_visited carried into Row so each card can show the
+  // visit date inline — disambiguates same-name menus / restaurants
+  // visited on different days.
+  placeDate: string;
   foodName: string;
   isHomeCooked: boolean;
   placeCategories: string[];
@@ -342,9 +346,12 @@ export default function ComparePage() {
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("fame");
-  // Sub-toggle inside the fame tab: 메뉴 (per-food) vs 레스토랑
-  // (place-level aggregate). Same source rows, different reduction.
-  const [fameView, setFameView] = useState<"menu" | "restaurant">("menu");
+  // Sub-toggle inside each list tab: 식당 (place-level aggregate) vs
+  // 메뉴 (per-food). Same source rows, different reduction. Default to
+  // 식당별 because the tab strip reads restaurant-first → menu.
+  const [fameView, setFameView] = useState<"menu" | "restaurant">("restaurant");
+  const [clashView, setClashView] = useState<"menu" | "restaurant">("restaurant");
+  const [passView, setPassView] = useState<"menu" | "restaurant">("restaurant");
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tracks the carousel card the user is currently centered on so the
@@ -401,6 +408,7 @@ export default function ComparePage() {
           foodId: f.id,
           placeId: p.id,
           placeName: p.name,
+          placeDate: p.date_visited,
           foodName: f.name,
           isHomeCooked: !!p.is_home_cooked,
           placeCategories: getCategories(p),
@@ -483,6 +491,70 @@ export default function ComparePage() {
     .sort(
       (a, b) => Math.abs(b.mine - b.partner) - Math.abs(a.mine - a.partner)
     );
+
+  // Place-level aggregations for the clash + pass tabs — same shape as
+  // famePlaces (FamePlace), built from each row subset. Restaurant view
+  // shows places where the menu-level criterion holds on average,
+  // sorted by the relevant axis (diff for clash, low total for pass).
+  const tasteWarPlaces: FamePlace[] = useMemo(() => {
+    const groups = new Map<string, FamePlace>();
+    for (const r of tasteWar) {
+      if (!groups.has(r.placeId)) {
+        groups.set(r.placeId, {
+          placeId: r.placeId,
+          placeName: r.placeName,
+          rows: [],
+          avgMine: 0,
+          avgPartner: 0,
+          total: 0,
+        });
+      }
+      groups.get(r.placeId)!.rows.push(r);
+    }
+    const out: FamePlace[] = [];
+    for (const g of groups.values()) {
+      g.avgMine = g.rows.reduce((s, r) => s + r.mine, 0) / g.rows.length;
+      g.avgPartner =
+        g.rows.reduce((s, r) => s + r.partner, 0) / g.rows.length;
+      g.total = g.avgMine + g.avgPartner;
+      out.push(g);
+    }
+    // Sort by avg disagreement so the most-conflicted place leads.
+    out.sort(
+      (a, b) =>
+        Math.abs(b.avgMine - b.avgPartner) -
+        Math.abs(a.avgMine - a.avgPartner)
+    );
+    return out;
+  }, [tasteWar]);
+
+  const neverAgainPlaces: FamePlace[] = useMemo(() => {
+    const groups = new Map<string, FamePlace>();
+    for (const r of neverAgain) {
+      if (!groups.has(r.placeId)) {
+        groups.set(r.placeId, {
+          placeId: r.placeId,
+          placeName: r.placeName,
+          rows: [],
+          avgMine: 0,
+          avgPartner: 0,
+          total: 0,
+        });
+      }
+      groups.get(r.placeId)!.rows.push(r);
+    }
+    const out: FamePlace[] = [];
+    for (const g of groups.values()) {
+      g.avgMine = g.rows.reduce((s, r) => s + r.mine, 0) / g.rows.length;
+      g.avgPartner =
+        g.rows.reduce((s, r) => s + r.partner, 0) / g.rows.length;
+      g.total = g.avgMine + g.avgPartner;
+      out.push(g);
+    }
+    // Lowest combined avg first.
+    out.sort((a, b) => a.total - b.total);
+    return out;
+  }, [neverAgain]);
 
   return (
     <div>
@@ -753,33 +825,14 @@ export default function ComparePage() {
                     : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
                 }
               >
-                {/* Menu vs restaurant sub-toggle. Sticky right above
-                    the list so the user can flip view while scrolling
-                    without losing the option above the fold. */}
-                <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
-                  <button
-                    type="button"
-                    onClick={() => setFameView("menu")}
-                    className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
-                      fameView === "menu"
-                        ? "bg-white shadow-sm text-ink-900 border border-cream-200"
-                        : "text-ink-500"
-                    }`}
-                  >
-                    🍽️ 메뉴별 · 按菜品
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFameView("restaurant")}
-                    className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
-                      fameView === "restaurant"
-                        ? "bg-white shadow-sm text-ink-900 border border-cream-200"
-                        : "text-ink-500"
-                    }`}
-                  >
-                    🏠 식당별 · 按店铺
-                  </button>
-                </div>
+                {/* Restaurant vs menu sub-toggle. Restaurant on the
+                    left because the place-level aggregate is what
+                    most users want first ("which spot wins"); menu
+                    drill-down sits on the right. */}
+                <ListViewToggle
+                  view={fameView}
+                  onChange={setFameView}
+                />
 
                 {fameView === "menu" && (
                   <>
@@ -861,48 +914,98 @@ export default function ComparePage() {
             )}
             {activeTab === "clash" && (
               <ListPanel
-                titleKo="서로 취향이 확 갈린 메뉴"
-                titleZh="评价两极分化"
-                empty={tasteWar.length === 0}
+                titleKo={
+                  clashView === "menu"
+                    ? "서로 취향이 확 갈린 메뉴"
+                    : "취향이 확 갈리는 식당"
+                }
+                titleZh={
+                  clashView === "menu"
+                    ? "评价两极分化的菜"
+                    : "评价两极分化的店"
+                }
+                empty={
+                  clashView === "menu"
+                    ? tasteWar.length === 0
+                    : tasteWarPlaces.length === 0
+                }
                 emptyText="아직 없어요 · 还没有"
               >
-                <ExpandableList items={tasteWar} initial={5}>
-                  {(r) => {
-                    const myFav = r.mine > r.partner;
-                    const badge = myFav
-                      ? `⭐ ${myDisplay} 원픽! · ${myDisplay}的本命`
-                      : `⭐ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
-                    return (
-                      <FoodCard
-                        key={r.foodId}
-                        r={r}
-                        badge={badge}
-                        showBalance
+                <ListViewToggle view={clashView} onChange={setClashView} />
+                {clashView === "menu" && (
+                  <ExpandableList items={tasteWar} initial={5}>
+                    {(r) => {
+                      const myFav = r.mine > r.partner;
+                      const badge = myFav
+                        ? `⭐ ${myDisplay} 원픽! · ${myDisplay}的本命`
+                        : `⭐ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
+                      return (
+                        <FoodCard
+                          key={r.foodId}
+                          r={r}
+                          badge={badge}
+                          showBalance
+                          myDisplay={myDisplay}
+                          partnerDisplay={partnerDisplay}
+                        />
+                      );
+                    }}
+                  </ExpandableList>
+                )}
+                {clashView === "restaurant" && (
+                  <ExpandableList items={tasteWarPlaces} initial={5}>
+                    {(p) => (
+                      <PlaceFameCard
+                        key={p.placeId}
+                        p={p}
                         myDisplay={myDisplay}
                         partnerDisplay={partnerDisplay}
                       />
-                    );
-                  }}
-                </ExpandableList>
+                    )}
+                  </ExpandableList>
+                )}
               </ListPanel>
             )}
             {activeTab === "pass" && (
               <ListPanel
-                titleKo="우리 스타일은 아니었던 곳"
-                titleZh="绝对的黑名单"
-                empty={neverAgain.length === 0}
+                titleKo={
+                  passView === "menu"
+                    ? "우리 스타일은 아니었던 메뉴"
+                    : "우리 스타일은 아니었던 곳"
+                }
+                titleZh={passView === "menu" ? "踩雷的菜" : "绝对的黑名单"}
+                empty={
+                  passView === "menu"
+                    ? neverAgain.length === 0
+                    : neverAgainPlaces.length === 0
+                }
                 emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
               >
-                <ExpandableList items={neverAgain} initial={5}>
-                  {(r) => (
-                    <FoodCard
-                      key={r.foodId}
-                      r={r}
-                      myDisplay={myDisplay}
-                      partnerDisplay={partnerDisplay}
-                    />
-                  )}
-                </ExpandableList>
+                <ListViewToggle view={passView} onChange={setPassView} />
+                {passView === "menu" && (
+                  <ExpandableList items={neverAgain} initial={5}>
+                    {(r) => (
+                      <FoodCard
+                        key={r.foodId}
+                        r={r}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    )}
+                  </ExpandableList>
+                )}
+                {passView === "restaurant" && (
+                  <ExpandableList items={neverAgainPlaces} initial={5}>
+                    {(p) => (
+                      <PlaceFameCard
+                        key={p.placeId}
+                        p={p}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    )}
+                  </ExpandableList>
+                )}
               </ListPanel>
             )}
           </div>
@@ -2167,6 +2270,46 @@ function ListPanel({
   );
 }
 
+// ---------- list view toggle ----------
+
+// Restaurant ↔ menu segmented control rendered above each list panel.
+// Restaurant on the LEFT because the place-level aggregate is the
+// default reading; menu drill-down is the secondary view.
+function ListViewToggle({
+  view,
+  onChange,
+}: {
+  view: "menu" | "restaurant";
+  onChange: (v: "menu" | "restaurant") => void;
+}) {
+  return (
+    <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
+      <button
+        type="button"
+        onClick={() => onChange("restaurant")}
+        className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+          view === "restaurant"
+            ? "bg-white shadow-sm text-ink-900 border border-cream-200"
+            : "text-ink-500"
+        }`}
+      >
+        🏠 식당별 · 按店铺
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("menu")}
+        className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+          view === "menu"
+            ? "bg-white shadow-sm text-ink-900 border border-cream-200"
+            : "text-ink-500"
+        }`}
+      >
+        🍽️ 메뉴별 · 按菜品
+      </button>
+    </div>
+  );
+}
+
 // ---------- food card ----------
 
 function FoodCard({
@@ -2186,6 +2329,7 @@ function FoodCard({
   myDisplay: string;
   partnerDisplay: string;
 }) {
+  const { i18n } = useTranslation();
   const total = r.mine + r.partner;
   const cardCls = yyds
     ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
@@ -2227,6 +2371,12 @@ function FoodCard({
           </p>
           <p className="text-xs text-ink-500 truncate mt-0.5">
             @ {r.placeName}
+          </p>
+          {/* Visit date — disambiguates same-name menus / restaurants
+              visited on different days, which used to look identical
+              in the list view. */}
+          <p className="text-[10px] text-ink-400 font-number mt-0.5">
+            {formatDate(r.placeDate, i18n.language)}
           </p>
         </div>
         {showTotal && (
@@ -2282,7 +2432,11 @@ function PlaceFameCard({
   myDisplay: string;
   partnerDisplay: string;
 }) {
+  const { i18n } = useTranslation();
   const total = p.avgMine + p.avgPartner;
+  // All rows of a FamePlace share the same place row → same date.
+  // Pull from the first available row; null-safe for legacy data.
+  const visitDate = p.rows[0]?.placeDate;
   // Top-3 places get the gold gradient; the rest of the list falls
   // back to the standard cream card so the trophy slots read as
   // distinctly elevated.
@@ -2310,6 +2464,11 @@ function PlaceFameCard({
           <p className="text-xs text-ink-500 truncate mt-0.5">
             🍽️ {p.rows.length}개·道 평균 · 平均
           </p>
+          {visitDate && (
+            <p className="text-[10px] text-ink-400 font-number mt-0.5">
+              {formatDate(visitDate, i18n.language)}
+            </p>
+          )}
         </div>
         <div className="flex-shrink-0 text-right">
           <span className="block text-2xl font-number font-bold text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 leading-none">
