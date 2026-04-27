@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChefHat, Heart, Plus, Trash2, User, Users, Utensils } from "lucide-react";
+import { ChefHat, Heart, Utensils } from "lucide-react";
 import { useCouple } from "@/hooks/useCouple";
 import { useAuth } from "@/hooks/useAuth";
-import { usePlace, useUpsertFood, useUpsertPlace } from "@/hooks/usePlaces";
+import { usePlace, useUpsertPlace } from "@/hooks/usePlaces";
 import { fetchWishlistItem, useDeleteWishlist } from "@/hooks/useWishlist";
 import { useFormDraft } from "@/hooks/useDraft";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,44 +14,9 @@ import {
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
 import { LocationPicker } from "@/components/LocationPicker";
-import {
-  CATEGORY_GROUPS,
-  categoryEmojiOf,
-  FOOD_CATEGORIES,
-  PREMADE_FOOD_CATEGORIES,
-} from "@/lib/constants";
-import type { ChefRole } from "@/lib/database.types";
+import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
 import { getCategories } from "@/lib/utils";
-
-type HomeFoodDraft = {
-  // local-only id so we can key + remove items before they hit the server
-  uid: string;
-  name: string;
-  // Nullable so the user can deselect the chef ("아무도 안 만든" — for
-  // 완제품 the field stays empty until they explicitly tag a chef).
-  chef: ChefRole | null;
-  categories: string[];
-  // Per-menu memo + media. The bulk-insert that happens on form
-  // submit forwards these into the foods row, so home meals end up
-  // as fully-rated entries instead of bare names.
-  memo: string;
-  // Who wrote `memo`. Only persisted when memo is non-empty.
-  memo_author_id: string | null;
-  photo_urls: string[];
-};
-
-function newHomeFood(): HomeFoodDraft {
-  return {
-    uid: crypto.randomUUID(),
-    name: "",
-    chef: "together",
-    categories: [],
-    memo: "",
-    memo_author_id: null,
-    photo_urls: [],
-  };
-}
 
 export default function PlaceFormPage() {
   const { id } = useParams();
@@ -63,7 +28,6 @@ export default function PlaceFormPage() {
   const { data: couple } = useCouple();
   const { data: existing } = usePlace(id);
   const upsert = useUpsertPlace();
-  const upsertFood = useUpsertFood();
   const deleteWishlist = useDeleteWishlist();
   const { t } = useTranslation();
 
@@ -81,7 +45,9 @@ export default function PlaceFormPage() {
     }));
   }, [t]);
 
-  // 'out' = 외식 (locationpicker + address) / 'home' = 집밥 (multi-food + chef)
+  // 'out' = 외식 (locationpicker + address) / 'home' = 집밥. Both modes
+  // save metadata only; per-menu entry goes through FoodFormPage from
+  // the place detail page after save.
   const [mode, setMode] = useState<"out" | "home">("out");
   const [name, setName] = useState("");
   const [dateVisited, setDateVisited] = useState(() =>
@@ -99,9 +65,6 @@ export default function PlaceFormPage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
-  const [homeFoods, setHomeFoods] = useState<HomeFoodDraft[]>(() => [
-    newHomeFood(),
-  ]);
 
   useEffect(() => {
     if (!existing) return;
@@ -139,7 +102,6 @@ export default function PlaceFormPage() {
       photos,
       coord,
       placeLabel,
-      homeFoods,
     }),
     [
       mode,
@@ -153,7 +115,6 @@ export default function PlaceFormPage() {
       photos,
       coord,
       placeLabel,
-      homeFoods,
     ]
   );
   const draft = useFormDraft({
@@ -180,21 +141,6 @@ export default function PlaceFormPage() {
         setCoord(saved.coord as { lat: number; lng: number } | null);
       if (saved.placeLabel != null)
         setPlaceLabel(saved.placeLabel as string | null);
-      if (Array.isArray(saved.homeFoods) && saved.homeFoods.length > 0) {
-        // v1 drafts didn't persist memo/photo_urls — fill defaults
-        // so the new fields don't break on restore.
-        setHomeFoods(
-          (saved.homeFoods as Array<Partial<HomeFoodDraft>>).map((f) => ({
-            uid: f.uid ?? crypto.randomUUID(),
-            name: f.name ?? "",
-            chef: (f.chef as ChefRole | null | undefined) ?? "together",
-            categories: f.categories ?? [],
-            memo: f.memo ?? "",
-            memo_author_id: f.memo_author_id ?? null,
-            photo_urls: f.photo_urls ?? [],
-          }))
-        );
-      }
     },
   });
 
@@ -217,24 +163,6 @@ export default function PlaceFormPage() {
       cancelled = true;
     };
   }, [fromWishlistId, isEdit]);
-
-  function addHomeFood() {
-    setHomeFoods((prev) => [...prev, newHomeFood()]);
-  }
-  function removeHomeFood(uid: string) {
-    setHomeFoods((prev) =>
-      prev.length === 1 ? prev : prev.filter((f) => f.uid !== uid)
-    );
-  }
-  function updateHomeFood<K extends keyof HomeFoodDraft>(
-    uid: string,
-    field: K,
-    value: HomeFoodDraft[K]
-  ) {
-    setHomeFoods((prev) =>
-      prev.map((f) => (f.uid === uid ? { ...f, [field]: value } : f))
-    );
-  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -303,51 +231,6 @@ export default function PlaceFormPage() {
         photo_urls: photos.length ? photos : null,
       },
     });
-
-    // Bulk-create the home-mode foods (only on new entries; edit form
-    // doesn't expose the multi-menu UI). Skip empty names.
-    if (!isEdit && isHome && place && typeof place === "object" && "id" in place) {
-      const placeId = (place as { id: string }).id;
-      const toCreate = homeFoods.filter((f) => f.name.trim().length > 0);
-      // Run sequentially — most home meals are 2-4 dishes, parallel
-      // bursts trip Supabase's per-second insert quota at the free tier.
-      for (const f of toCreate) {
-        try {
-          await upsertFood.mutateAsync({
-            place_id: placeId,
-            values: {
-              name: f.name.trim(),
-              my_rating: null,
-              partner_rating: null,
-              category: f.categories[0] ?? null,
-              categories: f.categories.length ? f.categories : null,
-              memo: f.memo.trim() || null,
-              memo_author_id: f.memo.trim()
-                ? f.memo_author_id ?? user.id
-                : null,
-              // Home-mode foods are always brand-new inserts, so a
-              // non-empty memo is by definition just-written.
-              memo_updated_at: f.memo.trim()
-                ? new Date().toISOString()
-                : null,
-              // photo_url is the legacy single-photo column; keep it
-              // populated with the first media so older clients still
-              // see something.
-              photo_url: f.photo_urls[0] ?? null,
-              photo_urls: f.photo_urls.length ? f.photo_urls : null,
-              // Forward whatever chef the toggle currently shows (or
-              // null if the user explicitly deselected). Premade
-              // dishes are no longer auto-null'd — letting users
-              // tag a chef on bought-and-served items if they want.
-              chef: f.chef,
-              created_by: user?.id ?? null,
-            },
-          });
-        } catch (err) {
-          console.error("[PlaceFormPage] home food insert failed:", err);
-        }
-      }
-    }
 
     // If this place was promoted from a wishlist item, drop the wishlist
     // entry so it doesn't stay in "가고 싶은 곳" after we've been.
@@ -549,70 +432,6 @@ export default function PlaceFormPage() {
           </div>
         )}
 
-        {/* Home-mode multi-menu: only on new entries. Editing a home
-            place still lets you tweak the metadata, but per-food edits
-            happen on the detail page.
-            Gated on categories — restaurants force you to pick a place
-            category before adding foods, so home mode follows the same
-            rule for symmetry. Empty state shows a hint instead of the
-            full card so the form still tells the user what's missing. */}
-        {mode === "home" && !isEdit && (
-          categories.length === 0 ? (
-            <div className="rounded-3xl border-2 border-dashed border-rose-200/70 bg-rose-50/30 p-6 text-center">
-              <span className="text-3xl block mb-1.5">🍳</span>
-              <p className="text-sm font-bold text-rose-500">
-                먼저 카테고리를 골라주세요 · 先选个种类吧
-              </p>
-              <p className="text-[11px] text-rose-400/80 mt-1">
-                카테고리를 정하면 메뉴를 추가할 수 있어요 · 选好种类才能加菜单哦
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3 bg-rose-50/40 rounded-3xl p-4 border border-rose-100/60">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-sm font-bold text-rose-500">
-                  오늘 차린 메뉴들 🍳 · 今天做了什么好吃的？
-                </span>
-                <span className="text-xs font-number font-bold text-rose-400">
-                  {homeFoods.length}
-                </span>
-              </div>
-              <div className="space-y-3">
-                {homeFoods.map((food, idx) => (
-                  <HomeFoodCard
-                    key={food.uid}
-                    index={idx}
-                    food={food}
-                    removable={homeFoods.length > 1}
-                    coupleId={couple?.id ?? ""}
-                    onRemove={() => removeHomeFood(food.uid)}
-                    onChangeName={(v) => updateHomeFood(food.uid, "name", v)}
-                    onChangeChef={(v) => updateHomeFood(food.uid, "chef", v)}
-                    onChangeCategories={(v) =>
-                      updateHomeFood(food.uid, "categories", v)
-                    }
-                    onChangeMemo={(v) => updateHomeFood(food.uid, "memo", v)}
-                    onChangeMemoAuthor={(v) =>
-                      updateHomeFood(food.uid, "memo_author_id", v)
-                    }
-                    onChangePhotos={(v) =>
-                      updateHomeFood(food.uid, "photo_urls", v)
-                    }
-                  />
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={addHomeFood}
-                className="w-full py-3 rounded-xl border-2 border-dashed border-rose-200/80 text-rose-400 font-bold text-[13px] flex items-center justify-center gap-1.5 hover:bg-rose-50 active:scale-[0.98] transition"
-              >
-                <Plus className="w-4 h-4" />
-                메뉴 추가하기 · 加个菜
-              </button>
-            </div>
-          )
-        )}
-
         <div>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             사진 · 绝美返图
@@ -687,7 +506,7 @@ export default function PlaceFormPage() {
         <button
           type="submit"
           className="btn-primary w-full"
-          disabled={upsert.isPending || upsertFood.isPending}
+          disabled={upsert.isPending}
         >
           저장 · 保存
         </button>
@@ -731,217 +550,6 @@ function ModeButton({
   );
 }
 
-function HomeFoodCard({
-  index,
-  food,
-  removable,
-  coupleId,
-  onRemove,
-  onChangeName,
-  onChangeChef,
-  onChangeCategories,
-  onChangeMemo,
-  onChangeMemoAuthor,
-  onChangePhotos,
-}: {
-  index: number;
-  food: HomeFoodDraft;
-  removable: boolean;
-  // PhotoUploader needs the couple id to scope storage paths; passed
-  // down because HomeFoodCard is rendered inside the place form
-  // before the place row exists.
-  coupleId: string;
-  onRemove: () => void;
-  onChangeName: (v: string) => void;
-  // null = "deselected" (user tapped active button to clear). Lets
-  // 완제품 dishes be saved with no chef at all.
-  onChangeChef: (v: ChefRole | null) => void;
-  onChangeCategories: (v: string[]) => void;
-  onChangeMemo: (v: string) => void;
-  onChangeMemoAuthor: (v: string) => void;
-  onChangePhotos: (v: string[]) => void;
-}) {
-  // A row-level error: the food has a name typed in but no category
-  // picked, which would land it in 미분류 on the bulk-insert.
-  const incomplete =
-    food.name.trim().length > 0 && food.categories.length === 0;
-  return (
-    <div
-      data-form-error={incomplete ? "true" : undefined}
-      className="bg-white rounded-2xl p-4 border border-rose-100/70 shadow-soft relative space-y-3"
-    >
-      {removable && (
-        <button
-          type="button"
-          onClick={onRemove}
-          className="absolute top-2.5 right-2.5 p-1.5 rounded-full text-ink-300 hover:text-rose-400 hover:bg-rose-50 transition"
-          aria-label="remove menu"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
-
-      <div className="pr-8">
-        <input
-          className="w-full bg-transparent text-[15px] font-bold text-ink-900 placeholder:text-ink-300 focus:outline-none border-b border-cream-200 focus:border-rose-300 pb-1.5 transition-colors"
-          value={food.name}
-          onChange={(e) => onChangeName(e.target.value)}
-          placeholder={`메뉴 ${index + 1} 이름 · 第 ${index + 1} 道菜`}
-        />
-      </div>
-
-      {/* Per-food category — required so the menu doesn't end up in the
-          "❓ 미분류" bucket later. Same dropdown as the standalone food
-          form so the picker UX is consistent. */}
-      <div>
-        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
-          종류 · 种类 *
-        </p>
-        <FoodCategoryDropdown
-          value={food.categories}
-          onChange={onChangeCategories}
-        />
-        {incomplete && (
-          <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
-            종류를 하나 이상 골라주세요 · 请至少选择一个种类
-          </p>
-        )}
-      </div>
-
-      {/* Chef picker — always shown for home foods (including 완제품)
-          so the user can optionally credit a chef even on bought
-          items. Tapping the active option deselects it (chef=null →
-          food has no chef and isn't credited to either side). */}
-      <div>
-        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
-          누가 요리했나요? · 谁掌勺？{" "}
-          <span className="font-medium text-ink-300">
-            (선택 안 해도 돼요 · 可不选)
-          </span>
-        </p>
-        <div className="flex gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100">
-          <ChefButton
-            active={food.chef === "me"}
-            onClick={() =>
-              onChangeChef(food.chef === "me" ? null : "me")
-            }
-            tone="peach"
-            icon={<User className="w-3.5 h-3.5" />}
-            labelKo="내가!"
-            labelZh="本大厨"
-          />
-          <ChefButton
-            active={food.chef === "partner"}
-            onClick={() =>
-              onChangeChef(food.chef === "partner" ? null : "partner")
-            }
-            tone="rose"
-            icon={<User className="w-3.5 h-3.5" />}
-            labelKo="짝꿍!"
-            labelZh="宝宝"
-          />
-          <ChefButton
-            active={food.chef === "together"}
-            onClick={() =>
-              onChangeChef(food.chef === "together" ? null : "together")
-            }
-            tone="amber"
-            icon={<Users className="w-3.5 h-3.5" />}
-            labelKo="같이!"
-            labelZh="一起做"
-          />
-        </div>
-      </div>
-
-      {/* Per-menu memo. Optional — short note about how it turned out
-          ("육수 좀 더 줄였어야"). Submitted to the foods row alongside
-          the bulk-insert.
-          The author picker stays mounted even when the memo is empty
-          so iOS Safari's Chinese/Korean IME doesn't see the DOM near
-          the textarea mutate mid-composition (which used to clobber
-          the in-progress input — felt like a sudden refresh). */}
-      <div>
-        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-          <p className="text-[11px] font-bold text-ink-400">메모 · 备注</p>
-          <div
-            className={`transition-opacity ${food.memo.trim().length > 0 ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-          >
-            <MemoAuthorPicker
-              value={food.memo_author_id}
-              onChange={onChangeMemoAuthor}
-            />
-          </div>
-        </div>
-        <textarea
-          className="input-base min-h-[60px] text-[13px]"
-          value={food.memo}
-          onChange={(e) => onChangeMemo(e.target.value)}
-          placeholder="간 좀 더 강하게 · 下次咸点"
-        />
-      </div>
-
-      {/* Per-menu photos / videos. Up to 3 to keep the home-mode card
-          from getting tall — full gallery still lives on the place
-          detail page after submit. */}
-      <div>
-        <p className="text-[11px] font-bold text-ink-400 mb-1.5">
-          사진 · 동영상 · 照片视频
-        </p>
-        {coupleId ? (
-          <PhotoUploader
-            coupleId={coupleId}
-            photos={food.photo_urls}
-            onChange={onChangePhotos}
-            max={3}
-          />
-        ) : (
-          <p className="text-[11px] text-ink-400">
-            저장 후 사진을 올릴 수 있어요 · 保存后再添加照片
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChefButton({
-  active,
-  onClick,
-  tone,
-  icon,
-  labelKo,
-  labelZh,
-}: {
-  active: boolean;
-  onClick: () => void;
-  tone: "peach" | "rose" | "amber";
-  icon: React.ReactNode;
-  labelKo: string;
-  labelZh: string;
-}) {
-  const activeColor =
-    tone === "peach"
-      ? "text-peach-500"
-      : tone === "rose"
-        ? "text-rose-500"
-        : "text-amber-500";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1 text-[12px] font-bold transition ${
-        active
-          ? `bg-white shadow-soft ${activeColor}`
-          : "text-ink-400 hover:text-ink-700"
-      }`}
-    >
-      {icon}
-      <span>
-        {labelKo} · {labelZh}
-      </span>
-    </button>
-  );
-}
 
 // Composed category picker: GroupedMultiSelect for built-in cuisine
 // types + a separate text input for freeform "직접 입력" tags. Kept
@@ -1094,50 +702,3 @@ function CategoryChipLabel({
   return <span>{value}</span>;
 }
 
-// Inline food-category dropdown used by the home-mode HomeFoodCard.
-// Shares the same widget as the standalone FoodFormPage so the picker
-// looks identical wherever the user is logging a dish.
-//
-// Home mode adds the 완제품 cluster on top of the default food types.
-// (We used to also expose "by_me / by_partner" here, but those
-// duplicated the chef toggle and confusingly didn't actually populate
-// foods.chef — pulled out in favor of the toggle being the single
-// source of truth for "who cooked this".)
-function FoodCategoryDropdown({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const { t } = useTranslation();
-  const options = useMemo<GroupedMultiSelectEntry[]>(
-    () => [
-      // Default food types render flat at the top so the most common
-      // taps (메인 / 사이드 / 디저트…) stay one click away.
-      ...FOOD_CATEGORIES.map((c) => ({
-        value: c,
-        label: t(`category.${c}`),
-        emoji: categoryEmojiOf(c),
-      })),
-      {
-        groupLabel: "📦 완제품 · 成品",
-        options: PREMADE_FOOD_CATEGORIES.map((c) => ({
-          value: c,
-          label: t(`category.${c}`),
-          emoji: categoryEmojiOf(c),
-        })),
-      },
-    ],
-    [t]
-  );
-  return (
-    <GroupedMultiSelect
-      title="카테고리 · 种类"
-      placeholder="종류 선택 · 选择种类"
-      options={options}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
