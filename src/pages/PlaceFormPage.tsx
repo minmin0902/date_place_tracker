@@ -267,11 +267,15 @@ export default function PlaceFormPage() {
       // its menus above, so it skips this and goes to the detail
       // page. Edit mode also falls through.
       const goToFoodNew = !!fromWishlistId && !isHome;
+      // state.justCreated suppresses the place-level memo composer on
+      // arrival so a brand-new record doesn't open with an empty
+      // "메모 달기…" box. Subsequent navigations to /places/<id>
+      // (timeline taps, deep links) carry no state → composer back.
       navigate(
         goToFoodNew
           ? `/places/${targetId}/foods/new`
           : `/places/${targetId}`,
-        { replace: true }
+        { replace: true, state: { justCreated: true } }
       );
     }
   }

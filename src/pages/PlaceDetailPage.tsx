@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   BookmarkPlus,
@@ -16,6 +16,7 @@ import {
   useUpsertPlace,
 } from "@/hooks/usePlaces";
 import { useMovePlaceToWishlist } from "@/hooks/useWishlist";
+import { useMemos } from "@/hooks/useMemos";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { useDisplayNames } from "@/hooks/useProfile";
@@ -38,6 +39,7 @@ const DIFF_THRESHOLD = 1;
 export default function PlaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, i18n } = useTranslation();
   const { data: place, isLoading, isError, error } = usePlace(id);
   const { user } = useAuth();
@@ -49,6 +51,17 @@ export default function PlaceDetailPage() {
   // Two-step gate for "send back to wishlist" — destructive op (drops
   // the place + its foods + memos) so the confirm dialog is required.
   const [confirmMoveBack, setConfirmMoveBack] = useState(false);
+  // PlaceFormPage hands us state.justCreated=true on the post-save
+  // redirect, so the place-level memo composer stays hidden on a
+  // brand-new record. Subsequent visits (different navigation) drop
+  // the flag and the composer reappears like a comment input.
+  const justCreated =
+    !!(location.state as { justCreated?: boolean } | null)?.justCreated;
+  // Peek the place-level thread so we can drop the entire memo card
+  // when the record is fresh and nothing has been written yet —
+  // otherwise an empty card hangs there with no content.
+  const placeMemos = useMemos({ placeId: id });
+  const placeThreadCount = placeMemos.data?.length ?? 0;
 
   async function toggleRevisit() {
     if (!place || !user || !couple) return;
@@ -343,20 +356,27 @@ export default function PlaceDetailPage() {
               <p className="text-sm text-ink-700">{place.address}</p>
             </div>
           )}
-          <div className="card p-4 space-y-3">
-            {place.memo && (
-              <MemoComment
-                memo={place.memo}
-                authorId={place.memo_author_id}
-                // memo_updated_at tracks ONLY memo edits — unrelated
-                // saves (revisit toggle, photo add) leave it alone.
-                // Falls back to created_at on legacy rows the
-                // backfill migration may have missed.
-                createdAt={place.memo_updated_at ?? place.created_at}
-              />
-            )}
-            <MemoThread placeId={place.id} />
-          </div>
+          {/* Show the memo card only when it has actual content to host
+              — primary memo, thread memos, OR the live composer. After
+              a fresh create the composer is hidden + no memos exist
+              yet, so the whole card collapses instead of leaving an
+              empty bubble. */}
+          {(place.memo || placeThreadCount > 0 || !justCreated) && (
+            <div className="card p-4 space-y-3">
+              {place.memo && (
+                <MemoComment
+                  memo={place.memo}
+                  authorId={place.memo_author_id}
+                  // memo_updated_at tracks ONLY memo edits — unrelated
+                  // saves (revisit toggle, photo add) leave it alone.
+                  // Falls back to created_at on legacy rows the
+                  // backfill migration may have missed.
+                  createdAt={place.memo_updated_at ?? place.created_at}
+                />
+              )}
+              <MemoThread placeId={place.id} hideComposer={justCreated} />
+            </div>
+          )}
         </section>
 
         {/* Foods */}

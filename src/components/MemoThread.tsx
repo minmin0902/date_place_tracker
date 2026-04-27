@@ -25,11 +25,18 @@ export function MemoThread({
   placeId,
   foodId,
   size = "md",
+  hideComposer = false,
 }: {
   placeId?: string;
   foodId?: string;
   // Smaller layout when the thread lives inside a tight food card.
   size?: "sm" | "md";
+  // When true, render only the existing memo list — no inline composer.
+  // PlaceDetailPage flips this on right after a fresh create so the
+  // empty "메모 달기…" box doesn't sit on a brand-new record. Once the
+  // user navigates back later, the composer comes back like a comment
+  // input.
+  hideComposer?: boolean;
 }) {
   const { user } = useAuth();
   const { data: couple } = useCouple();
@@ -133,8 +140,10 @@ export function MemoThread({
       {/* Composer. Camera icon lives inline with send so the bar
           reads like a chat input — no separate uploader card, no
           helper text. Selected media shows as a small thumb strip
-          above the input only when it's actually populated. */}
-      {couple && user && (
+          above the input only when it's actually populated.
+          Suppressed entirely when `hideComposer` so the place detail
+          page stays clean immediately after a fresh create. */}
+      {couple && user && !hideComposer && (
         <div className="border-t border-cream-100 pt-3 space-y-2">
           {photos.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
