@@ -74,13 +74,16 @@ This stores data in `localStorage` (couples, places, foods, photos as data URLs)
 ```
 src/
   components/     Shared UI (AppShell, PageHeader, RatingPicker, …)
-  hooks/          useAuth, useCouple, usePlaces (CRUD + photo upload)
+  hooks/          useAuth, useCouple, usePlaces, useWishlist, useMemos, …
   i18n/           ko.ts, zh.ts, index.ts
   lib/            supabase client, types, utils, constants
-  pages/          LoginPage, CoupleSetupPage, HomePage, PlaceDetail/Form,
-                  FoodFormPage, ComparePage, MapPage, SettingsPage
+  pages/          Login, CoupleSetup, Home, PlaceDetail/Form, FoodForm,
+                  Compare, Map, Wishlist, Notifications, Profile, Settings
 supabase/
-  schema.sql      Tables, RLS, join_couple RPC
+  schema.sql      Initial tables, RLS, join_couple RPC
+  migrations/     Incremental schema changes (run in order)
+  functions/
+    send-push/    Edge Function — push notifications
 ```
 
 ## Data model
@@ -94,3 +97,7 @@ Food total = `my_rating + partner_rating` (max 10). Place avg = mean of food tot
 ## Deploy
 
 Vercel: connect repo, set the three env vars, deploy. No other config needed.
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.
