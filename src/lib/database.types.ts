@@ -1,5 +1,8 @@
 export type ChefRole = "me" | "partner" | "together";
 
+// Wishlist split: location-anchored 'restaurant' vs cook-at-home 'recipe'.
+export type WishlistKind = "restaurant" | "recipe";
+
 // Who ate this food. Stored from the creator's perspective (same
 // convention as my_rating/partner_rating). Default 'both'.
 //   'both'    — both partners ate
@@ -262,24 +265,33 @@ export type Database = {
         Row: {
           id: string;
           couple_id: string;
+          // 'restaurant' = 가고 싶은 식당 (location-anchored).
+          // 'recipe' = 만들고 싶은 레시피 (text + screenshots, no location).
+          kind: WishlistKind;
           name: string;
           category: string | null;
           memo: string | null;
           address: string | null;
           latitude: number | null;
           longitude: number | null;
+          // Recipe-only fields. Restaurant rows leave these null.
+          recipe_text: string | null;
+          recipe_photo_urls: string[] | null;
           created_by: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           couple_id: string;
+          kind?: WishlistKind;
           name: string;
           category?: string | null;
           memo?: string | null;
           address?: string | null;
           latitude?: number | null;
           longitude?: number | null;
+          recipe_text?: string | null;
+          recipe_photo_urls?: string[] | null;
           created_by?: string | null;
         };
         Update: Partial<

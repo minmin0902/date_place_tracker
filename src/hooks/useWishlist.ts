@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { WishlistPlace } from "@/lib/database.types";
+import type { WishlistKind, WishlistPlace } from "@/lib/database.types";
 import { useAuth } from "./useAuth";
 import {
   getWishlist as getLocalWishlist,
@@ -34,36 +34,49 @@ export function useAddWishlist() {
   return useMutation({
     mutationFn: async (input: {
       coupleId: string;
+      // Defaults to 'restaurant' so older callers don't have to pass it.
+      kind?: WishlistKind;
       name: string;
       category: string | null;
       memo: string | null;
       address: string | null;
       latitude: number | null;
       longitude: number | null;
+      recipe_text?: string | null;
+      recipe_photo_urls?: string[] | null;
     }) => {
       if (!user) throw new Error("not authenticated");
+      const kind: WishlistKind = input.kind ?? "restaurant";
+      const recipeText = input.recipe_text ?? null;
+      const recipePhotoUrls = input.recipe_photo_urls ?? null;
       if (ALLOW_NO_AUTH) {
         return addLocalWishlist({
           coupleId: input.coupleId,
           userId: user.id,
+          kind,
           name: input.name,
           category: input.category,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
           longitude: input.longitude,
+          recipe_text: recipeText,
+          recipe_photo_urls: recipePhotoUrls,
         });
       }
       const { data, error } = await supabase
         .from("wishlist_places")
         .insert({
           couple_id: input.coupleId,
+          kind,
           name: input.name,
           category: input.category,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
           longitude: input.longitude,
+          recipe_text: recipeText,
+          recipe_photo_urls: recipePhotoUrls,
           created_by: user.id,
         })
         .select()
@@ -116,17 +129,22 @@ export function useMovePlaceToWishlist() {
       if (!user) throw new Error("not authenticated");
       if (ALLOW_NO_AUTH) {
         // localDb mode: best-effort mirror — add to wishlist, drop
-        // the place via the existing local helper.
+        // the place via the existing local helper. Place→wishlist demotion
+        // only applies to restaurants (recipes don't have a place to
+        // demote from), so kind always lands as 'restaurant'.
         const { deletePlace } = await import("@/lib/localDb");
         addLocalWishlist({
           coupleId: input.coupleId,
           userId: user.id,
+          kind: "restaurant",
           name: input.name,
           category: input.category,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
           longitude: input.longitude,
+          recipe_text: null,
+          recipe_photo_urls: null,
         });
         deletePlace(input.placeId);
         return;

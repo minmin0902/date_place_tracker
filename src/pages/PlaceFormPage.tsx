@@ -144,12 +144,18 @@ export default function PlaceFormPage() {
     },
   });
 
-  // Prefill from a wishlist item when user clicked "다녀왔어요".
+  // Prefill from a wishlist item when user clicked "다녀왔어요" /
+  // "만들어봤어요". Recipe-kind wishlist promotions auto-flip to home
+  // mode so the form lands on the right shape without an extra tap;
+  // the recipe text + screenshots stay on the wishlist row until save
+  // (where the wishlist gets deleted) — the user can copy them into
+  // a food on the new place's detail page.
   useEffect(() => {
     if (isEdit || !fromWishlistId) return;
     let cancelled = false;
     void fetchWishlistItem(fromWishlistId).then((w) => {
       if (cancelled || !w) return;
+      if (w.kind === "recipe") setMode("home");
       setName(w.name);
       if (w.category) setCategories([w.category]);
       if (w.memo) setMemo(w.memo);

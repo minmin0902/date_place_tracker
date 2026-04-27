@@ -3,6 +3,7 @@ import type {
   Place,
   Food,
   Memo,
+  WishlistKind,
   WishlistPlace,
 } from "./database.types";
 
@@ -237,23 +238,29 @@ export function getWishlist(coupleId: string): WishlistPlace[] {
 export function addWishlist(input: {
   coupleId: string;
   userId: string;
+  kind: WishlistKind;
   name: string;
   category: string | null;
   memo: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
+  recipe_text: string | null;
+  recipe_photo_urls: string[] | null;
 }): WishlistPlace {
   const db = load();
   const item: WishlistPlace = {
     id: crypto.randomUUID(),
     couple_id: input.coupleId,
+    kind: input.kind,
     name: input.name,
     category: input.category,
     memo: input.memo,
     address: input.address,
     latitude: input.latitude,
     longitude: input.longitude,
+    recipe_text: input.recipe_text,
+    recipe_photo_urls: input.recipe_photo_urls,
     created_by: input.userId,
     created_at: new Date().toISOString(),
   };

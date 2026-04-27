@@ -1893,11 +1893,21 @@ function WishlistView({
         open={!!confirmingVisit}
         title={
           confirmingVisit
-            ? `${confirmingVisit.name}, 다녀왔어요? · 真的去过这里了吗？`
+            ? confirmingVisit.kind === "recipe"
+              ? `${confirmingVisit.name}, 만들어봤어요? · 真的做过这道菜了吗？`
+              : `${confirmingVisit.name}, 다녀왔어요? · 真的去过这里了吗？`
             : ""
         }
-        body="기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요. · 会跳到记录页面，路过的话先看看也行。"
-        confirmLabel="응! 다녀왔어 · 嗯，去过了！"
+        body={
+          confirmingVisit?.kind === "recipe"
+            ? "집밥 기록 추가 화면으로 넘어가요. 아직이면 취소해도 돼요. · 会跳到家宴记录页面，还没做的话先看看也行。"
+            : "기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요. · 会跳到记录页面，路过的话先看看也行。"
+        }
+        confirmLabel={
+          confirmingVisit?.kind === "recipe"
+            ? "응! 만들어봤어 · 嗯，做过了！"
+            : "응! 다녀왔어 · 嗯，去过了！"
+        }
         cancelLabel="先看看 · 좀 더 볼게"
         onCancel={() => setConfirmingVisit(null)}
         onConfirm={() => {
@@ -1920,6 +1930,9 @@ function WishlistCard({
   onMarkVisited: () => void;
 }) {
   const { t } = useTranslation();
+  // Legacy rows missing the kind column read as undefined → fall back
+  // to 'restaurant' so existing wishlist cards keep their old layout.
+  const isRecipe = item.kind === "recipe";
   return (
     <div className="bg-white rounded-2xl p-4 border border-peach-100 shadow-soft relative overflow-hidden">
       <button
@@ -1931,19 +1944,32 @@ function WishlistCard({
         <Trash2 className="w-4 h-4" />
       </button>
       <div className="flex items-start gap-3 pr-8">
-        <div className="w-12 h-12 rounded-xl bg-peach-50 flex items-center justify-center text-2xl flex-shrink-0">
-          {categoryIcon(item.category)}
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${
+            isRecipe ? "bg-rose-50" : "bg-peach-50"
+          }`}
+        >
+          {isRecipe ? "📒" : categoryIcon(item.category)}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-ink-900 text-base truncate">
+          <h3 className="font-bold text-ink-900 text-base truncate flex items-center gap-1.5 flex-wrap">
             {item.name}
+            <span
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold leading-none shrink-0 whitespace-nowrap border ${
+                isRecipe
+                  ? "bg-rose-50 text-rose-600 border-rose-100"
+                  : "bg-peach-50 text-peach-600 border-peach-100"
+              }`}
+            >
+              {isRecipe ? "📒 레시피 · 食谱" : "🏠 식당 · 餐厅"}
+            </span>
           </h3>
           {item.category && (
             <p className="text-[11px] text-peach-500 mt-0.5 font-medium">
               {t(`category.${item.category}`)}
             </p>
           )}
-          {item.address && (
+          {item.address && !isRecipe && (
             <p className="text-[11px] text-ink-500 mt-1 flex items-center gap-1 truncate">
               <MapPin className="w-3 h-3 flex-shrink-0" />
               <span className="truncate">{item.address}</span>
@@ -1961,7 +1987,9 @@ function WishlistCard({
               className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-500 text-xs font-bold rounded-lg border border-rose-100 hover:bg-rose-100 transition"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              다녀왔어요! · 种草成功
+              {isRecipe
+                ? "만들어봤어요! · 已经做过了"
+                : "다녀왔어요! · 种草成功"}
             </button>
           </div>
         </div>
