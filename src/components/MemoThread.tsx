@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Trash2, Send, ImagePlus, X, AlertCircle } from "lucide-react";
 import { useAddMemo, useDeleteMemo, useMemos } from "@/hooks/useMemos";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { useCoupleProfiles } from "@/hooks/useProfile";
 import { uploadPhoto } from "@/hooks/usePlaces";
+import { useFormDraft } from "@/hooks/useDraft";
 import { assertVideoUnderLimit } from "@/lib/media-validation";
 import { isVideoUrl } from "@/lib/utils";
 import { MemoComment } from "./MemoComment";
@@ -55,6 +56,34 @@ export function MemoThread({
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState<string | null>(null);
 
+  // Persist composer state to localStorage so a backgrounded tab —
+  // app-switch on iOS / Android, browser killed by OS, accidental
+  // back-nav — doesn't drop a half-typed memo + already-uploaded
+  // photos. Key is scoped per target so place + food composers don't
+  // overwrite each other.
+  const draftKey = useMemo(() => {
+    if (placeId) return `memo-thread-draft:place:${placeId}`;
+    if (foodId) return `memo-thread-draft:food:${foodId}`;
+    return "memo-thread-draft:unscoped";
+  }, [placeId, foodId]);
+  const draftSnapshot = useMemo(
+    () => ({ body, authorId, photos }),
+    [body, authorId, photos]
+  );
+  const draft = useFormDraft({
+    key: draftKey,
+    enabled: true,
+    snapshot: draftSnapshot,
+    restore: (saved) => {
+      if (typeof saved.body === "string") setBody(saved.body);
+      if (saved.authorId !== undefined)
+        setAuthorId(
+          saved.authorId === null ? null : (saved.authorId as string)
+        );
+      if (Array.isArray(saved.photos)) setPhotos(saved.photos as string[]);
+    },
+  });
+
   const memos = memosQuery.data ?? [];
   const isSm = size === "sm";
 
@@ -98,6 +127,9 @@ export function MemoThread({
     setBody("");
     setAuthorId(null);
     setPhotos([]);
+    // Sent successfully → drop the draft so the next composer mount
+    // starts clean. Otherwise the just-sent text would re-hydrate.
+    draft.clear();
   }
 
   async function onDelete(memoId: string) {
