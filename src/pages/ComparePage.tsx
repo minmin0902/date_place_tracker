@@ -347,9 +347,12 @@ export default function ComparePage() {
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("fame");
   // Sub-toggle inside each list tab: 식당 (place-level aggregate) vs
-  // 메뉴 (per-food). Same source rows, different reduction. Default to
-  // 식당별 because the tab strip reads restaurant-first → menu.
-  const [fameView, setFameView] = useState<"menu" | "restaurant">("restaurant");
+  // 메뉴 (per-food). Same source rows, different reduction. Fame gets
+  // an extra '집밥' (home meal) cut so out vs home places are ranked
+  // separately — a 4.8 받은 회식집이랑 4.8 받은 집밥은 다른 트로피.
+  const [fameView, setFameView] = useState<
+    "menu" | "restaurant" | "home"
+  >("restaurant");
   const [clashView, setClashView] = useState<"menu" | "restaurant">("restaurant");
   const [passView, setPassView] = useState<"menu" | "restaurant">("restaurant");
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
@@ -474,8 +477,20 @@ export default function ComparePage() {
     out.sort((a, b) => b.total - a.total);
     return out;
   }, [filteredRows]);
-  const famePlacesTop = famePlaces.slice(0, 3);
-  const famePlacesRest = famePlaces.slice(3);
+  // Split the place-level fame list by mode so the fame tab can
+  // surface 식당별 vs 집밥별 separately. Each subset keeps its own
+  // 1/2/3 podium + 천생연분 tail, so a single home meal can take TOP
+  // 1 in 집밥 even if the overall fame board is 회식집-heavy.
+  const famePlacesRestaurant = famePlaces.filter(
+    (p) => !p.rows[0]?.isHomeCooked
+  );
+  const famePlacesHome = famePlaces.filter(
+    (p) => !!p.rows[0]?.isHomeCooked
+  );
+  const famePlacesRestaurantTop = famePlacesRestaurant.slice(0, 3);
+  const famePlacesRestaurantRest = famePlacesRestaurant.slice(3);
+  const famePlacesHomeTop = famePlacesHome.slice(0, 3);
+  const famePlacesHomeRest = famePlacesHome.slice(3);
 
   const neverAgain = [...filteredRows]
     .filter((r) => r.mine <= LOW && r.partner <= LOW)
@@ -807,32 +822,38 @@ export default function ComparePage() {
                 titleKo={
                   fameView === "menu"
                     ? "둘 다 4.5점 이상 — 우리의 레전드 메뉴"
-                    : "둘 다 평균 4.5점 이상 — 우리의 레전드 식당"
+                    : fameView === "home"
+                      ? "둘 다 평균 4.5점 이상 — 우리집 레전드 메뉴"
+                      : "둘 다 평균 4.5점 이상 — 우리의 레전드 식당"
                 }
                 titleZh={
                   fameView === "menu"
                     ? "俩人都给了4.5+，封神级菜品！"
-                    : "俩人均分都给了4.5+，封神级店铺！"
+                    : fameView === "home"
+                      ? "俩人均分都给了4.5+，家里封神级！"
+                      : "俩人均分都给了4.5+，封神级店铺！"
                 }
                 empty={
                   fameView === "menu"
                     ? fameAll.length === 0
-                    : famePlaces.length === 0
+                    : fameView === "home"
+                      ? famePlacesHome.length === 0
+                      : famePlacesRestaurant.length === 0
                 }
                 emptyText={
                   fameView === "menu"
                     ? "아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
-                    : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
+                    : fameView === "home"
+                      ? "아직 평균 4.5점 이상 집밥이 없어요 · 还没有4.5+的家宴"
+                      : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
                 }
               >
-                {/* Restaurant vs menu sub-toggle. Restaurant on the
-                    left because the place-level aggregate is what
-                    most users want first ("which spot wins"); menu
-                    drill-down sits on the right. */}
-                <ListViewToggle
-                  view={fameView}
-                  onChange={setFameView}
-                />
+                {/* Restaurant / home / menu segmented toggle —
+                    fame splits places by mode (외식 vs 집밥) so a
+                    closet 회식집 doesn't crowd out the home cooks
+                    on the same trophy shelf. Restaurant on the left,
+                    menu drill-down on the right. */}
+                <FameViewToggle view={fameView} onChange={setFameView} />
 
                 {fameView === "menu" && (
                   <>
@@ -842,6 +863,7 @@ export default function ComparePage() {
                         r={r}
                         showTotal
                         yyds
+                        rank={idx + 1}
                         badge={`🏆 TOP ${idx + 1}`}
                         myDisplay={myDisplay}
                         partnerDisplay={partnerDisplay}
@@ -859,11 +881,12 @@ export default function ComparePage() {
                           </span>
                         </div>
                         <ExpandableList items={fameRest} initial={5}>
-                          {(r) => (
+                          {(r, idx) => (
                             <FoodCard
                               key={r.foodId}
                               r={r}
                               showTotal
+                              rank={idx + 4}
                               myDisplay={myDisplay}
                               partnerDisplay={partnerDisplay}
                             />
@@ -876,16 +899,17 @@ export default function ComparePage() {
 
                 {fameView === "restaurant" && (
                   <>
-                    {famePlacesTop.map((p, idx) => (
+                    {famePlacesRestaurantTop.map((p, idx) => (
                       <PlaceFameCard
                         key={p.placeId}
                         p={p}
+                        rank={idx + 1}
                         badge={`🏆 TOP ${idx + 1}`}
                         myDisplay={myDisplay}
                         partnerDisplay={partnerDisplay}
                       />
                     ))}
-                    {famePlacesRest.length > 0 && (
+                    {famePlacesRestaurantRest.length > 0 && (
                       <div className="pt-2 mt-2">
                         <div className="flex items-center gap-2 mb-3 px-1">
                           <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
@@ -893,14 +917,60 @@ export default function ComparePage() {
                             우리의 단골감 · 心头好店铺
                           </span>
                           <span className="text-[10px] text-ink-400 font-number">
-                            {famePlacesRest.length}
+                            {famePlacesRestaurantRest.length}
                           </span>
                         </div>
-                        <ExpandableList items={famePlacesRest} initial={5}>
-                          {(p) => (
+                        <ExpandableList
+                          items={famePlacesRestaurantRest}
+                          initial={5}
+                        >
+                          {(p, idx) => (
                             <PlaceFameCard
                               key={p.placeId}
                               p={p}
+                              rank={idx + 4}
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {fameView === "home" && (
+                  <>
+                    {famePlacesHomeTop.map((p, idx) => (
+                      <PlaceFameCard
+                        key={p.placeId}
+                        p={p}
+                        rank={idx + 1}
+                        badge={`🏆 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {famePlacesHomeRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            우리집 단골 메뉴 · 家里的拿手菜
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {famePlacesHomeRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList
+                          items={famePlacesHomeRest}
+                          initial={5}
+                        >
+                          {(p, idx) => (
+                            <PlaceFameCard
+                              key={p.placeId}
+                              p={p}
+                              rank={idx + 4}
                               myDisplay={myDisplay}
                               partnerDisplay={partnerDisplay}
                             />
@@ -2206,14 +2276,14 @@ function ExpandableList<T>({
 }: {
   items: T[];
   initial?: number;
-  children: (item: T) => React.ReactNode;
+  children: (item: T, index: number) => React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? items : items.slice(0, initial);
   const hiddenCount = items.length - initial;
   return (
     <>
-      {visible.map(children)}
+      {visible.map((item, idx) => children(item, idx))}
       {hiddenCount > 0 && (
         <button
           type="button"
@@ -2310,6 +2380,44 @@ function ListViewToggle({
   );
 }
 
+// ---------- fame view toggle (3-way) ----------
+
+// Fame-only 3-button toggle: 식당 / 집밥 / 메뉴. Restaurants and
+// home cooks get separate place-level rankings so a 4.8점 회식집과
+// 4.8점 집밥이 같은 트로피 자리를 두고 경쟁하지 않음. 메뉴별 (per-
+// food) drill-down stays on the right edge.
+function FameViewToggle({
+  view,
+  onChange,
+}: {
+  view: "menu" | "restaurant" | "home";
+  onChange: (v: "menu" | "restaurant" | "home") => void;
+}) {
+  const btn = (
+    target: "menu" | "restaurant" | "home",
+    label: string
+  ) => (
+    <button
+      type="button"
+      onClick={() => onChange(target)}
+      className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+        view === target
+          ? "bg-white shadow-sm text-ink-900 border border-cream-200"
+          : "text-ink-500"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
+      {btn("restaurant", "🏠 식당별 · 按店铺")}
+      {btn("home", "🍳 집밥별 · 按家宴")}
+      {btn("menu", "🍽️ 메뉴별 · 按菜品")}
+    </div>
+  );
+}
+
 // ---------- food card ----------
 
 function FoodCard({
@@ -2318,6 +2426,7 @@ function FoodCard({
   showBalance,
   badge,
   yyds,
+  rank,
   myDisplay,
   partnerDisplay,
 }: {
@@ -2326,6 +2435,10 @@ function FoodCard({
   showBalance?: boolean;
   badge?: string;
   yyds?: boolean;
+  // 1-indexed rank inside the current fame menu list. Rendered as a
+  // small #N chip next to the food name when present + no trophy
+  // badge — top 3 already carry 🏆 TOP X so we don't double up.
+  rank?: number;
   myDisplay: string;
   partnerDisplay: string;
 }) {
@@ -2362,6 +2475,11 @@ function FoodCard({
       <div className="flex items-start justify-between gap-3 pr-1">
         <div className="min-w-0 flex-1">
           <p className="font-bold text-ink-900 text-base truncate flex items-center gap-1.5 flex-wrap">
+            {!yyds && rank != null && (
+              <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-md bg-cream-100 text-ink-700 text-[11px] font-number font-bold flex-shrink-0">
+                #{rank}
+              </span>
+            )}
             {r.foodName}
             {r.isHomeCooked && (
               <span className="bg-teal-50 text-teal-600 border border-teal-100 px-1.5 py-0.5 rounded text-[9px] font-bold leading-none shrink-0 whitespace-nowrap">
@@ -2424,11 +2542,17 @@ function FoodCard({
 function PlaceFameCard({
   p,
   badge,
+  rank,
   myDisplay,
   partnerDisplay,
 }: {
   p: FamePlace;
   badge?: string;
+  // Numeric rank inside the current fame list (1-indexed). Top 3 also
+  // get a gold trophy badge; everything else just shows the bare
+  // number so users can read the leaderboard order without doing the
+  // counting themselves.
+  rank?: number;
   myDisplay: string;
   partnerDisplay: string;
 }) {
@@ -2458,8 +2582,13 @@ function PlaceFameCard({
       )}
       <div className="flex items-start justify-between gap-3 pr-1">
         <div className="min-w-0 flex-1">
-          <p className="font-bold text-ink-900 text-base truncate">
-            {p.placeName}
+          <p className="font-bold text-ink-900 text-base truncate flex items-center gap-1.5">
+            {!yyds && rank != null && (
+              <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-md bg-cream-100 text-ink-700 text-[11px] font-number font-bold flex-shrink-0">
+                #{rank}
+              </span>
+            )}
+            <span className="truncate">{p.placeName}</span>
           </p>
           <p className="text-xs text-ink-500 truncate mt-0.5">
             🍽️ {p.rows.length}개·道 평균 · 平均
