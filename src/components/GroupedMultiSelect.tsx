@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, X } from "lucide-react";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 // Grouped multi-select with clickable group headers.
 //
@@ -75,16 +76,13 @@ export function GroupedMultiSelect({
     return out;
   }, [options]);
 
-  // Lock body scroll while modal is open so the underlying page doesn't
-  // jump when the user scrolls within the picker.
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  // Lock body scroll while modal is open. iOS Safari ignores plain
+  // `body { overflow: hidden }` for touch scrolling — fingers still
+  // drag the page, which then rubber-bands and snaps back, eating the
+  // modal's own scroll. useBodyScrollLock pins the body via
+  // position:fixed + top:-scrollY, which is the only trick that
+  // actually freezes the page on iOS so the modal can scroll cleanly.
+  useBodyScrollLock(open);
 
   function toggleOne(v: string) {
     if (singleSelect) {
@@ -187,14 +185,26 @@ export function GroupedMultiSelect({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-3"
+          // items-center on every breakpoint (was items-end on mobile)
+          // — items-end pinned the card's bottom to layout-viewport
+          // bottom, which on iOS Safari sits BEHIND the URL bar, so
+          // the footer (저장 button) was hidden under the chrome.
+          // Centering leaves breathing room top/bottom + 85dvh max-h
+          // so it can't grow into the URL bar zone.
+          className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-center justify-center p-3"
           onClick={() => setOpen(false)}
         >
+          {/* Card modal with flex-col layout: header / scrollable body
+              (flex-1 min-h-0) / footer. iOS Safari has been hostile
+              to sticky-inside-overflow patterns — the bottom save
+              button kept sliding off-screen. The 3-zone flex-col
+              splits them into separate flex items, so header + footer
+              are always visible regardless of body content height. */}
           <div
-            className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-cream-200 animate-in slide-in-from-bottom-2 duration-200"
+            className="bg-white rounded-3xl w-full max-w-md max-h-[85dvh] flex flex-col overflow-hidden shadow-2xl border border-cream-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-cream-200">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-cream-200 flex-shrink-0">
               <div className="min-w-0">
                 <h3 className="font-bold text-ink-900 text-base break-keep">
                   {title ?? placeholder}
@@ -215,7 +225,10 @@ export function GroupedMultiSelect({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            <div
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
               {options.map((entry, idx) => {
                 if (!isGroup(entry)) {
                   // Top-level flat option (e.g. "미분류" sentinel).
@@ -283,7 +296,7 @@ export function GroupedMultiSelect({
               })}
             </div>
 
-            <div className="border-t border-cream-200 px-4 py-3 flex items-center justify-between gap-3">
+            <div className="border-t border-cream-200 px-4 py-3 flex items-center justify-between gap-3 flex-shrink-0 bg-white">
               {singleSelect ? (
                 allowEmpty ? (
                   <button
@@ -315,7 +328,7 @@ export function GroupedMultiSelect({
                 onClick={() => setOpen(false)}
                 className="px-4 py-2 bg-ink-900 text-white rounded-xl text-[12px] font-bold hover:bg-ink-700 transition"
               >
-                완료 · 完成{singleSelect ? "" : ` (${value.length})`}
+                저장 · 保存{singleSelect ? "" : ` (${value.length})`}
               </button>
             </div>
           </div>
