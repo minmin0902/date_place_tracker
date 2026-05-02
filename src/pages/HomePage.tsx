@@ -48,7 +48,6 @@ import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
-import { useVisualViewport } from "@/hooks/useVisualViewportHeight";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 
 type Tab = "timeline" | "wishlist";
@@ -2196,6 +2195,19 @@ export function RouletteModal({
       .map(([c]) => c);
   }, [sourcePool, categoryFilter]);
 
+  // City dropdown options — flat (no grouping) since city names are
+  // freeform strings derived from address. Multi-select like the
+  // category picker so users can pick "서울" + "부산" together.
+  const cityDropdownOptions = useMemo<GroupedMultiSelectEntry[]>(
+    () =>
+      availableCities.map((c) => ({
+        value: c,
+        label: c,
+        emoji: "📍",
+      })),
+    [availableCities]
+  );
+
   const pool = useMemo(() => {
     let out = sourcePool;
     if (categoryFilter) out = out.filter((e) => e.category === categoryFilter);
@@ -2223,11 +2235,11 @@ export function RouletteModal({
     if (changed) setCityFilter(next);
   }, [cityFilter, availableCities]);
 
-  // Lock the page underneath while the roulette is open, and track the
-  // visible viewport so the spin button stays above the keyboard / URL
-  // bar collapse on iOS — same fix as WishlistAddSheet.
+  // Lock the page underneath while the roulette is open. The
+  // visualViewport hack we used to anchor against was unreliable on
+  // iOS PWA — switched to svh-bounded card sizing instead (matches
+  // GroupedMultiSelect / wishlist form patterns).
   useBodyScrollLock(open);
-  const vv = useVisualViewport(open);
 
   // Reset on open/close, and seed a teaser pick when the pool changes.
   // setCityFilter must use the functional form and bail out when the Set
@@ -2287,34 +2299,25 @@ export function RouletteModal({
     </button>
   );
 
-  const wrapperStyle: React.CSSProperties = vv
-    ? {
-        position: "fixed",
-        left: 0,
-        right: 0,
-        top: vv.offsetTop,
-        height: vv.height,
-        zIndex: 50,
-      }
-    : { position: "fixed", inset: 0, zIndex: 50 };
-
   return (
-    <div className="flex items-end sm:items-center justify-center p-0 sm:p-4" style={wrapperStyle}>
+    // Same modal pattern as GroupedMultiSelect: dvh-sized flex
+    // container + svh-bounded card centered on every breakpoint.
+    // The previous visualViewport hack drifted on iOS PWA where vv
+    // sometimes lagged the real viewport, hiding the spin button
+    // under the chrome. svh always uses the smallest visible area
+    // so the bottom action bar stays inside the safe zone.
+    <div
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-center justify-center p-3"
+      style={{ height: "100dvh" }}
+      onClick={onClose}
+    >
       <div
-        className="absolute inset-0 bg-ink-900/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      {/* Same explicit-height + flex-column pattern as WishlistAddSheet:
-          card has a fixed slot for header / scroll body / sticky
-          action footer so the spin button is always reachable no
-          matter how many category / city chips render. */}
-      <div
-        className="relative z-10 bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-sm shadow-2xl flex flex-col overflow-hidden"
+        className="relative z-10 bg-white rounded-3xl w-full max-w-sm shadow-2xl flex flex-col overflow-hidden border border-cream-200"
         style={{
+          maxHeight: "min(75svh, 600px)",
           overscrollBehavior: "contain",
-          height: vv ? `${Math.max(vv.height - 24, vv.height * 0.7)}px` : "90dvh",
-          maxHeight: vv ? `${vv.height}px` : "90dvh",
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header — fixed at top, never scrolls. */}
         <div className="flex-shrink-0 relative px-5 pt-5 pb-3 border-b border-cream-100 bg-white">
@@ -2340,19 +2343,19 @@ export function RouletteModal({
         <div className="flex bg-cream-100 p-1 rounded-xl mb-2.5">
           {sourceButton(
             "revisit",
-            "또 갈래 · 二刷",
+            "去过的中",
             <Heart
               className={`w-3.5 h-3.5 ${source === "revisit" ? "fill-rose-400 text-rose-400" : ""}`}
             />
           )}
           {sourceButton(
             "wishlist",
-            "가볼래 · 种草",
+            "想去的中",
             <BookmarkPlus className="w-3.5 h-3.5" />
           )}
           {sourceButton(
             "both",
-            "다 돌려! · 交给天意",
+            "全都行",
             <Dice5 className="w-3.5 h-3.5" />
           )}
         </div>
@@ -2377,41 +2380,20 @@ export function RouletteModal({
           </div>
         )}
 
-        {/* city chips — multi-select. Empty set = "all cities". */}
+        {/* city dropdown — same picker shape as the category dropdown
+            above. Multi-select; empty selection = "전부". */}
         {availableCities.length > 0 && (
           <div className="mb-3">
             <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
               도시 · 城市
             </p>
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => setCityFilter(new Set())}
-                className={`chip text-[11px] px-2.5 py-0.5 ${cityFilter.size === 0 ? "chip-active" : ""}`}
-              >
-                전부 · 全部
-              </button>
-              {availableCities.map((c) => {
-                const active = cityFilter.has(c);
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() =>
-                      setCityFilter((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(c)) next.delete(c);
-                        else next.add(c);
-                        return next;
-                      })
-                    }
-                    className={`chip gap-1 text-[11px] px-2.5 py-0.5 ${active ? "chip-active" : ""}`}
-                  >
-                    📍 {c}
-                  </button>
-                );
-              })}
-            </div>
+            <GroupedMultiSelect
+              title="도시 · 城市"
+              placeholder="전부 · 全部"
+              options={cityDropdownOptions}
+              value={[...cityFilter]}
+              onChange={(next) => setCityFilter(new Set(next))}
+            />
           </div>
         )}
 
