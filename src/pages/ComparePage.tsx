@@ -696,10 +696,7 @@ export default function ComparePage() {
                   {id === "roulette" && (
                     <RouletteCard
                       onSpin={() => setRouletteOpen(true)}
-                      revisitCount={
-                        (places ?? []).filter((p) => p.want_to_revisit)
-                          .length
-                      }
+                      visitedCount={(places ?? []).length}
                       wishlistCount={(wishlist ?? []).length}
                     />
                   )}
@@ -2861,14 +2858,14 @@ function CardEditorModal({
 // not a stat readout.
 function RouletteCard({
   onSpin,
-  revisitCount,
+  visitedCount,
   wishlistCount,
 }: {
   onSpin: () => void;
-  revisitCount: number;
+  visitedCount: number;
   wishlistCount: number;
 }) {
-  const total = revisitCount + wishlistCount;
+  const total = visitedCount + wishlistCount;
   return (
     <div className="relative bg-gradient-to-br from-peach-50 to-rose-50 rounded-3xl p-5 border border-peach-200/70 shadow-airy h-full flex flex-col min-h-[420px] overflow-hidden">
       <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-gradient-to-br from-peach-300 to-rose-300 opacity-25 blur-2xl pointer-events-none" />
@@ -2884,29 +2881,43 @@ function RouletteCard({
           오늘 뭐 먹지? · 今天吃啥？
         </p>
         <p className="text-[11px] font-medium text-ink-500 break-keep px-2">
-          또갈래·가볼래에서 한 곳을 운명이 골라드림 ·
-          二刷·种草里随机抽一家
+          去过的·想去的中随机抽一家
         </p>
       </div>
 
       <div className="relative z-10 mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl px-2 py-1.5 border border-rose-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-rose-400">
-            또 갈래 · 二刷
+            가본 곳 · 去过的
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
-            {revisitCount}
+            {visitedCount}
+            <span className="text-[10px] font-bold text-ink-400 ml-0.5">
+              곳·家
+            </span>
           </div>
         </div>
         <div className="rounded-xl px-2 py-1.5 border border-amber-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-amber-500">
-            가볼래 · 种草
+            가고 싶은 곳 · 想去的
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
             {wishlistCount}
+            <span className="text-[10px] font-bold text-ink-400 ml-0.5">
+              곳·家
+            </span>
           </div>
         </div>
       </div>
+
+      {/* "Pick from these" line — explicit total + 1-pick framing so
+          the two cards don't read as standalone stats. Hidden when
+          there's nothing to spin. */}
+      {total > 0 && (
+        <p className="relative z-10 mt-2 text-[10px] font-bold text-ink-500 text-center">
+          총 {total}곳 중에서 한 곳 · 共 {total} 家中随机抽 1 家
+        </p>
+      )}
 
       <button
         type="button"
