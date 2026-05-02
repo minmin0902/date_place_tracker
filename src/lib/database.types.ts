@@ -269,7 +269,10 @@ export type Database = {
           // 'recipe' = 만들고 싶은 레시피 (text + screenshots, no location).
           kind: WishlistKind;
           name: string;
+          // Legacy scalar — kept in sync with categories[0] for older
+          // client builds. New code should branch on `categories`.
           category: string | null;
+          categories: string[] | null;
           memo: string | null;
           address: string | null;
           latitude: number | null;
@@ -286,6 +289,7 @@ export type Database = {
           kind?: WishlistKind;
           name: string;
           category?: string | null;
+          categories?: string[] | null;
           memo?: string | null;
           address?: string | null;
           latitude?: number | null;

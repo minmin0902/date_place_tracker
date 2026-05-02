@@ -7,10 +7,8 @@ import { useAddWishlist } from "@/hooks/useWishlist";
 import { PageHeader } from "@/components/PageHeader";
 import { LocationPicker } from "@/components/LocationPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
-import {
-  GroupedMultiSelect,
-  type GroupedMultiSelectEntry,
-} from "@/components/GroupedMultiSelect";
+import { type GroupedMultiSelectEntry } from "@/components/GroupedMultiSelect";
+import { PlaceCategoryPicker } from "@/components/PlaceCategoryPicker";
 import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 import type { WishlistKind } from "@/lib/database.types";
 
@@ -27,7 +25,7 @@ export default function WishlistFormPage() {
   const isRecipe = kind === "recipe";
 
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   const [memo, setMemo] = useState("");
   const [coord, setCoord] = useState<{ lat: number; lng: number } | null>(null);
   const [address, setAddress] = useState("");
@@ -59,7 +57,7 @@ export default function WishlistFormPage() {
         coupleId: couple.id,
         kind,
         name: name.trim(),
-        category,
+        categories,
         memo: memo.trim() || null,
         // Restaurant carries location/address; recipe leaves both null
         // so the columns stay clean rather than holding stale strings.
@@ -158,14 +156,10 @@ export default function WishlistFormPage() {
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             {t("place.category")}
           </label>
-          <GroupedMultiSelect
-            title="카테고리 · 种类"
-            placeholder="종류 선택 · 选择种类"
+          <PlaceCategoryPicker
+            value={categories}
+            onChange={setCategories}
             options={categoryOptions}
-            value={category ? [category] : []}
-            onChange={(next) => setCategory(next[0] ?? null)}
-            singleSelect
-            allowEmpty
           />
         </div>
 

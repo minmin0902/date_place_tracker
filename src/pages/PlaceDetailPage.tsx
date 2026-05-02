@@ -187,6 +187,7 @@ export default function PlaceDetailPage() {
         coupleId: couple.id,
         name: place.name,
         category: place.category,
+        categories: place.categories,
         memo: place.memo,
         address: place.address,
         latitude: place.latitude,

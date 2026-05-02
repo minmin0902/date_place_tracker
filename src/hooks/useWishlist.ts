@@ -37,7 +37,9 @@ export function useAddWishlist() {
       // Defaults to 'restaurant' so older callers don't have to pass it.
       kind?: WishlistKind;
       name: string;
-      category: string | null;
+      // Multi-select categories. Legacy `category` scalar stays in
+      // sync with categories[0] so older clients keep rendering.
+      categories: string[];
       memo: string | null;
       address: string | null;
       latitude: number | null;
@@ -49,13 +51,16 @@ export function useAddWishlist() {
       const kind: WishlistKind = input.kind ?? "restaurant";
       const recipeText = input.recipe_text ?? null;
       const recipePhotoUrls = input.recipe_photo_urls ?? null;
+      const categoriesArr = input.categories.length ? input.categories : null;
+      const categoryScalar = input.categories[0] ?? null;
       if (ALLOW_NO_AUTH) {
         return addLocalWishlist({
           coupleId: input.coupleId,
           userId: user.id,
           kind,
           name: input.name,
-          category: input.category,
+          category: categoryScalar,
+          categories: categoriesArr,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
@@ -70,7 +75,8 @@ export function useAddWishlist() {
           couple_id: input.coupleId,
           kind,
           name: input.name,
-          category: input.category,
+          category: categoryScalar,
+          categories: categoriesArr,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
@@ -121,6 +127,7 @@ export function useMovePlaceToWishlist() {
       coupleId: string;
       name: string;
       category: string | null;
+      categories: string[] | null;
       memo: string | null;
       address: string | null;
       latitude: number | null;
@@ -139,6 +146,7 @@ export function useMovePlaceToWishlist() {
           kind: "restaurant",
           name: input.name,
           category: input.category,
+          categories: input.categories,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,
@@ -160,6 +168,7 @@ export function useMovePlaceToWishlist() {
           couple_id: input.coupleId,
           name: input.name,
           category: input.category,
+          categories: input.categories,
           memo: input.memo,
           address: input.address,
           latitude: input.latitude,

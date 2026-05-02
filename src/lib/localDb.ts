@@ -241,6 +241,7 @@ export function addWishlist(input: {
   kind: WishlistKind;
   name: string;
   category: string | null;
+  categories: string[] | null;
   memo: string | null;
   address: string | null;
   latitude: number | null;
@@ -255,6 +256,7 @@ export function addWishlist(input: {
     kind: input.kind,
     name: input.name,
     category: input.category,
+    categories: input.categories,
     memo: input.memo,
     address: input.address,
     latitude: input.latitude,

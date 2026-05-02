@@ -1933,6 +1933,9 @@ function WishlistCard({
   // Legacy rows missing the kind column read as undefined → fall back
   // to 'restaurant' so existing wishlist cards keep their old layout.
   const isRecipe = item.kind === "recipe";
+  // categories[] is the new canonical column; getCategories falls back
+  // to the legacy `category` scalar for rows not yet migrated.
+  const itemCategories = getCategories(item);
   return (
     <div className="bg-white rounded-2xl p-4 border border-peach-100 shadow-soft relative overflow-hidden">
       <button
@@ -1949,7 +1952,7 @@ function WishlistCard({
             isRecipe ? "bg-rose-50" : "bg-peach-50"
           }`}
         >
-          {isRecipe ? "📒" : categoryIcon(item.category)}
+          {isRecipe ? "📒" : categoryIcon(itemCategories[0] ?? null)}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-ink-900 text-base truncate flex items-center gap-1.5 flex-wrap">
@@ -1964,10 +1967,17 @@ function WishlistCard({
               {isRecipe ? "📒 레시피 · 食谱" : "🏠 식당 · 餐厅"}
             </span>
           </h3>
-          {item.category && (
-            <p className="text-[11px] text-peach-500 mt-0.5 font-medium">
-              {t(`category.${item.category}`)}
-            </p>
+          {itemCategories.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-0.5">
+              {itemCategories.map((c) => (
+                <span
+                  key={c}
+                  className="text-[11px] text-peach-500 font-medium"
+                >
+                  {isKnownPlaceCategory(c) ? t(`category.${c}`) : `✏️ ${c}`}
+                </span>
+              ))}
+            </div>
           )}
           {item.address && !isRecipe && (
             <p className="text-[11px] text-ink-500 mt-1 flex items-center gap-1 truncate">
