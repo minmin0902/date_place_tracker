@@ -1,5 +1,5 @@
 import { ChevronLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export function PageHeader({
   title,
@@ -13,11 +13,26 @@ export function PageHeader({
   right?: React.ReactNode;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  // React Router stamps the very first entry with key "default" — that
+  // means we got here as a fresh navigation (cold start, deep link from
+  // a push notification, etc) with no prior history. navigate(-1) on
+  // that stack is a no-op (just sits there or, in PWA mode, exits the
+  // app), which is what made tapping a notification feel like the back
+  // button was broken. Fall back to a hard navigate to home so users
+  // always have a way out.
+  const handleBack = () => {
+    if (location.key === "default") {
+      navigate("/");
+    } else {
+      navigate(-1);
+    }
+  };
   return (
     <header className="px-5 pt-5 pb-4 flex items-start gap-3">
       {back && (
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="btn-ghost -ml-2 !px-2 !py-2"
           aria-label="back"
         >
