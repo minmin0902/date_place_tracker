@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RotateCcw, X } from "lucide-react";
+import { ChevronDown, RotateCcw, X } from "lucide-react";
 import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 
 // One unified bottom-sheet that hosts all three timeline filters
@@ -60,6 +60,27 @@ export function FilterSheet({
   hasAnyActive: boolean;
 }) {
   const { t } = useTranslation();
+  // Collapsed by default so the sheet doesn't open as a wall of chips.
+  // Auto-expand when the section already has an active selection so
+  // users land directly on what they've configured. State seeds from
+  // the active flags AT MOUNT TIME — toggling the chip-row open after
+  // that is purely user-controlled (we don't snap it shut on every
+  // selection change).
+  const [citiesOpen, setCitiesOpen] = useState(selectedCities.length > 0);
+  const [categoriesOpen, setCategoriesOpen] = useState(
+    categoryFilter.length > 0
+  );
+  // Re-seed when the sheet itself reopens — previous session's open
+  // state can leak weirdly if the sheet was closed mid-flow.
+  useEffect(() => {
+    if (open) {
+      setCitiesOpen(selectedCities.length > 0);
+      setCategoriesOpen(categoryFilter.length > 0);
+    }
+    // Only when `open` flips on; selection deps would re-collapse the
+    // section the user just opened to interact with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   // Lock body scroll while open so swiping inside the sheet doesn't
   // accidentally scroll the timeline behind it.
   useEffect(() => {
@@ -127,18 +148,21 @@ export function FilterSheet({
   if (!open) return null;
 
   return (
+    // Same iOS-friendly modal pattern we landed on for GroupedMultiSelect:
+    // outer flex container sized to dvh + items-center across breakpoints,
+    // card max-h capped by svh so the bottom action bar (저장) stays
+    // inside the visible area regardless of URL bar / home indicator.
+    // items-end was burning chrome zone on iPhone — see CLAUDE.md.
     <div
-      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-end justify-center"
+      className="fixed inset-0 z-50 bg-ink-900/40 backdrop-blur-sm flex items-center justify-center p-3"
+      style={{ height: "100dvh" }}
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-md rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl border-t border-cream-200 animate-in slide-in-from-bottom-2 duration-200"
+        className="bg-white w-full max-w-md rounded-3xl flex flex-col shadow-2xl border border-cream-200 overflow-hidden"
+        style={{ maxHeight: "min(75svh, 600px)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drag handle — purely visual, signals "this slides up". */}
-        <div className="flex justify-center pt-2.5 pb-1 flex-shrink-0">
-          <span className="block w-10 h-1 rounded-full bg-cream-200" />
-        </div>
 
         <div className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-cream-200 flex-shrink-0">
           <div className="min-w-0">
@@ -187,67 +211,106 @@ export function FilterSheet({
             </div>
           </section>
 
-          {/* ----- 도시 (multi-select chips) ----- */}
+          {/* ----- 도시 (collapsible multi-select chips) ----- */}
           <section>
-            <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5 justify-between">
+            <button
+              type="button"
+              onClick={() => setCitiesOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
+            >
               <span className="inline-flex items-center gap-1.5">
                 <span>📍</span>도시 · 城市
+                {selectedCities.length > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-peach-100 text-peach-600 text-[10px] font-number font-bold">
+                    {selectedCities.length}
+                  </span>
+                )}
               </span>
-              {selectedCities.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onChangeSelectedCities([])}
-                  className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
-                >
-                  전체 해제 · 清空
-                </button>
-              )}
-            </h4>
-            {allCities.length === 0 ? (
-              <p className="text-[11px] text-ink-400 px-1">
-                아직 도시가 없어요 · 还没有可选城市
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {allCities.map((city) => {
-                  const active = selectedCities.includes(city);
-                  return (
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-ink-400 transition-transform ${
+                  citiesOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {citiesOpen && (
+              <>
+                {selectedCities.length > 0 && (
+                  <div className="flex justify-end mb-2">
                     <button
-                      key={city}
                       type="button"
-                      onClick={() => toggleCity(city)}
-                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
-                        active
-                          ? "bg-peach-100 text-peach-600 border-peach-300 shadow-sm"
-                          : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
-                      }`}
+                      onClick={() => onChangeSelectedCities([])}
+                      className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
                     >
-                      📍 {city}
+                      전체 해제 · 清空
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                )}
+                {allCities.length === 0 ? (
+                  <p className="text-[11px] text-ink-400 px-1">
+                    아직 도시가 없어요 · 还没有可选城市
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {allCities.map((city) => {
+                      const active = selectedCities.includes(city);
+                      return (
+                        <button
+                          key={city}
+                          type="button"
+                          onClick={() => toggleCity(city)}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
+                            active
+                              ? "bg-peach-100 text-peach-600 border-peach-300 shadow-sm"
+                              : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                          }`}
+                        >
+                          📍 {city}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </section>
 
-          {/* ----- 카테고리 (multi-select w/ group rollup) ----- */}
+          {/* ----- 카테고리 (collapsible multi-select w/ group rollup) ----- */}
           <section>
-            <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5 justify-between">
+            <button
+              type="button"
+              onClick={() => setCategoriesOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
+            >
               <span className="inline-flex items-center gap-1.5">
                 <span>🍽️</span>카테고리 · 类别
+                {categoryFilter.length > 0 && (
+                  <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-number font-bold">
+                    {categoryFilter.length}
+                  </span>
+                )}
               </span>
-              {categoryFilter.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => onChangeCategoryFilter([])}
-                  className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
-                >
-                  전체 해제 · 清空
-                </button>
-              )}
-            </h4>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-ink-400 transition-transform ${
+                  categoriesOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
 
-            {hasUncategorized && (
+            {categoriesOpen && (
+              <>
+                {categoryFilter.length > 0 && (
+                  <div className="flex justify-end mb-2">
+                    <button
+                      type="button"
+                      onClick={() => onChangeCategoryFilter([])}
+                      className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
+                    >
+                      전체 해제 · 清空
+                    </button>
+                  </div>
+                )}
+
+                {hasUncategorized && (
               <div className="mb-3">
                 <button
                   type="button"
@@ -359,6 +422,8 @@ export function FilterSheet({
                 </div>
               )}
             </div>
+              </>
+            )}
           </section>
         </div>
 
@@ -377,7 +442,7 @@ export function FilterSheet({
             onClick={onClose}
             className="px-5 py-2 bg-ink-900 text-white rounded-xl text-[13px] font-bold hover:bg-ink-700 transition"
           >
-            완료 · 完成
+            저장 · 保存
           </button>
         </div>
       </div>
