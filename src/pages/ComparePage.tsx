@@ -22,8 +22,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
-import { usePlaces } from "@/hooks/usePlaces";
+import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
+import type { WishlistPlace } from "@/lib/database.types";
 import { useCoupleProfiles } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
@@ -43,13 +44,19 @@ type TabId = "fame" | "clash" | "pass";
 // it survives reloads within the session but doesn't bleed across
 // devices/installs (intentionally lightweight — not worth a server
 // round-trip).
-type CardId = "diagnosis" | "rating" | "chef" | "roulette";
+type CardId =
+  | "diagnosis"
+  | "rating"
+  | "chef"
+  | "roulette"
+  | "recipes";
 
 const DEFAULT_CARD_ORDER: CardId[] = [
   "diagnosis",
   "rating",
   "chef",
   "roulette",
+  "recipes",
 ];
 
 const CARD_META: Record<
@@ -64,6 +71,7 @@ const CARD_META: Record<
   },
   chef: { emoji: "🍳", ko: "우리집 미슐랭", zh: "家庭米其林" },
   roulette: { emoji: "🎲", ko: "운명의 룰렛", zh: "听天由命" },
+  recipes: { emoji: "📒", ko: "우리 레시피", zh: "我家食谱" },
 };
 
 // Old configs (sessionStorage) saved before the merge had separate
@@ -698,6 +706,12 @@ export default function ComparePage() {
                       onSpin={() => setRouletteOpen(true)}
                       visitedCount={(places ?? []).length}
                       wishlistCount={(wishlist ?? []).length}
+                    />
+                  )}
+                  {id === "recipes" && (
+                    <RecipeBookCard
+                      madeCount={countMadeRecipes(places ?? [])}
+                      wishlistCount={countWishlistRecipes(wishlist ?? [])}
                     />
                   )}
                 </div>
@@ -2930,4 +2944,99 @@ function RouletteCard({
       </button>
     </div>
   );
+}
+
+// ---------- recipe book card ----------
+
+// Cookbook entry-point. Stat strip (만든 / 만들고싶은 count) + button
+// linking out to /recipes for the full grid view. Mirrors RouletteCard's
+// shape so the carousel keeps a consistent visual rhythm; the 페이지
+// rather than an inline expansion was chosen because recipe browsing is
+// image-heavy and works better with native scroll on a real route (per
+// CLAUDE.md: "for any non-trivial form / browse view, prefer route over
+// modal").
+function RecipeBookCard({
+  madeCount,
+  wishlistCount,
+}: {
+  madeCount: number;
+  wishlistCount: number;
+}) {
+  const total = madeCount + wishlistCount;
+  return (
+    <div className="bg-gradient-to-br from-rose-50 to-amber-50 border border-rose-200/60 shadow-soft rounded-3xl p-5 h-full flex flex-col overflow-hidden relative">
+      <div className="absolute -right-6 -top-6 text-7xl opacity-10 select-none pointer-events-none">
+        📒
+      </div>
+
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-3">
+        <div className="text-5xl drop-shadow-sm">📒</div>
+        <p className="text-[13px] font-bold text-ink-900 break-keep">
+          우리 레시피 모음 · 我家食谱
+        </p>
+        <p className="text-[11px] font-medium text-ink-500 break-keep px-2">
+          만든 메뉴 + 만들고 싶은 메뉴 한 곳에서 · 做过的+想做的都在这里
+        </p>
+      </div>
+
+      <div className="relative z-10 mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl px-2 py-1.5 border border-rose-200/60 bg-white/70 text-center">
+          <div className="text-[9px] font-bold tracking-wider uppercase text-rose-400">
+            만든 · 做过
+          </div>
+          <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
+            {madeCount}
+            <span className="text-[10px] font-bold text-ink-400 ml-0.5">
+              개·道
+            </span>
+          </div>
+        </div>
+        <div className="rounded-xl px-2 py-1.5 border border-amber-200/60 bg-white/70 text-center">
+          <div className="text-[9px] font-bold tracking-wider uppercase text-amber-500">
+            만들고 싶은 · 想做
+          </div>
+          <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
+            {wishlistCount}
+            <span className="text-[10px] font-bold text-ink-400 ml-0.5">
+              개·道
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <Link
+        to="/recipes"
+        className={`relative z-10 mt-3 w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-rose-400 to-amber-400 text-white text-[13px] font-bold shadow-soft hover:from-rose-500 hover:to-amber-500 active:scale-[0.98] transition ${
+          total === 0 ? "opacity-50 pointer-events-none" : ""
+        }`}
+      >
+        <ChefHat className="w-4 h-4" />
+        {total === 0
+          ? "아직 레시피가 없어요 · 暂无食谱"
+          : "전체 보기 · 查看全部"}
+      </Link>
+    </div>
+  );
+}
+
+// Count helpers — placed alongside the card so the count semantics
+// stay close to the data they feed (handy if we ever change what a
+// "recipe" food row qualifies as).
+function countMadeRecipes(places: PlaceWithFoods[]): number {
+  let n = 0;
+  for (const p of places) {
+    for (const f of p.foods ?? []) {
+      if (
+        !!f.recipe_text ||
+        (f.recipe_photo_urls && f.recipe_photo_urls.length > 0)
+      ) {
+        n += 1;
+      }
+    }
+  }
+  return n;
+}
+
+function countWishlistRecipes(wishlist: WishlistPlace[]): number {
+  return wishlist.filter((w) => w.kind === "recipe").length;
 }

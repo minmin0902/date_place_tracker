@@ -10,6 +10,7 @@ import PlaceFormPage from "@/pages/PlaceFormPage";
 import PlaceDetailPage from "@/pages/PlaceDetailPage";
 import FoodFormPage from "@/pages/FoodFormPage";
 import WishlistFormPage from "@/pages/WishlistFormPage";
+import RecipesPage from "@/pages/RecipesPage";
 import ComparePage from "@/pages/ComparePage";
 import MapPage from "@/pages/MapPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -105,6 +106,7 @@ function Gate() {
         <Route path="places/:id" element={<PlaceDetailPage />} />
         <Route path="places/:id/edit" element={<PlaceFormPage />} />
         <Route path="wishlist/new" element={<WishlistFormPage />} />
+        <Route path="recipes" element={<RecipesPage />} />
         <Route path="places/:id/foods/new" element={<FoodFormPage />} />
         <Route path="places/:id/foods/:foodId/edit" element={<FoodFormPage />} />
       </Route>
