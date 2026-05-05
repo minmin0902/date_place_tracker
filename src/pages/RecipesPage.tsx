@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChefHat, BookmarkPlus } from "lucide-react";
+import { ChefHat } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
-import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import { usePlaces } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
 import { useDisplayNames } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
