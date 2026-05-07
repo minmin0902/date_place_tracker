@@ -315,6 +315,50 @@ sessionStorage shape — see `initialFilters.current` in `HomePage.tsx`.
 food rows that should navigate to detail), pass `clickable={false}` —
 otherwise tapping opens lightbox AND navigates, both at once.
 
+### Build verify with `npm run build`, NOT `tsc --noEmit`
+
+This bites repeatedly. `tsc --noEmit` skips composite-project rules;
+`tsc -b` (used by `npm run build` and Vercel) enforces
+`noUnusedLocals` / `noUnusedParameters`. Local `tsc --noEmit` will
+happily pass code with unused imports that breaks Vercel CI. **Run
+`npm run build` (or `npx tsc -b`) before claiming a change is done**
+— `de0f996` was a hot-fix landed because we trusted `tsc --noEmit`
+output and pushed unused imports.
+
+If the build hits a long-running rolldown timeout, fall back to
+`npx tsc -b` alone (skip Vite's bundling) — that catches every
+TypeScript-side error Vercel will catch.
+
+### Route changes must reset scroll
+
+React Router doesn't auto-scroll-to-top between routes. Without a
+`<ScrollToTop>` listener, navigating from a long timeline to another
+page lands the new route at the previous scroll position — feels
+like "the page shifts down on every nav". `AppShell` mounts a
+`<ScrollToTop>` that calls `window.scrollTo(0, 0)` on every
+`useLocation()` change. Don't remove it without replacing.
+
+### vh vs dvh for full-height pages
+
+Pages whose container fills the viewport (e.g. `MapPage`'s
+`h-[calc(100vh-5rem)]` wrapper) MUST use `dvh`, not `vh`. iOS Safari
+treats `vh` as the LARGER possible viewport (URL bar hidden), so
+`100vh` extends behind the URL bar and the page jiggles every time
+the bar shows/hides. `100dvh` is the dynamic visible area —
+container resizes with chrome.
+
+`MapPage` ships as `h-[calc(100dvh-5rem)]`. Mirror that for any other
+viewport-filling layout.
+
+### Multiple selectable datasets on one map / list
+
+`MapPage` shows BOTH `places` (visited) and `wishlist` (가고싶다)
+markers. Each has its own id space; a numeric collision could pick
+the wrong card on InfoWindow open. Use namespaced selection ids:
+`selectedId = "place:<id>" | "wish:<id>"`, derive `selectedPlace` /
+`selectedWish` separately. Same idea applies if you ever add a third
+source on the map (e.g. friends' picks).
+
 ---
 
 ## When debugging a UI issue
@@ -332,6 +376,10 @@ Before going deep, check:
    (IME)?
 6. Did you add a column without writing the migration AND updating
    `database.types.ts`?
+7. "Page jiggles vertically" — check for `100vh` (should be
+   `100dvh`) and verify `<ScrollToTop>` still mounts in `AppShell`.
+8. Build error in Vercel but local OK? You ran `tsc --noEmit` —
+   re-run with `npm run build` / `npx tsc -b`.
 
 When in doubt, grep the previous fix commits referenced in this file
 for the actual diff that worked.

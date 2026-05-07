@@ -1,8 +1,23 @@
+import { useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Home, Map, Scale, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAppBadge } from "@/hooks/useAppBadge";
+
+// Scroll to top on every route change. React Router doesn't reset
+// scroll between routes by default — without this the next page
+// inherits the previous page's scrollY, which felt like "the page
+// shifts down a bit on navigation". Pairs cleanly with the
+// useBodyScrollLock unlock (which restores per-modal scrollY) since
+// route transitions are independent of modal lifecycle.
+function ScrollToTop() {
+  const { pathname, key } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname, key]);
+  return null;
+}
 
 function NavItem({
   to,
@@ -38,6 +53,7 @@ export function AppShell() {
   useAppBadge();
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
+      <ScrollToTop />
       {/* pb reserves room for the fixed bottom nav (~64px) PLUS the device
           safe-area inset (~34px on iPhone X+), otherwise the last row gets
           hidden behind the nav. */}

@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
+import { useWishlist } from "@/hooks/useWishlist";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { supabase } from "@/lib/supabase";
@@ -115,6 +116,70 @@ function HomePin() {
         />
         {/* Door */}
         <rect x="17" y="18" width="4" height="6" fill="#3EB7A0" />
+      </svg>
+    </div>
+  );
+}
+
+// Wishlist pin — same teardrop silhouette as the place pins so the
+// map reads as a single visual family, but amber/gold gradient + a
+// bookmark glyph differentiates "곳 가고싶다" from "곳 갔다 / 또 갈래"
+// at a glance.
+function WishlistPinMini() {
+  return (
+    <svg
+      width="13"
+      height="17"
+      viewBox="0 0 34 44"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id="wishlistPinFillMini" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FBBF24" />
+          <stop offset="1" stopColor="#F59E0B" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M17 0 C8 0 1 7 1 16 C1 26 12 35 16 42 C16.4 42.7 17.6 42.7 18 42 C22 35 33 26 33 16 C33 7 26 0 17 0 Z"
+        fill="url(#wishlistPinFillMini)"
+        stroke="white"
+        strokeWidth="2"
+      />
+      <path
+        d="M12 9 L22 9 L22 22 L17 19 L12 22 Z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
+function WishlistPin() {
+  return (
+    <div className="relative -translate-y-1 drop-shadow-md">
+      <svg
+        width="34"
+        height="44"
+        viewBox="0 0 34 44"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="wishlist pin"
+      >
+        <defs>
+          <linearGradient id="wishlistPinFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#FBBF24" />
+            <stop offset="1" stopColor="#F59E0B" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M17 0 C8 0 1 7 1 16 C1 26 12 35 16 42 C16.4 42.7 17.6 42.7 18 42 C22 35 33 26 33 16 C33 7 26 0 17 0 Z"
+          fill="url(#wishlistPinFill)"
+          stroke="white"
+          strokeWidth="2"
+        />
+        <path
+          d="M12 9 L22 9 L22 22 L17 19 L12 22 Z"
+          fill="white"
+        />
       </svg>
     </div>
   );
@@ -246,6 +311,10 @@ function GeocodeBackfill({ places }: { places: PlaceWithFoods[] }) {
 export default function MapPage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
+  const { data: wishlist } = useWishlist(couple?.id);
+  // selectedId can identify either a place ("place:<id>") or a
+  // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
+  // to look up. Plain id was unambiguous when only places existed.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Same shared refresh callback HomePage uses — keeps "what counts
   // as a refresh" consistent across every tab.
@@ -300,6 +369,22 @@ export default function MapPage() {
     [places]
   );
 
+  // Wishlist markers — only restaurant-kind entries with coords. Recipe
+  // wishlist items are location-less by definition (kind === 'recipe'
+  // doesn't carry latitude/longitude), so they're filtered out by the
+  // coord check anyway, but explicit `kind` filter keeps the count
+  // meaningful when we later add other kinds.
+  const wishlistMarkers = useMemo(
+    () =>
+      (wishlist ?? []).filter(
+        (w) =>
+          w.kind !== "recipe" &&
+          w.latitude != null &&
+          w.longitude != null
+      ),
+    [wishlist]
+  );
+
   // Pick an initial center: user location first, else markers average, else Seoul.
   const initialCenter: LatLng | null = useMemo(() => {
     if (userLoc === null) return null; // still waiting for geolocation
@@ -314,7 +399,14 @@ export default function MapPage() {
     return DEFAULT_CENTER;
   }, [userLoc, markers]);
 
-  const selected = markers.find((m) => m.id === selectedId);
+  // selectedId is namespaced (place: / wish:) so the same numeric id
+  // colliding across the two datasets doesn't pick the wrong card.
+  const selectedPlace = selectedId?.startsWith("place:")
+    ? markers.find((m) => `place:${m.id}` === selectedId) ?? null
+    : null;
+  const selectedWish = selectedId?.startsWith("wish:")
+    ? wishlistMarkers.find((w) => `wish:${w.id}` === selectedId) ?? null
+    : null;
 
   if (!KEY) {
     return (
@@ -331,7 +423,7 @@ export default function MapPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-5rem)] flex flex-col">
+    <div className="h-[calc(100dvh-5rem)] flex flex-col">
       <PullIndicator
         pull={pull}
         refreshing={refreshing}
@@ -394,6 +486,12 @@ export default function MapPage() {
             <RevisitPinMini />
             또 갈래 · 二刷
           </span>
+          {wishlistMarkers.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+              <WishlistPinMini />
+              가고싶은 · 想去
+            </span>
+          )}
           {couple?.home_latitude != null && couple?.home_longitude != null && (
             <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
               <HomePinMini />
@@ -455,9 +553,9 @@ export default function MapPage() {
                 )}
               {markers.map((p) => (
                 <AdvancedMarker
-                  key={p.id}
+                  key={`place-${p.id}`}
                   position={{ lat: p.latitude!, lng: p.longitude! }}
-                  onClick={() => setSelectedId(p.id)}
+                  onClick={() => setSelectedId(`place:${p.id}`)}
                   title={
                     p.is_home_cooked
                       ? `${p.name} · 집밥 · 在家做`
@@ -479,24 +577,62 @@ export default function MapPage() {
                   )}
                 </AdvancedMarker>
               ))}
-              {selected &&
-                selected.latitude != null &&
-                selected.longitude != null && (
+              {wishlistMarkers.map((w) => (
+                <AdvancedMarker
+                  key={`wish-${w.id}`}
+                  position={{ lat: w.latitude!, lng: w.longitude! }}
+                  onClick={() => setSelectedId(`wish:${w.id}`)}
+                  title={`${w.name} · 가고싶다 · 想去`}
+                >
+                  <WishlistPin />
+                </AdvancedMarker>
+              ))}
+              {selectedPlace &&
+                selectedPlace.latitude != null &&
+                selectedPlace.longitude != null && (
                   <InfoWindow
                     position={{
-                      lat: selected.latitude,
-                      lng: selected.longitude,
+                      lat: selectedPlace.latitude,
+                      lng: selectedPlace.longitude,
                     }}
                     onCloseClick={() => setSelectedId(null)}
                   >
                     <Link
-                      to={`/places/${selected.id}`}
+                      to={`/places/${selectedPlace.id}`}
                       className="block min-w-[140px]"
                     >
-                      <p className="font-semibold">{selected.name}</p>
-                      {selected.address && (
+                      <p className="font-semibold">{selectedPlace.name}</p>
+                      {selectedPlace.address && (
                         <p className="text-xs text-gray-500">
-                          {selected.address}
+                          {selectedPlace.address}
+                        </p>
+                      )}
+                    </Link>
+                  </InfoWindow>
+                )}
+              {selectedWish &&
+                selectedWish.latitude != null &&
+                selectedWish.longitude != null && (
+                  <InfoWindow
+                    position={{
+                      lat: selectedWish.latitude,
+                      lng: selectedWish.longitude,
+                    }}
+                    onCloseClick={() => setSelectedId(null)}
+                  >
+                    <Link
+                      to="/?tab=wishlist"
+                      className="block min-w-[140px]"
+                    >
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <span className="text-amber-600 text-[10px] font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          가고싶다
+                        </span>
+                        {selectedWish.name}
+                      </p>
+                      {selectedWish.address && (
+                        <p className="text-xs text-gray-500">
+                          {selectedWish.address}
                         </p>
                       )}
                     </Link>
