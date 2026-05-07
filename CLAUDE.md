@@ -359,6 +359,42 @@ the wrong card on InfoWindow open. Use namespaced selection ids:
 `selectedWish` separately. Same idea applies if you ever add a third
 source on the map (e.g. friends' picks).
 
+### Emoji width truncates bilingual labels on iOS
+
+iOS Safari renders some emojis (🍽️, 🍳, 🌏, etc.) noticeably wider
+than the JS-side measurement predicts, so a 3-segment row with
+"🍽️ 외식 · 探店" + "🍳 집밥 · 私房菜" labels truncates on 360px
+phones. Dropping Korean is the working compromise:
+- If the segment also has a leading lucide icon (list/grid/menu),
+  drop both Korean and emoji — keep Chinese-only since the icon
+  already conveys the mode language-agnostically.
+- If the leading marker IS the emoji (dining filter), keep emoji +
+  Chinese, drop Korean. "모두 · 全部" is short enough to stay full.
+
+Don't try CSS-side fixes (font-size, letter-spacing, scaling) — the
+emoji width is OS-rendered, not measurable from JS. Just shorten
+text. See `e3970ab` for the actual diff.
+
+### `height: 100%` vs `100dvh` for the page root
+
+iOS Safari resolves `height: 100%` on the html/body/#root chain to
+the LAYOUT viewport, which extends behind the URL bar AND home
+indicator. Result: the bottom nav and last row of any scrollable
+content sit slightly under the visible area — the page "doesn't
+fit." The `index.css` root chain ships as:
+
+```css
+html, body, #root {
+  height: 100%;       /* fallback for old engines */
+  height: 100dvh;     /* override on modern browsers */
+}
+```
+
+`dvh` tracks the dynamic VISIBLE viewport, not layout viewport. Don't
+revert the `100%` line — it's the fallback for browsers without dvh
+(very old iOS / WebView). Don't add another rule on top — the chain
+is already what we want.
+
 ---
 
 ## When debugging a UI issue
