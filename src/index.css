@@ -12,7 +12,14 @@
   html,
   body,
   #root {
+    /* Was `height: 100%` — on iOS Safari that resolves to the LAYOUT
+       viewport (extends behind the URL bar / home indicator), so the
+       app's bottom nav and last row of any scrollable content sat
+       slightly below the visible area. Using dvh ties the root height
+       to the dynamic visible viewport so the page fits exactly. The
+       100% fallback covers older engines that don't ship dvh yet. */
     height: 100%;
+    height: 100dvh;
   }
   html {
     -webkit-text-size-adjust: 100%;

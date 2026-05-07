@@ -783,31 +783,38 @@ export default function HomePage() {
                   {filteredPlaces.length}
                 </span>
               </h2>
-              {/* List ↔ grid ↔ menu layout toggle. Menu mode flattens
-                  the timeline to one card per food instead of one per
-                  place; same filters apply. */}
+              {/* List ↔ grid ↔ menu layout toggle. Each segment also
+                  carries a leading icon from lucide; icon + bilingual
+                  label was overflowing on 360px screens, so labels are
+                  Chinese-only here. The icon already conveys the mode
+                  (list / grid / utensils) language-agnostically. */}
               <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
                 <LayoutToggle
                   active={listLayout === "list"}
                   onClick={() => setListLayout("list")}
                   icon={<List className="w-4 h-4" />}
-                  label="리스트 뷰 · 列表"
+                  label="列表"
                 />
                 <LayoutToggle
                   active={listLayout === "grid"}
                   onClick={() => setListLayout("grid")}
                   icon={<Grid3x3 className="w-4 h-4" />}
-                  label="그리드 뷰 · 网格"
+                  label="网格"
                 />
                 <LayoutToggle
                   active={listLayout === "menu"}
                   onClick={() => setListLayout("menu")}
                   icon={<Utensils className="w-4 h-4" />}
-                  label="메뉴 뷰 · 菜单"
+                  label="菜单"
                 />
               </div>
             </div>
-            {/* 1) 모두 / 외식 / 집밥 — 옛 큰 segment row 그대로 복원. */}
+            {/* 1) 모두 / 외식 / 집밥 — bilingual labels with leading
+                emoji were truncating on 360px-wide screens because
+                iOS renders 🍽️ and 🍳 wider than measured. Dropped
+                Korean to keep emoji + Chinese only on the dining
+                buttons; the 모두 button is short enough to keep both
+                languages. */}
             <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
               <SegmentButton
                 active={diningFilter === "all"}
@@ -819,14 +826,14 @@ export default function HomePage() {
               <SegmentButton
                 active={diningFilter === "out"}
                 onClick={() => setDiningFilter("out")}
-                label="🍽️ 외식 · 探店"
+                label="🍽️ 探店"
                 activeText="text-peach-500"
                 activeBorder="border-peach-100"
               />
               <SegmentButton
                 active={diningFilter === "home"}
                 onClick={() => setDiningFilter("home")}
-                label="🍳 집밥 · 私房菜"
+                label="🍳 私房菜"
                 activeText="text-teal-600"
                 activeBorder="border-teal-100"
               />
