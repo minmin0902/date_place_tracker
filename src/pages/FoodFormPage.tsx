@@ -568,7 +568,10 @@ export default function FoodFormPage() {
                 )}
               </span>
               <span className="text-xl font-number font-bold text-peach-500">
-                {total} / 10
+                {/* toFixed(1) — without it, floating-point sums of
+                    decimal ratings (e.g. 4.1 + 3.2 = 7.300000000000001)
+                    leak the full 16-digit ugly form into the UI. */}
+                {total.toFixed(1)} / 10
               </span>
             </div>
           )}

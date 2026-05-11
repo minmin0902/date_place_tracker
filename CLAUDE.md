@@ -375,6 +375,17 @@ Don't try CSS-side fixes (font-size, letter-spacing, scaling) — the
 emoji width is OS-rendered, not measurable from JS. Just shorten
 text. See `e3970ab` for the actual diff.
 
+### Raw float renders show 16-digit ugly form
+
+JavaScript decimal addition leaks float-imprecision into the UI:
+`4.1 + 3.2 = 7.300000000000001`. Anywhere we render a SUMMED or
+COMPUTED score (not a stored single rating, which RatingPicker
+quantizes to 0.5 steps), wrap with `.toFixed(1)` (or `.toFixed(2)`
+for the per-person average tile). FoodFormPage's `{total} / 10`
+display was the leak that surfaced this — fixed in a follow-up.
+Don't render arithmetic results raw; every `{a + b}` or `{x / y}` in
+JSX needs a `.toFixed(n)` after.
+
 ### `height: 100%` vs `100dvh` for the page root
 
 iOS Safari resolves `height: 100%` on the html/body/#root chain to
