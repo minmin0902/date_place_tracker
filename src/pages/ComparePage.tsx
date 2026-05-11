@@ -18,6 +18,7 @@ import {
   Settings2,
   Swords,
   Trophy,
+  Wine,
   X,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,7 +38,7 @@ type DiningFilter = "all" | "out" | "home";
 // 명예의 전당 흡수 후 3-tab 구성: fame(명예의 전당, top 3 + 그 외 4.5+
 // 메뉴 묶음) / clash / pass. 이전에는 명예의 전당 / 천생연분이 사실상
 // 같은 4.5+ 풀에서 잘려 나가 두 탭이 겹쳐 보였음.
-type TabId = "fame" | "clash" | "pass";
+type TabId = "fame" | "clash" | "pass" | "booze";
 
 // Carousel cards are user-configurable: the user can reorder them and
 // hide ones they don't care about. State lives in sessionStorage so
@@ -363,6 +364,9 @@ export default function ComparePage() {
   >("restaurant");
   const [clashView, setClashView] = useState<"menu" | "restaurant">("restaurant");
   const [passView, setPassView] = useState<"menu" | "restaurant">("restaurant");
+  const [boozeView, setBoozeView] = useState<"menu" | "restaurant">(
+    "restaurant"
+  );
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tracks the carousel card the user is currently centered on so the
@@ -578,6 +582,52 @@ export default function ComparePage() {
     out.sort((a, b) => a.total - b.total);
     return out;
   }, [neverAgain]);
+
+  // 술 랭킹 — places tagged with the 'bar' category. No fame-style
+  // threshold; we just rank everything in bucket so a couple with
+  // only a handful of 술집 entries still see a meaningful list.
+  // Sorted by combined rating desc so the best spot leads.
+  const boozeRows = useMemo(
+    () => filteredRows.filter((r) => r.placeCategories.includes("bar")),
+    [filteredRows]
+  );
+  const boozeSorted = useMemo(
+    () =>
+      [...boozeRows].sort(
+        (a, b) => b.mine + b.partner - (a.mine + a.partner)
+      ),
+    [boozeRows]
+  );
+  const boozePlaces: FamePlace[] = useMemo(() => {
+    const groups = new Map<string, FamePlace>();
+    for (const r of boozeRows) {
+      if (!groups.has(r.placeId)) {
+        groups.set(r.placeId, {
+          placeId: r.placeId,
+          placeName: r.placeName,
+          rows: [],
+          avgMine: 0,
+          avgPartner: 0,
+          total: 0,
+        });
+      }
+      groups.get(r.placeId)!.rows.push(r);
+    }
+    const out: FamePlace[] = [];
+    for (const g of groups.values()) {
+      g.avgMine = g.rows.reduce((s, r) => s + r.mine, 0) / g.rows.length;
+      g.avgPartner =
+        g.rows.reduce((s, r) => s + r.partner, 0) / g.rows.length;
+      g.total = g.avgMine + g.avgPartner;
+      out.push(g);
+    }
+    out.sort((a, b) => b.total - a.total);
+    return out;
+  }, [boozeRows]);
+  const boozeSortedTop = boozeSorted.slice(0, 3);
+  const boozeSortedRest = boozeSorted.slice(3);
+  const boozePlacesTop = boozePlaces.slice(0, 3);
+  const boozePlacesRest = boozePlaces.slice(3);
 
   return (
     <div>
@@ -812,6 +862,15 @@ export default function ComparePage() {
             labelZh="踩雷"
             count={neverAgain.length}
             tone="ink"
+          />
+          <SectionTab
+            active={activeTab === "booze"}
+            onClick={() => setActiveTab("booze")}
+            icon={<Wine className="w-3.5 h-3.5" />}
+            labelKo="술 랭킹"
+            labelZh="酒榜"
+            count={boozeSorted.length}
+            tone="rose"
           />
         </div>
 
@@ -1086,6 +1145,105 @@ export default function ComparePage() {
                       />
                     )}
                   </ExpandableList>
+                )}
+              </ListPanel>
+            )}
+            {activeTab === "booze" && (
+              <ListPanel
+                titleKo={
+                  boozeView === "menu"
+                    ? "우리가 마신 메뉴 랭킹"
+                    : "우리의 단골 술집 랭킹"
+                }
+                titleZh={
+                  boozeView === "menu" ? "酒水菜单榜" : "我们的酒馆榜"
+                }
+                empty={
+                  boozeView === "menu"
+                    ? boozeSorted.length === 0
+                    : boozePlaces.length === 0
+                }
+                emptyText="아직 술집 카테고리 기록이 없어요 · 还没有酒馆记录"
+              >
+                <ListViewToggle view={boozeView} onChange={setBoozeView} />
+                {boozeView === "menu" && (
+                  <>
+                    {boozeSortedTop.map((r, idx) => (
+                      <FoodCard
+                        key={r.foodId}
+                        r={r}
+                        showTotal
+                        yyds
+                        rank={idx + 1}
+                        badge={`🍻 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {boozeSortedRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <Wine className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            그 외 한 잔 · 其余几杯
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {boozeSortedRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList items={boozeSortedRest} initial={5}>
+                          {(r, idx) => (
+                            <FoodCard
+                              key={r.foodId}
+                              r={r}
+                              showTotal
+                              rank={idx + 4}
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
+                )}
+                {boozeView === "restaurant" && (
+                  <>
+                    {boozePlacesTop.map((p, idx) => (
+                      <PlaceFameCard
+                        key={p.placeId}
+                        p={p}
+                        rank={idx + 1}
+                        badge={`🍻 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {boozePlacesRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <Wine className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            그 외 단골 · 其余常去
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {boozePlacesRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList items={boozePlacesRest} initial={5}>
+                          {(p, idx) => (
+                            <PlaceFameCard
+                              key={p.placeId}
+                              p={p}
+                              rank={idx + 4}
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
                 )}
               </ListPanel>
             )}
