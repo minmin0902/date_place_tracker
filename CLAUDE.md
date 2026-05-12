@@ -375,6 +375,20 @@ Don't try CSS-side fixes (font-size, letter-spacing, scaling) — the
 emoji width is OS-rendered, not measurable from JS. Just shorten
 text. See `e3970ab` for the actual diff.
 
+### Place category vs food category — don't conflate
+
+`places` and `foods` both carry their own categories. A bar (place
+category 'bar') still serves food, so filtering by
+`placeCategories.includes('bar')` leaks non-drink items (charcuterie,
+appetizers) into a 술 ranking. To pull "actual drinks" use the FOOD
+category: `foodCategories.includes('drink')`. Same logic when
+isolating any food type (main, side, dessert) — don't take the place's
+category as a proxy.
+
+`ComparePage`'s Row type carries BOTH `placeCategories` and
+`foodCategories` so view filters can pick the right axis. When adding
+a new view here, decide upfront which axis the filter rides on.
+
 ### Raw float renders show 16-digit ugly form
 
 JavaScript decimal addition leaks float-imprecision into the UI:

@@ -38,7 +38,7 @@ type DiningFilter = "all" | "out" | "home";
 // 명예의 전당 흡수 후 3-tab 구성: fame(명예의 전당, top 3 + 그 외 4.5+
 // 메뉴 묶음) / clash / pass. 이전에는 명예의 전당 / 천생연분이 사실상
 // 같은 4.5+ 풀에서 잘려 나가 두 탭이 겹쳐 보였음.
-type TabId = "fame" | "clash" | "pass" | "booze";
+type TabId = "fame" | "clash" | "pass";
 
 // Carousel cards are user-configurable: the user can reorder them and
 // hide ones they don't care about. State lives in sessionStorage so
@@ -156,6 +156,10 @@ type Row = {
   foodName: string;
   isHomeCooked: boolean;
   placeCategories: string[];
+  // Per-food categories (main / side / drink / dessert / etc). Needed
+  // separately from placeCategories because a 술집 (place category
+  // 'bar') still serves food → can't filter 음료 by place alone.
+  foodCategories: string[];
   mine: number;
   partner: number;
   // Stored from the food creator's perspective. ChefHat / chef-share
@@ -359,14 +363,14 @@ export default function ComparePage() {
   // 메뉴 (per-food). Same source rows, different reduction. Fame gets
   // an extra '집밥' (home meal) cut so out vs home places are ranked
   // separately — a 4.8 받은 회식집이랑 4.8 받은 집밥은 다른 트로피.
+  // '술' adds a per-drink (bar-category foods) ranking so beers /
+  // wines / cocktails each compete on their own row instead of
+  // getting averaged into restaurant slots.
   const [fameView, setFameView] = useState<
-    "menu" | "restaurant" | "home"
+    "menu" | "restaurant" | "home" | "booze"
   >("restaurant");
   const [clashView, setClashView] = useState<"menu" | "restaurant">("restaurant");
   const [passView, setPassView] = useState<"menu" | "restaurant">("restaurant");
-  const [boozeView, setBoozeView] = useState<"menu" | "restaurant">(
-    "restaurant"
-  );
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tracks the carousel card the user is currently centered on so the
@@ -427,6 +431,7 @@ export default function ComparePage() {
           foodName: f.name,
           isHomeCooked: !!p.is_home_cooked,
           placeCategories: getCategories(p),
+          foodCategories: getCategories(f),
           mine: view.myRating ?? 0,
           partner: view.partnerRating ?? 0,
           chef: f.chef ?? null,
@@ -583,51 +588,22 @@ export default function ComparePage() {
     return out;
   }, [neverAgain]);
 
-  // 술 랭킹 — places tagged with the 'bar' category. No fame-style
-  // threshold; we just rank everything in bucket so a couple with
-  // only a handful of 술집 entries still see a meaningful list.
-  // Sorted by combined rating desc so the best spot leads.
-  const boozeRows = useMemo(
-    () => filteredRows.filter((r) => r.placeCategories.includes("bar")),
-    [filteredRows]
-  );
-  const boozeSorted = useMemo(
-    () =>
-      [...boozeRows].sort(
-        (a, b) => b.mine + b.partner - (a.mine + a.partner)
-      ),
-    [boozeRows]
-  );
-  const boozePlaces: FamePlace[] = useMemo(() => {
-    const groups = new Map<string, FamePlace>();
-    for (const r of boozeRows) {
-      if (!groups.has(r.placeId)) {
-        groups.set(r.placeId, {
-          placeId: r.placeId,
-          placeName: r.placeName,
-          rows: [],
-          avgMine: 0,
-          avgPartner: 0,
-          total: 0,
-        });
-      }
-      groups.get(r.placeId)!.rows.push(r);
-    }
-    const out: FamePlace[] = [];
-    for (const g of groups.values()) {
-      g.avgMine = g.rows.reduce((s, r) => s + r.mine, 0) / g.rows.length;
-      g.avgPartner =
-        g.rows.reduce((s, r) => s + r.partner, 0) / g.rows.length;
-      g.total = g.avgMine + g.avgPartner;
-      out.push(g);
-    }
-    out.sort((a, b) => b.total - a.total);
-    return out;
-  }, [boozeRows]);
+  // 술별 fame view — per-drink ranking. Filters on the FOOD category
+  // ('drink'), not the place category ('bar') — otherwise a charcuterie
+  // board logged at a wine bar got included alongside the actual
+  // cocktails. Per-food row IS the specific-type ranking the user
+  // asked for (drinks already carry specific names like "Old Fashioned"
+  // or "사케 후나구치"). No FAME threshold + no restaurant aggregate.
+  const boozeSorted = useMemo(() => {
+    const rows = filteredRows.filter((r) =>
+      r.foodCategories.includes("drink")
+    );
+    return rows.sort(
+      (a, b) => b.mine + b.partner - (a.mine + a.partner)
+    );
+  }, [filteredRows]);
   const boozeSortedTop = boozeSorted.slice(0, 3);
   const boozeSortedRest = boozeSorted.slice(3);
-  const boozePlacesTop = boozePlaces.slice(0, 3);
-  const boozePlacesRest = boozePlaces.slice(3);
 
   return (
     <div>
@@ -863,15 +839,6 @@ export default function ComparePage() {
             count={neverAgain.length}
             tone="ink"
           />
-          <SectionTab
-            active={activeTab === "booze"}
-            onClick={() => setActiveTab("booze")}
-            icon={<Wine className="w-3.5 h-3.5" />}
-            labelKo="술 랭킹"
-            labelZh="酒榜"
-            count={boozeSorted.length}
-            tone="rose"
-          />
         </div>
 
         {filteredRows.length === 0 ? (
@@ -894,28 +861,36 @@ export default function ComparePage() {
                     ? "둘 다 4.5점 이상 — 우리의 레전드 메뉴"
                     : fameView === "home"
                       ? "둘 다 평균 4.5점 이상 — 우리집 레전드 메뉴"
-                      : "둘 다 평균 4.5점 이상 — 우리의 레전드 식당"
+                      : fameView === "booze"
+                        ? "우리 인생술 랭킹"
+                        : "둘 다 평균 4.5점 이상 — 우리의 레전드 식당"
                 }
                 titleZh={
                   fameView === "menu"
                     ? "俩人都给了4.5+，封神级菜品！"
                     : fameView === "home"
                       ? "俩人均分都给了4.5+，家里封神级！"
-                      : "俩人均分都给了4.5+，封神级店铺！"
+                      : fameView === "booze"
+                        ? "我们最爱的酒"
+                        : "俩人均分都给了4.5+，封神级店铺！"
                 }
                 empty={
                   fameView === "menu"
                     ? fameAll.length === 0
                     : fameView === "home"
                       ? famePlacesHome.length === 0
-                      : famePlacesRestaurant.length === 0
+                      : fameView === "booze"
+                        ? boozeSorted.length === 0
+                        : famePlacesRestaurant.length === 0
                 }
                 emptyText={
                   fameView === "menu"
                     ? "아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
                     : fameView === "home"
                       ? "아직 평균 4.5점 이상 집밥이 없어요 · 还没有4.5+的家宴"
-                      : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
+                      : fameView === "booze"
+                        ? "아직 술집 카테고리 기록이 없어요 · 还没有酒馆记录"
+                        : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
                 }
               >
                 {/* Restaurant / home / menu segmented toggle —
@@ -1050,6 +1025,48 @@ export default function ComparePage() {
                     )}
                   </>
                 )}
+
+                {fameView === "booze" && (
+                  <>
+                    {boozeSortedTop.map((r, idx) => (
+                      <FoodCard
+                        key={r.foodId}
+                        r={r}
+                        showTotal
+                        yyds
+                        rank={idx + 1}
+                        badge={`🍻 TOP ${idx + 1}`}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    ))}
+                    {boozeSortedRest.length > 0 && (
+                      <div className="pt-2 mt-2">
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <Wine className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-[12px] font-bold text-rose-500">
+                            그 외 한 잔 · 其余几杯
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-number">
+                            {boozeSortedRest.length}
+                          </span>
+                        </div>
+                        <ExpandableList items={boozeSortedRest} initial={5}>
+                          {(r, idx) => (
+                            <FoodCard
+                              key={r.foodId}
+                              r={r}
+                              showTotal
+                              rank={idx + 4}
+                              myDisplay={myDisplay}
+                              partnerDisplay={partnerDisplay}
+                            />
+                          )}
+                        </ExpandableList>
+                      </div>
+                    )}
+                  </>
+                )}
               </ListPanel>
             )}
             {activeTab === "clash" && (
@@ -1145,105 +1162,6 @@ export default function ComparePage() {
                       />
                     )}
                   </ExpandableList>
-                )}
-              </ListPanel>
-            )}
-            {activeTab === "booze" && (
-              <ListPanel
-                titleKo={
-                  boozeView === "menu"
-                    ? "우리가 마신 메뉴 랭킹"
-                    : "우리의 단골 술집 랭킹"
-                }
-                titleZh={
-                  boozeView === "menu" ? "酒水菜单榜" : "我们的酒馆榜"
-                }
-                empty={
-                  boozeView === "menu"
-                    ? boozeSorted.length === 0
-                    : boozePlaces.length === 0
-                }
-                emptyText="아직 술집 카테고리 기록이 없어요 · 还没有酒馆记录"
-              >
-                <ListViewToggle view={boozeView} onChange={setBoozeView} />
-                {boozeView === "menu" && (
-                  <>
-                    {boozeSortedTop.map((r, idx) => (
-                      <FoodCard
-                        key={r.foodId}
-                        r={r}
-                        showTotal
-                        yyds
-                        rank={idx + 1}
-                        badge={`🍻 TOP ${idx + 1}`}
-                        myDisplay={myDisplay}
-                        partnerDisplay={partnerDisplay}
-                      />
-                    ))}
-                    {boozeSortedRest.length > 0 && (
-                      <div className="pt-2 mt-2">
-                        <div className="flex items-center gap-2 mb-3 px-1">
-                          <Wine className="w-3.5 h-3.5 text-rose-400" />
-                          <span className="text-[12px] font-bold text-rose-500">
-                            그 외 한 잔 · 其余几杯
-                          </span>
-                          <span className="text-[10px] text-ink-400 font-number">
-                            {boozeSortedRest.length}
-                          </span>
-                        </div>
-                        <ExpandableList items={boozeSortedRest} initial={5}>
-                          {(r, idx) => (
-                            <FoodCard
-                              key={r.foodId}
-                              r={r}
-                              showTotal
-                              rank={idx + 4}
-                              myDisplay={myDisplay}
-                              partnerDisplay={partnerDisplay}
-                            />
-                          )}
-                        </ExpandableList>
-                      </div>
-                    )}
-                  </>
-                )}
-                {boozeView === "restaurant" && (
-                  <>
-                    {boozePlacesTop.map((p, idx) => (
-                      <PlaceFameCard
-                        key={p.placeId}
-                        p={p}
-                        rank={idx + 1}
-                        badge={`🍻 TOP ${idx + 1}`}
-                        myDisplay={myDisplay}
-                        partnerDisplay={partnerDisplay}
-                      />
-                    ))}
-                    {boozePlacesRest.length > 0 && (
-                      <div className="pt-2 mt-2">
-                        <div className="flex items-center gap-2 mb-3 px-1">
-                          <Wine className="w-3.5 h-3.5 text-rose-400" />
-                          <span className="text-[12px] font-bold text-rose-500">
-                            그 외 단골 · 其余常去
-                          </span>
-                          <span className="text-[10px] text-ink-400 font-number">
-                            {boozePlacesRest.length}
-                          </span>
-                        </div>
-                        <ExpandableList items={boozePlacesRest} initial={5}>
-                          {(p, idx) => (
-                            <PlaceFameCard
-                              key={p.placeId}
-                              p={p}
-                              rank={idx + 4}
-                              myDisplay={myDisplay}
-                              partnerDisplay={partnerDisplay}
-                            />
-                          )}
-                        </ExpandableList>
-                      </div>
-                    )}
-                  </>
                 )}
               </ListPanel>
             )}
@@ -2549,27 +2467,30 @@ function ListViewToggle({
   );
 }
 
-// ---------- fame view toggle (3-way) ----------
+// ---------- fame view toggle (4-way) ----------
 
-// Fame-only 3-button toggle: 식당 / 집밥 / 메뉴. Restaurants and
-// home cooks get separate place-level rankings so a 4.8점 회식집과
-// 4.8점 집밥이 같은 트로피 자리를 두고 경쟁하지 않음. 메뉴별 (per-
-// food) drill-down stays on the right edge.
+// Fame-only segmented toggle: 식당 / 집밥 / 메뉴 / 술. Restaurants
+// and home cooks get separate place-level rankings so a 4.8점 회식집
+// 과 4.8점 집밥이 같은 트로피 자리를 두고 경쟁하지 않음. 메뉴별
+// surfaces the per-food drill-down, 술별 narrows to bar-category
+// foods so cocktail / soju / wine entries each rank as themselves
+// (no restaurant aggregate — drinks have specific names already).
+//
+// 4 buttons on 360px mobile is the comfortable ceiling. If we need
+// a 5th cut, this should graduate to a horizontal-scroll chip row.
+type FameView = "menu" | "restaurant" | "home" | "booze";
 function FameViewToggle({
   view,
   onChange,
 }: {
-  view: "menu" | "restaurant" | "home";
-  onChange: (v: "menu" | "restaurant" | "home") => void;
+  view: FameView;
+  onChange: (v: FameView) => void;
 }) {
-  const btn = (
-    target: "menu" | "restaurant" | "home",
-    label: string
-  ) => (
+  const btn = (target: FameView, label: string) => (
     <button
       type="button"
       onClick={() => onChange(target)}
-      className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold transition active:scale-95 ${
+      className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition active:scale-95 ${
         view === target
           ? "bg-white shadow-sm text-ink-900 border border-cream-200"
           : "text-ink-500"
@@ -2579,10 +2500,11 @@ function FameViewToggle({
     </button>
   );
   return (
-    <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
-      {btn("restaurant", "🏠 식당별 · 按店铺")}
-      {btn("home", "🍳 집밥별 · 按家宴")}
-      {btn("menu", "🍽️ 메뉴별 · 按菜品")}
+    <div className="flex bg-cream-100 p-1 rounded-xl mb-3 gap-0.5">
+      {btn("restaurant", "🏠 식당")}
+      {btn("home", "🍳 집밥")}
+      {btn("menu", "🍽️ 메뉴")}
+      {btn("booze", "🍷 술")}
     </div>
   );
 }
