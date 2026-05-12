@@ -90,6 +90,7 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   main: "🍽️",
   side: "🥗",
   drink: "🥤",
+  liquor: "🍷",
   // home-cooking-only food categories (set under HomeFoodCard's picker)
   by_me: "🧑‍🍳",
   by_partner: "👩‍🍳",
@@ -111,7 +112,12 @@ export const FOOD_CATEGORIES = [
   "main",
   "side",
   "dessert",
+  // 음료 vs 술 split — drink is non-alcoholic (coffee, soda, juice),
+  // liquor is alcoholic (wine, beer, cocktails, soju). Keeping them
+  // separate lets the 술 랭킹 view on ComparePage land on actual
+  // booze without sweeping up everyone's iced americano.
   "drink",
+  "liquor",
   "other",
 ] as const;
 

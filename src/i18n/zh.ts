@@ -113,6 +113,7 @@ export default {
     main: "主菜",
     side: "配菜",
     drink: "饮品",
+    liquor: "酒",
     by_me: "我做的",
     by_partner: "宝宝做的",
     frozen: "冷冻食品",

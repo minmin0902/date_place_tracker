@@ -37,6 +37,9 @@ export function FilterSheet({
   onChangeCategoryFilter,
   customCategoryStrings,
   hasUncategorized,
+  showFoodCategory = false,
+  foodCategoryFilter,
+  onChangeFoodCategoryFilter,
   onResetAll,
   hasAnyActive,
 }: {
@@ -55,6 +58,12 @@ export function FilterSheet({
   // Whether the timeline has any uncategorized place — toggles the
   // "❓ 미분류" sentinel chip on the category row.
   hasUncategorized: boolean;
+  // Show the per-food category section. HomePage flips this on only
+  // while the menu layout is active — the per-place layouts can't
+  // filter on food category meaningfully (one place has multiple).
+  showFoodCategory?: boolean;
+  foodCategoryFilter?: string[];
+  onChangeFoodCategoryFilter?: (v: string[]) => void;
   onResetAll: () => void;
   // Lets the parent disable the reset link when no filter is set.
   hasAnyActive: boolean;
@@ -70,12 +79,16 @@ export function FilterSheet({
   const [categoriesOpen, setCategoriesOpen] = useState(
     categoryFilter.length > 0
   );
+  const [foodCategoriesOpen, setFoodCategoriesOpen] = useState(
+    (foodCategoryFilter?.length ?? 0) > 0
+  );
   // Re-seed when the sheet itself reopens — previous session's open
   // state can leak weirdly if the sheet was closed mid-flow.
   useEffect(() => {
     if (open) {
       setCitiesOpen(selectedCities.length > 0);
       setCategoriesOpen(categoryFilter.length > 0);
+      setFoodCategoriesOpen((foodCategoryFilter?.length ?? 0) > 0);
     }
     // Only when `open` flips on; selection deps would re-collapse the
     // section the user just opened to interact with.
@@ -425,6 +438,19 @@ export function FilterSheet({
               </>
             )}
           </section>
+
+          {/* ----- 메뉴 카테고리 (menu layout only) ----- */}
+          {showFoodCategory &&
+            foodCategoryFilter &&
+            onChangeFoodCategoryFilter && (
+              <FoodCategorySection
+                t={t}
+                value={foodCategoryFilter}
+                onChange={onChangeFoodCategoryFilter}
+                open={foodCategoriesOpen}
+                onToggleOpen={() => setFoodCategoriesOpen((v) => !v)}
+              />
+            )}
         </div>
 
         <div className="border-t border-cream-200 px-5 py-3 flex items-center justify-between gap-3 flex-shrink-0">
@@ -447,5 +473,181 @@ export function FilterSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+// Food category structure for the filter: flat top-level chips for
+// the standalone categories (메인 / 사이드 / 디저트 / 기타) and a
+// 음료 group containing the two drink subtypes (음료수 / 술). Mirrors
+// the FoodFormPage picker shape so the filter and the form match
+// visually + share the "음료 group" semantics.
+type FoodFilterEntry =
+  | { kind: "flat"; key: string }
+  | { kind: "group"; labelKo: string; labelZh: string; emoji: string; keys: string[] };
+const FOOD_FILTER_LAYOUT: FoodFilterEntry[] = [
+  { kind: "flat", key: "main" },
+  { kind: "flat", key: "side" },
+  { kind: "flat", key: "dessert" },
+  {
+    kind: "group",
+    labelKo: "음료",
+    labelZh: "饮料",
+    emoji: "🥂",
+    keys: ["drink", "liquor"],
+  },
+  { kind: "flat", key: "other" },
+];
+
+// Per-food category section. Surfaced only in menu layout (HomePage
+// gates via showFoodCategory). Place categories use CATEGORY_GROUPS
+// for tri-state bulk-toggling; food gets the same treatment via
+// FOOD_FILTER_LAYOUT so users can tap "🥂 음료" to grab 음료수 + 술
+// at once.
+function FoodCategorySection({
+  t,
+  value,
+  onChange,
+  open,
+  onToggleOpen,
+}: {
+  t: (key: string) => string;
+  value: string[];
+  onChange: (v: string[]) => void;
+  open: boolean;
+  onToggleOpen: () => void;
+}) {
+  function toggle(key: string) {
+    if (value.includes(key)) onChange(value.filter((k) => k !== key));
+    else onChange([...value, key]);
+  }
+  function toggleGroup(keys: string[]) {
+    const allOn = keys.every((k) => value.includes(k));
+    if (allOn) {
+      const set = new Set(keys);
+      onChange(value.filter((k) => !set.has(k)));
+    } else {
+      const merged = new Set(value);
+      for (const k of keys) merged.add(k);
+      onChange([...merged]);
+    }
+  }
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <span>🍽️</span>메뉴 카테고리 · 菜品类别
+          {value.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-number font-bold">
+              {value.length}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-ink-400 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open && (
+        <>
+          {value.length > 0 && (
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
+              >
+                전체 해제 · 清空
+              </button>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {FOOD_FILTER_LAYOUT.filter((e) => e.kind === "flat").map((e) => {
+              if (e.kind !== "flat") return null;
+              const active = value.includes(e.key);
+              return (
+                <button
+                  key={e.key}
+                  type="button"
+                  onClick={() => toggle(e.key)}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-bold transition border break-keep ${
+                    active
+                      ? "bg-rose-100 text-rose-600 border-rose-300 shadow-sm"
+                      : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                  }`}
+                >
+                  <span>{categoryEmojiOf(e.key)}</span>
+                  {t(`category.${e.key}`)}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Drink group — placed below the flat chips. Same tri-state
+              bulk-toggle pattern the place category groups use. */}
+          {FOOD_FILTER_LAYOUT.filter((e) => e.kind === "group").map((e) => {
+            if (e.kind !== "group") return null;
+            const allOn = e.keys.every((k) => value.includes(k));
+            const anyOn = e.keys.some((k) => value.includes(k));
+            const headerState: "on" | "partial" | "off" = allOn
+              ? "on"
+              : anyOn
+                ? "partial"
+                : "off";
+            return (
+              <div
+                key={e.labelKo}
+                className="mt-2 rounded-2xl border border-cream-200 bg-cream-50/40 px-3 py-2.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(e.keys)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition border break-keep mb-2 ${
+                    headerState === "on"
+                      ? "bg-peach-100 text-peach-600 border-peach-300"
+                      : headerState === "partial"
+                        ? "bg-peach-50 text-peach-500 border-peach-200"
+                        : "bg-white text-ink-700 border-cream-200/80 hover:bg-cream-50"
+                  }`}
+                >
+                  <span className="w-3.5 h-3.5 rounded-full border-[1.5px] inline-flex items-center justify-center text-[9px] font-bold leading-none">
+                    {headerState === "on"
+                      ? "✓"
+                      : headerState === "partial"
+                        ? "−"
+                        : ""}
+                  </span>
+                  {e.emoji} {e.labelKo} · {e.labelZh}
+                </button>
+                <div className="flex flex-wrap gap-1.5">
+                  {e.keys.map((k) => {
+                    const active = value.includes(k);
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => toggle(k)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition border break-keep ${
+                          active
+                            ? "bg-rose-100 text-rose-600 border-rose-300 shadow-sm"
+                            : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
+                        }`}
+                      >
+                        <span>{categoryEmojiOf(k)}</span>
+                        {t(`category.${k}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </section>
   );
 }

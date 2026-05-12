@@ -15,7 +15,6 @@ import { RatingPicker } from "@/components/RatingPicker";
 import { PhotoUploader } from "@/components/PhotoUploader";
 import { MemoAuthorPicker } from "@/components/MemoAuthorPicker";
 import {
-  FOOD_CATEGORIES,
   PREMADE_FOOD_CATEGORIES,
   categoryEmojiOf,
 } from "@/lib/constants";
@@ -61,19 +60,46 @@ export default function FoodFormPage() {
   const { myDisplay, partnerDisplay } = useDisplayNames();
   const { t } = useTranslation();
 
-  // Food categories: the regular 5-item list lives at the top
-  // (메인 / 사이드 / 디저트 / 드링크 / 기타). For foods on a home-cooked
-  // place we surface the 완제품 cluster too (frozen / bread / etc).
+  // Food categories: top-level flat options for the food types that
+  // stand alone (메인 / 사이드 / 디저트 / 기타). The two drink-shaped
+  // categories (drink = 음료수 non-alcoholic, liquor = 술 alcohol)
+  // get nested under a 🥂 음료 group so they're visually adjacent in
+  // the picker — and the 술 랭킹 view on ComparePage can rely on
+  // people tagging actual booze as 'liquor' rather than dumping it
+  // into the generic 음료수 slot.
+  //
+  // Home-cooked places additionally surface the 완제품 group (frozen
+  // / bread / etc).
+  //
   // The "who cooked it?" question lives on the dedicated chef toggle
   // below, NOT in the category picker — duplicating it here used to
   // confuse users into thinking by_me/by_partner saved chef.
   const isHomeCookedPlace = !!place?.is_home_cooked;
   const foodCategoryOptions = useMemo<GroupedMultiSelectEntry[]>(() => {
-    const base: GroupedMultiSelectEntry[] = FOOD_CATEGORIES.map((c) => ({
-      value: c,
-      label: t(`category.${c}`),
-      emoji: categoryEmojiOf(c),
-    }));
+    // Standalone food types render flat at the top so the most common
+    // taps (메인 / 사이드 / 디저트 / 기타) stay one click away.
+    const FLAT_TOPS = ["main", "side", "dessert"] as const;
+    const DRINK_GROUP = ["drink", "liquor"] as const;
+    const base: GroupedMultiSelectEntry[] = [
+      ...FLAT_TOPS.map((c) => ({
+        value: c,
+        label: t(`category.${c}`),
+        emoji: categoryEmojiOf(c),
+      })),
+      {
+        groupLabel: "🥂 음료 · 饮料",
+        options: DRINK_GROUP.map((c) => ({
+          value: c,
+          label: t(`category.${c}`),
+          emoji: categoryEmojiOf(c),
+        })),
+      },
+      {
+        value: "other",
+        label: t("category.other"),
+        emoji: categoryEmojiOf("other"),
+      },
+    ];
     if (!isHomeCookedPlace) return base;
     return [
       ...base,

@@ -588,20 +588,52 @@ export default function ComparePage() {
     return out;
   }, [neverAgain]);
 
-  // 술별 fame view — per-drink ranking. Filters on the FOOD category
-  // ('drink'), not the place category ('bar') — otherwise a charcuterie
-  // board logged at a wine bar got included alongside the actual
-  // cocktails. Per-food row IS the specific-type ranking the user
-  // asked for (drinks already carry specific names like "Old Fashioned"
-  // or "사케 후나구치"). No FAME threshold + no restaurant aggregate.
+  // 술별 fame view — per-drink (alcohol) ranking. Filters on the
+  // FOOD category 'liquor' (술), not 'drink' (음료, non-alcoholic) and
+  // not place category 'bar'. Earlier iteration used place='bar' which
+  // dragged in charcuterie / 안주; then 'drink' which dragged in
+  // iced americanos. 'liquor' is the correct food-level tag — added
+  // to FOOD_CATEGORIES to separate booze from generic 음료. Per-food
+  // row IS the specific-type ranking (Old Fashioned / 사케 후나구치
+  // already carry names); no FAME threshold + no restaurant aggregate.
+  //
+  // NOTE: built from its own scan of places.foods (not filteredRows) so
+  // that solo-eater drinks and partial-rated drinks STILL appear in 술
+  // 랭킹. The generic `rows` builder skips both — that's right for
+  // 명예의전당 식당/메뉴 (need both partners' ratings to be meaningful)
+  // but wrong for 술 where the user wants every liquor-tagged record
+  // to show up. Null ratings fall through as 0 → those rows naturally
+  // sink to the bottom of the sorted list.
   const boozeSorted = useMemo(() => {
-    const rows = filteredRows.filter((r) =>
-      r.foodCategories.includes("drink")
-    );
-    return rows.sort(
+    if (!places) return [];
+    const out: Row[] = [];
+    for (const p of places) {
+      if (diningFilter === "out" && p.is_home_cooked) continue;
+      if (diningFilter === "home" && !p.is_home_cooked) continue;
+      for (const f of p.foods ?? []) {
+        const foodCats = getCategories(f);
+        if (!foodCats.includes("liquor")) continue;
+        const view = ratingsForViewer(f, user?.id);
+        out.push({
+          foodId: f.id,
+          placeId: p.id,
+          placeName: p.name,
+          placeDate: p.date_visited,
+          foodName: f.name,
+          isHomeCooked: !!p.is_home_cooked,
+          placeCategories: getCategories(p),
+          foodCategories: foodCats,
+          mine: view.myRating ?? 0,
+          partner: view.partnerRating ?? 0,
+          chef: f.chef ?? null,
+          createdBy: f.created_by ?? null,
+        });
+      }
+    }
+    return out.sort(
       (a, b) => b.mine + b.partner - (a.mine + a.partner)
     );
-  }, [filteredRows]);
+  }, [places, user?.id, diningFilter]);
   const boozeSortedTop = boozeSorted.slice(0, 3);
   const boozeSortedRest = boozeSorted.slice(3);
 
@@ -841,7 +873,12 @@ export default function ComparePage() {
           />
         </div>
 
-        {filteredRows.length === 0 ? (
+        {/* When on the fame tab, the booze view runs its own scan that
+            includes solo + partially-rated drinks. If those exist, the
+            fame tab is not empty even when filteredRows is — let it
+            through so the FameViewToggle stays reachable. */}
+        {filteredRows.length === 0 &&
+        !(activeTab === "fame" && boozeSorted.length > 0) ? (
           <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-cream-200">
             <div className="text-5xl mb-3">📭</div>
             <p className="text-sm text-ink-500 font-medium">

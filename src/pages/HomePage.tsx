@@ -103,6 +103,10 @@ type StoredFilters = {
   // children selected at once).
   categoryFilter?: string;
   categoryFilters?: string[];
+  // Per-food category filter, surfaced only in menu layout. Place
+  // category (above) lives on the place row; this filters by the
+  // food's own category (메인 / 사이드 / 음료 / 술 / etc).
+  foodCategoryFilters?: string[];
   // v1: single string. v2: array. We migrate v1 transparently on read.
   selectedCity?: string | null;
   selectedCities?: string[];
@@ -337,6 +341,16 @@ export default function HomePage() {
   const [diningFilter, setDiningFilter] = useState<DiningFilter>(
     initialFilters.current.diningFilter ?? "all"
   );
+  // Food-level category filter — only meaningful in the per-menu
+  // layout. State persists across layout switches so the user can
+  // flip back to list, tweak place categories, return to menu without
+  // re-picking. Filter is applied lazily in `filteredMenus`.
+  const [foodCategoryFilter, setFoodCategoryFilter] = useState<string[]>(
+    () => {
+      const stored = initialFilters.current.foodCategoryFilters;
+      return Array.isArray(stored) ? stored : [];
+    }
+  );
   // Multi-select category filter (modal popover). Empty array = no
   // filter. "__none__" = uncategorized only. Other values are built-in
   // PLACE_CATEGORIES keys or freeform "기타" strings. baseList ORs
@@ -384,6 +398,7 @@ export default function HomePage() {
       viewMode,
       diningFilter,
       categoryFilters: categoryFilter,
+      foodCategoryFilters: foodCategoryFilter,
       selectedCities,
       listLayout,
     });
@@ -395,6 +410,7 @@ export default function HomePage() {
     viewMode,
     diningFilter,
     categoryFilter,
+    foodCategoryFilter,
     selectedCities,
     listLayout,
   ]);
@@ -594,6 +610,23 @@ export default function HomePage() {
           const foodHit = f.name.toLowerCase().includes(q);
           if (!placeHay.includes(q) && !foodHit) continue;
         }
+        // Food category filter — applies only in menu layout (which
+        // is the only path that hits this loop). OR semantics across
+        // selected food categories; "__none__" sentinel matches foods
+        // with no category set.
+        if (foodCategoryFilter.length > 0) {
+          const cats = getCategories(f);
+          const wantNone = foodCategoryFilter.includes("__none__");
+          const concrete = foodCategoryFilter.filter(
+            (v) => v !== "__none__"
+          );
+          if (cats.length === 0) {
+            if (!wantNone) continue;
+          } else {
+            if (concrete.length === 0) continue;
+            if (!concrete.some((c) => cats.includes(c))) continue;
+          }
+        }
         out.push({ food: f, place: p });
       }
     }
@@ -627,7 +660,15 @@ export default function HomePage() {
       });
     }
     return out;
-  }, [baseList, listLayout, listFilter, viewMode, query, user?.id]);
+  }, [
+    baseList,
+    listLayout,
+    listFilter,
+    viewMode,
+    query,
+    foodCategoryFilter,
+    user?.id,
+  ]);
 
   // All cities present across the user's full place list — derived
   // from raw `places`, NOT from baseList. Using baseList was a bug:
@@ -847,7 +888,8 @@ export default function HomePage() {
               const sheetCount =
                 (sortActive ? 1 : 0) +
                 selectedCities.length +
-                categoryFilter.length;
+                categoryFilter.length +
+                (listLayout === "menu" ? foodCategoryFilter.length : 0);
               const isActive = sheetCount > 0;
               return (
                 <div className="flex items-stretch gap-2 mb-3">
@@ -1184,6 +1226,13 @@ export default function HomePage() {
         onChangeCategoryFilter={setCategoryFilter}
         customCategoryStrings={customCategoryStrings}
         hasUncategorized={hasUncategorized}
+        // Food-category section is meaningful only in menu layout
+        // (where the timeline is one card per food). The sheet still
+        // accepts the state from the outside; visibility is gated on
+        // showFoodCategory.
+        showFoodCategory={listLayout === "menu"}
+        foodCategoryFilter={foodCategoryFilter}
+        onChangeFoodCategoryFilter={setFoodCategoryFilter}
         // hasAnyActive includes the single-pick top-level chip too
         // so the sheet's "전체 초기화" knows there's something to
         // clear even when the user hasn't touched anything inside the
@@ -1192,12 +1241,14 @@ export default function HomePage() {
           viewMode !== "date" ||
           selectedCities.length > 0 ||
           categoryFilter.length > 0 ||
+          foodCategoryFilter.length > 0 ||
           listFilter !== "none"
         }
         onResetAll={() => {
           setViewMode("date");
           setSelectedCities([]);
           setCategoryFilter([]);
+          setFoodCategoryFilter([]);
           setListFilter("none");
         }}
       />
