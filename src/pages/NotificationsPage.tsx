@@ -1,4 +1,11 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  memo,
+  useContext,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -338,6 +345,12 @@ export default function NotificationsPage() {
     onManualRefresh,
   } = useRefreshControls(refreshAll);
   const [filter, setFilter] = useState<FilterKey>("all");
+  // Filter chip taps re-bucket displayRows (Map-heavy useMemo) and
+  // remount every row underneath. Marking the setFilter as a
+  // transition lets React 18 yield to user input first, so the
+  // active-chip highlight flips instantly while the list catches
+  // up over the next frames instead of blocking the tap.
+  const [, startTransition] = useTransition();
 
   // Resolve parent context (which place / which food) for each
   // notification. Loaded once; react-query dedupes against the home
@@ -582,7 +595,7 @@ export default function NotificationsPage() {
               <button
                 key={key}
                 type="button"
-                onClick={() => setFilter(key)}
+                onClick={() => startTransition(() => setFilter(key))}
                 className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all active:scale-95 border whitespace-nowrap ${
                   active
                     ? "bg-peach-50 text-peach-600 border-peach-200/80 shadow-[0_2px_10px_rgba(248,149,112,0.18)]"
@@ -682,7 +695,25 @@ function FilteredEmptyState() {
 // activity kind that has at least one member: 메뉴 N, 메모 N, 답글 N,
 // 이모지 N (with emoji bag), 별점 N, 또갈래. Tap anywhere on the card
 // → mark every member read + navigate to the place.
-function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
+// Memoized so optimistic mark-read on ONE row (which still produces
+// a new bundle object via the displayRows useMemo) doesn't re-render
+// every OTHER card in the list. Custom comparator keys on bundle
+// identity (latest.id) + size + the unread bit — the only things
+// that change the visible output.
+const ActivityBundleItem = memo(
+  ActivityBundleItemImpl,
+  (prev, next) => {
+    const a = prev.bundle;
+    const b = next.bundle;
+    if (a.latest.id !== b.latest.id) return false;
+    if (a.allItems.length !== b.allItems.length) return false;
+    const aUnread = a.allItems.some((i) => !i.read_at);
+    const bUnread = b.allItems.some((i) => !i.read_at);
+    return aUnread === bUnread;
+  }
+);
+
+function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
   const { name, avatarUrl } = useActorDisplay(bundle.actorId);
@@ -900,7 +931,7 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
           just that sub-bucket read). HTML disallows nested buttons,
           so siblings inside a div container are the clean way. */}
       <article
-        className={`relative rounded-2xl border transition ${
+        className={`relative rounded-2xl border transition-colors ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60"
             : "bg-white border-cream-200"
@@ -909,7 +940,7 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
         <button
           type="button"
           onClick={onHeaderTap}
-          className="w-full text-left flex items-start gap-2.5 p-2.5 pr-6 rounded-2xl active:scale-[0.99] transition hover:bg-cream-50/40"
+          className="w-full text-left flex items-start gap-2.5 p-2.5 pr-6 rounded-2xl active:scale-[0.99] transition-colors hover:bg-cream-50/40"
         >
           <div className="relative flex-shrink-0">
             <div
@@ -962,7 +993,7 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
                   <button
                     type="button"
                     onClick={s.onTap}
-                    className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition hover:bg-cream-100/60"
+                    className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition-colors hover:bg-cream-100/60"
                   >
                     <Icon
                       className={`w-3 h-3 mt-0.5 flex-shrink-0 ${s.color}`}
@@ -1017,7 +1048,19 @@ function DateSectionHeader({ ko, zh }: { ko: string; zh: string }) {
   );
 }
 
-function NotificationItem({ item }: { item: NotificationRow }) {
+// Memoized — single rows render the same output as long as (id,
+// read_at, preview) are stable. Identity check on those three
+// covers every visible change without forcing a re-render on
+// unrelated cache patches.
+const NotificationItem = memo(
+  NotificationItemImpl,
+  (prev, next) =>
+    prev.item.id === next.item.id &&
+    prev.item.read_at === next.item.read_at &&
+    prev.item.preview === next.item.preview
+);
+
+function NotificationItemImpl({ item }: { item: NotificationRow }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
   const rowCtx = useRowContext();
@@ -1072,7 +1115,7 @@ function NotificationItem({ item }: { item: NotificationRow }) {
       <button
         type="button"
         onClick={onTap}
-        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition-colors active:scale-[0.99] border ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60"
             : "bg-white border-cream-200 hover:bg-cream-50"

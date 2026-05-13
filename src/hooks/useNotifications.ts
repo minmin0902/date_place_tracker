@@ -57,6 +57,13 @@ export function useUnreadCount() {
 
 // Flip a single row's read_at. Use this when the user taps a row to
 // open the linked content.
+//
+// Optimistic: we patch the cached inbox row synchronously so the
+// unread dot disappears the instant the user taps, and the page
+// doesn't refetch the entire 14-day list. Without this, every tap
+// triggered a full SELECT + render-wave on a 200+ row inbox, which
+// was the main source of "click 시 끊김". The badge count still
+// invalidates (cheap, count-only query).
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -68,8 +75,25 @@ export function useMarkNotificationRead() {
         .eq("id", id);
       if (error) throw error;
     },
+    onMutate: async (id) => {
+      const key = ["notifications", user?.id] as const;
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<NotificationRow[]>(key);
+      if (prev) {
+        const now = new Date().toISOString();
+        qc.setQueryData<NotificationRow[]>(
+          key,
+          prev.map((n) =>
+            n.id === id && !n.read_at ? { ...n, read_at: now } : n
+          )
+        );
+      }
+      return { prev, key };
+    },
+    onError: (_e, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications", user?.id] });
       qc.invalidateQueries({
         queryKey: ["notifications", "unread-count", user?.id],
       });
