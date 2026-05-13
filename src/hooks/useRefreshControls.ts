@@ -93,9 +93,15 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
       if (!tracking.current || startY.current === null) return;
       const dy = e.touches[0].clientY - startY.current;
       if (dy <= 0) {
+        // Finger moved back at or above the start point. Visually
+        // snap the indicator to 0 but DO NOT release tracking — the
+        // same gesture may move down again and we want the indicator
+        // to follow the finger continuously (up→0, back-down→grow).
+        // Previously we set tracking.current = false here, which
+        // permanently disengaged the gesture the moment the user
+        // momentarily relaxed their pull.
         pendingPull.current = 0;
         scheduledPullCommit();
-        tracking.current = false;
         return;
       }
       const damped = dampedPull(dy);

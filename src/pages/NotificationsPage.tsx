@@ -257,9 +257,22 @@ function NotificationItem({ item }: { item: NotificationRow }) {
   // Resolve where to navigate based on the notification kind. Foods
   // and threaded memos still land on the parent place page — the food
   // detail / memo lives there, not on a separate route.
+  //
+  // Hash anchor refinement so taps land on the EXACT row that
+  // triggered the notification, not at the top of a long place page:
+  //   memo_id present → #memo-<id>  (memo edits, threads, replies,
+  //                                   reactions on a memo)
+  //   food_id present → #food-<id>  (new food, rating fill,
+  //                                   reactions on a food caption)
+  //   otherwise       → no anchor   (place-level events, revisit)
+  // PlaceDetailPage's hash effect resolves the element id and
+  // scrollIntoView's it with a brief ring highlight pulse.
   const linkTo = (() => {
-    if (item.place_id) return `/places/${item.place_id}`;
-    return null;
+    if (!item.place_id) return null;
+    const base = `/places/${item.place_id}`;
+    if (item.memo_id) return `${base}#memo-${item.memo_id}`;
+    if (item.food_id) return `${base}#food-${item.food_id}`;
+    return base;
   })();
 
   // On row tap: mark as read + navigate. Mark first (fire-and-forget)

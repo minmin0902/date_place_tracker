@@ -193,7 +193,15 @@ export function MemoThread({
         const isAuthor = m.author_id === user?.id;
         const replyingHere = replyingTo === m.id;
         return (
-          <div key={m.id} className="space-y-1.5">
+          // id="memo-<id>" + scroll-mt-24 so the notification inbox
+          // can deep-link directly to this memo via /places/<id>#memo
+          // -<memoId>. PlaceDetailPage's hash effect uses element id
+          // lookup; scroll-mt offsets the sticky page header.
+          <div
+            key={m.id}
+            id={`memo-${m.id}`}
+            className="space-y-1.5 scroll-mt-24"
+          >
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <MemoComment
@@ -260,7 +268,14 @@ export function MemoThread({
                 {replies.map((r) => {
                   const rAuthor = r.author_id === user?.id;
                   return (
-                    <div key={r.id} className="flex items-start gap-2">
+                    // Replies get their own anchor too — a reply
+                    // notification deep-links to the reply itself,
+                    // not the parent it lives under.
+                    <div
+                      key={r.id}
+                      id={`memo-${r.id}`}
+                      className="flex items-start gap-2 scroll-mt-24"
+                    >
                       <div className="flex-1 min-w-0">
                         <MemoComment
                           memo={r.body}

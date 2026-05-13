@@ -65,47 +65,68 @@ export default function PlaceDetailPage() {
   const placeMemos = useMemos({ placeId: id });
   const placeThreadCount = placeMemos.data?.length ?? 0;
 
-  // Hash-anchor deep link: RecipesPage links here with
-  // `/places/<id>#food-<foodId>` so users can tap a recipe and land
-  // directly on its food card. We wait until `place` (and therefore
-  // foods) is loaded, then run two rAFs — same trick the
-  // ScrollManager uses to let layout settle before scrolling. After
-  // the scroll, briefly apply a ring highlight so the user sees
-  // exactly which row they landed on.
+  // Hash-anchor deep link. Two sources hit this:
+  //   - RecipesPage: /places/<id>#food-<foodId>
+  //   - NotificationsPage: /places/<id>#memo-<memoId> (memo edits,
+  //                        threads, replies, reactions on a memo)
+  //                        or #food-<foodId> for food-level events
+  //
+  // Generic by element id — any anchor we ever add gets handled
+  // automatically. The retry loop accommodates async children:
+  // food cards mount with `place`, but memos load via separate
+  // useMemos queries inside MemoThread / FoodMemoBlock and may
+  // arrive a tick later. We poll up to ~2s for the element to
+  // exist before giving up silently.
   useEffect(() => {
     if (!place) return;
     const hash = location.hash;
-    if (!hash || !hash.startsWith("#food-")) return;
+    if (!hash || hash.length <= 1) return;
     const elId = hash.slice(1);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const el = document.getElementById(elId);
-        if (!el) return;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+    const tryScroll = () => {
+      const el = document.getElementById(elId);
+      if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
-        // Pulse — Tailwind ring classes added then removed after 1.4s.
-        // Plain DOM manipulation rather than React state so the
-        // highlight doesn't trigger a re-render of the entire foods
+        // Pulse — Tailwind ring classes added then removed after
+        // 1.4s. Plain DOM manipulation rather than React state so
+        // the highlight doesn't trigger a re-render of the foods
         // list, and so we don't fight the existing memo on FoodCard.
         el.classList.add(
           "ring-2",
           "ring-peach-400",
           "ring-offset-2",
-          "transition-shadow"
+          "transition-shadow",
+          "rounded-2xl"
         );
-        const t = setTimeout(() => {
+        pulseTimer = setTimeout(() => {
           el.classList.remove(
             "ring-2",
             "ring-peach-400",
             "ring-offset-2",
-            "transition-shadow"
+            "transition-shadow",
+            "rounded-2xl"
           );
         }, 1400);
-        return () => clearTimeout(t);
-      });
-    });
-    // `place` in deps so this runs once data is ready, not on the
-    // initial null render. location.hash in deps so deep-linking
-    // again (same page, different food) re-triggers the scroll.
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) {
+        // 100ms × 20 = 2s window. Memos usually arrive within the
+        // first 200-500ms after place loads; the long ceiling
+        // handles slow networks gracefully without a visible spinner.
+        timer = setTimeout(tryScroll, 100);
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(tryScroll));
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      if (pulseTimer !== null) clearTimeout(pulseTimer);
+    };
+    // `place` in deps so this runs once data is ready. location.hash
+    // in deps so deep-linking again (same page, different memo)
+    // re-triggers the scroll.
   }, [place, location.hash]);
 
   async function toggleRevisit() {
