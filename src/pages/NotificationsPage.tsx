@@ -40,12 +40,22 @@ type ContextResolver = {
   foodNameOf: (foodId: string | null | undefined) => string | null;
   placeMemoOf: (placeId: string | null | undefined) => string | null;
   foodMemoOf: (foodId: string | null | undefined) => string | null;
+  // Back-derive the parent place from a food. Memo / reaction
+  // notifications that target a food carry food_id but NULL
+  // place_id (the underlying memos.place_id column is xor'd with
+  // memos.food_id at the DB level). Without this lookup the
+  // notification rows showed up without place context and bypassed
+  // the place×day bundling.
+  foodPlaceIdOf: (foodId: string | null | undefined) => string | null;
+  foodPlaceNameOf: (foodId: string | null | undefined) => string | null;
 };
 const RowContext = createContext<ContextResolver>({
   placeNameOf: () => null,
   foodNameOf: () => null,
   placeMemoOf: () => null,
   foodMemoOf: () => null,
+  foodPlaceIdOf: () => null,
+  foodPlaceNameOf: () => null,
 });
 function useRowContext() {
   return useContext(RowContext);
@@ -139,7 +149,11 @@ function composeContextLine(
   item: NotificationRow,
   ctx: ContextResolver
 ): string {
-  const placeName = ctx.placeNameOf(item.place_id);
+  // For food-scoped events the notification row's place_id is NULL
+  // (DB column is xor'd with food_id). Recover via the food's
+  // parent so the breadcrumb still reads "PlaceName · FoodName · ...".
+  const placeName =
+    ctx.placeNameOf(item.place_id) ?? ctx.foodPlaceNameOf(item.food_id);
   const foodName = ctx.foodNameOf(item.food_id);
   const clip = (s: string, n = 40) => (s.length > n ? s.slice(0, n) + "…" : s);
 
@@ -338,11 +352,16 @@ export default function NotificationsPage() {
     const foodNameById = new Map<string, string>();
     const placeMemoById = new Map<string, string>();
     const foodMemoById = new Map<string, string>();
+    // Food → parent place reverse index so we can recover place
+    // context for food-scoped memos / reactions whose notification
+    // row has NULL place_id.
+    const foodPlaceIdByFoodId = new Map<string, string>();
     for (const p of places ?? []) {
       placeNameById.set(p.id, p.name);
       if (p.memo && p.memo.trim()) placeMemoById.set(p.id, p.memo.trim());
       for (const f of p.foods ?? []) {
         foodNameById.set(f.id, f.name);
+        foodPlaceIdByFoodId.set(f.id, p.id);
         if (f.memo && f.memo.trim())
           foodMemoById.set(f.id, f.memo.trim());
       }
@@ -352,6 +371,13 @@ export default function NotificationsPage() {
       foodNameOf: (id) => (id ? (foodNameById.get(id) ?? null) : null),
       placeMemoOf: (id) => (id ? (placeMemoById.get(id) ?? null) : null),
       foodMemoOf: (id) => (id ? (foodMemoById.get(id) ?? null) : null),
+      foodPlaceIdOf: (id) =>
+        id ? (foodPlaceIdByFoodId.get(id) ?? null) : null,
+      foodPlaceNameOf: (id) => {
+        if (!id) return null;
+        const pid = foodPlaceIdByFoodId.get(id);
+        return pid ? (placeNameById.get(pid) ?? null) : null;
+      },
     };
   }, [places]);
 
@@ -413,20 +439,27 @@ export default function NotificationsPage() {
         bundles.clear();
       }
 
-      if (!shouldBundle || !n.place_id) {
+      // Notifications for food-scoped events carry food_id but
+      // null place_id. Derive the bundle key from the food's parent
+      // place so a memo on a food still joins its place's card
+      // instead of orphaning as a flat single.
+      const effectivePlaceId =
+        n.place_id ?? rowContext.foodPlaceIdOf(n.food_id);
+
+      if (!shouldBundle || !effectivePlaceId) {
         // Filter is narrowed (the user is looking at one surface),
-        // OR this item has no place_id to bundle on — render as a
+        // OR we couldn't resolve a parent place — render as a
         // detailed single row.
         out.push({ kind: "single", item: n });
         continue;
       }
 
-      const k = `${n.place_id}|${n.actor_id}`;
+      const k = `${effectivePlaceId}|${n.actor_id}`;
       let b = bundles.get(k);
       if (!b) {
         b = {
           kind: "activity-bundle",
-          placeId: n.place_id,
+          placeId: effectivePlaceId,
           placeEvent: null,
           foods: [],
           memos: [],
@@ -478,7 +511,7 @@ export default function NotificationsPage() {
     // layout enforces that "place at top, content underneath" shape
     // regardless of how many sub-events landed.
     return out;
-  }, [visibleItems, filter]);
+  }, [visibleItems, filter, rowContext]);
 
   return (
     <RowContext.Provider value={rowContext}>
@@ -666,11 +699,25 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
     .filter((i) => !i.read_at)
     .map((i) => i.id);
 
-  function onTap() {
+  // Header tap: mark every member in the bundle read, navigate to
+  // the place (no anchor — the user wants the whole place context).
+  function onHeaderTap() {
     if (unreadIds.length && !markRead.isPending) {
       for (const id of unreadIds) void markRead.mutateAsync(id);
     }
     navigate(`/places/${bundle.placeId}`);
+  }
+
+  // Sub-row tap: mark JUST that sub-bucket's members read, and
+  // navigate with the most specific anchor we can derive (memo /
+  // food). Lets the user click into individual streams even when
+  // they're bundled inside one card.
+  function navigateScoped(target: string, items: NotificationRow[]) {
+    const unread = items.filter((i) => !i.read_at).map((i) => i.id);
+    if (unread.length && !markRead.isPending) {
+      for (const id of unread) void markRead.mutateAsync(id);
+    }
+    navigate(target);
   }
 
   const stamp = relativeKo(bundle.latest.created_at);
@@ -725,14 +772,19 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
   // Build the body — one sub-row per non-empty kind. Order matches
   // the rough sequence of a recording session: place → menus →
   // ratings → memos → replies → reactions → revisit.
+  // Each sub-row carries its own onTap so the user can drill into
+  // a specific stream (a memo, a food) instead of always landing
+  // at the top of the place page.
   type SubRow = {
     key: string;
     Icon: typeof Bell;
     color: string;
     label: string;
     preview: string | null;
+    onTap: () => void;
   };
   const subRows: SubRow[] = [];
+  const placeBase = `/places/${bundle.placeId}`;
   if (bundle.foods.length > 0) {
     // Enrich each food name with its memo when one exists, so the
     // sub-row reads like "Fried土豆 — "바삭", 牛排, 鸡腿 — "최고"".
@@ -747,22 +799,32 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
     }
     const visible = parts.slice(0, 3).join(", ");
     const more = parts.length > 3 ? ` 외 ${parts.length - 3}개` : "";
+    // Anchor to the latest food in the bundle (which is bundle.foods[0]
+    // since visibleItems walks newest-first).
+    const target = bundle.foods[0]?.food_id
+      ? `${placeBase}#food-${bundle.foods[0].food_id}`
+      : placeBase;
     subRows.push({
       key: "food",
       Icon: Utensils,
       color: "text-amber-600",
       label: `메뉴 ${bundle.foods.length}개 · 菜品 ${bundle.foods.length}`,
       preview: parts.length ? `${visible}${more}` : null,
+      onTap: () => navigateScoped(target, bundle.foods),
     });
   }
   if (bundle.ratings.length > 0) {
     const names = bundle.ratings.map((r) => r.preview).filter(Boolean) as string[];
+    const target = bundle.ratings[0]?.food_id
+      ? `${placeBase}#food-${bundle.ratings[0].food_id}`
+      : placeBase;
     subRows.push({
       key: "rating",
       Icon: Star,
       color: "text-yellow-600",
       label: `별점 ${bundle.ratings.length}개 · 打分 ${bundle.ratings.length}`,
       preview: names.length ? names.slice(0, 3).join(", ") : null,
+      onTap: () => navigateScoped(target, bundle.ratings),
     });
   }
   // Memos + replies share a single sub-row — visually they're both
@@ -781,15 +843,29 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
     const total = bundle.memos.length + bundle.replies.length;
     const visible = parts.slice(0, 2).join(" · ");
     const more = parts.length > 2 ? ` 외 ${parts.length - 2}개` : "";
+    // Prefer the latest memo's anchor; if all entries are replies,
+    // anchor to the reply.
+    const latestMemo = bundle.memos[0] ?? bundle.replies[0];
+    const target = latestMemo?.memo_id
+      ? `${placeBase}#memo-${latestMemo.memo_id}`
+      : placeBase;
     subRows.push({
       key: "memo",
       Icon: MessageCircle,
       color: "text-sky-600",
       label: `메모/답글 ${total}개 · 留言 ${total}`,
       preview: parts.length ? `${visible}${more}` : null,
+      onTap: () =>
+        navigateScoped(target, [...bundle.memos, ...bundle.replies]),
     });
   }
   if (bundle.reactions.length > 0) {
+    const r0 = bundle.reactions[0];
+    const target = r0?.memo_id
+      ? `${placeBase}#memo-${r0.memo_id}`
+      : r0?.food_id
+        ? `${placeBase}#food-${r0.food_id}`
+        : placeBase;
     subRows.push({
       key: "reaction",
       Icon: Smile,
@@ -800,6 +876,7 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
       preview: bundle.reactionEmojis.length
         ? bundle.reactionEmojis.join(" ")
         : null,
+      onTap: () => navigateScoped(target, bundle.reactions),
     });
   }
   if (bundle.revisit) {
@@ -809,68 +886,83 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
       color: "text-pink-600",
       label: "또 갈래 · 想再去",
       preview: null,
+      onTap: () =>
+        navigateScoped(placeBase, bundle.revisit ? [bundle.revisit] : []),
     });
   }
 
   return (
     <li>
-      <button
-        type="button"
-        onClick={onTap}
-        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
+      {/* The card is an <article> rather than one big <button> so we
+          can host MULTIPLE independent click targets inside it —
+          one for the header (navigate to place + mark all read) and
+          one per sub-row (navigate to that scoped anchor + mark
+          just that sub-bucket read). HTML disallows nested buttons,
+          so siblings inside a div container are the clean way. */}
+      <article
+        className={`relative rounded-2xl border transition ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60"
-            : "bg-white border-cream-200 hover:bg-cream-50"
+            : "bg-white border-cream-200"
         }`}
       >
-        <div className="relative flex-shrink-0">
-          <div
-            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
-          >
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span>{initial}</span>
+        <button
+          type="button"
+          onClick={onHeaderTap}
+          className="w-full text-left flex items-start gap-2.5 p-2.5 pr-6 rounded-2xl active:scale-[0.99] transition hover:bg-cream-50/40"
+        >
+          <div className="relative flex-shrink-0">
+            <div
+              className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+            >
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </div>
+            <KindBadge kind={primaryKind} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] leading-snug">
+              <span className="font-bold text-ink-900">{name}</span>
+              <span className="text-ink-400 mx-1">·</span>
+              <span className={`font-bold ${headerVerb.color}`}>
+                {headerVerb.ko} · {headerVerb.zh}
+              </span>
+            </p>
+            {placeName && (
+              <p className="text-[12px] text-ink-700 font-bold mt-0.5 line-clamp-1 break-keep truncate">
+                {placeName}
+              </p>
+            )}
+            {placeMemo && (
+              <p className="text-[11px] text-ink-500 italic mt-0.5 line-clamp-2 break-keep">
+                "{placeMemo}"
+              </p>
             )}
           </div>
-          <KindBadge kind={primaryKind} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] leading-snug">
-            <span className="font-bold text-ink-900">{name}</span>
-            <span className="text-ink-400 mx-1">·</span>
-            <span className={`font-bold ${headerVerb.color}`}>
-              {headerVerb.ko} · {headerVerb.zh}
-            </span>
-          </p>
-          {placeName && (
-            <p className="text-[12px] text-ink-700 font-bold mt-0.5 line-clamp-1 break-keep truncate">
-              {placeName}
-            </p>
-          )}
-          {/* Place's primary memo — shown only when this bundle is
-              ABOUT a new place AND that place was created with a
-              memo. Reads as a small italic quote under the place
-              name, separate from the activity sub-rows below. */}
-          {placeMemo && (
-            <p className="text-[11px] text-ink-500 italic mt-0.5 line-clamp-2 break-keep">
-              "{placeMemo}"
-            </p>
-          )}
-          {/* Indented sub-rows — visual hierarchy under the place
-              header. Each row is one kind: icon + label + preview. */}
-          {subRows.length > 0 && (
-            <ul className="mt-1.5 space-y-0.5 border-l-2 border-cream-200 pl-2 ml-0.5">
-              {subRows.map((s) => {
-                const Icon = s.Icon;
-                return (
-                  <li
-                    key={s.key}
-                    className="flex items-start gap-1.5 text-[11px] leading-snug"
+        </button>
+
+        {/* Each sub-row is its own click target — same layout as the
+            old presentational list, just wrapped in a button so taps
+            navigate to the anchor for that specific stream. The
+            connector line sits to the left so the indent reads as
+            "under the header" visually. */}
+        {subRows.length > 0 && (
+          <ul className="mx-2.5 mb-2.5 ml-[3.25rem] space-y-0.5 border-l-2 border-cream-200 pl-2 -mt-0.5">
+            {subRows.map((s) => {
+              const Icon = s.Icon;
+              return (
+                <li key={s.key}>
+                  <button
+                    type="button"
+                    onClick={s.onTap}
+                    className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition hover:bg-cream-100/60"
                   >
                     <Icon
                       className={`w-3 h-3 mt-0.5 flex-shrink-0 ${s.color}`}
@@ -886,22 +978,24 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
                         </>
                       )}
                     </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <p className="text-[10px] text-ink-400 font-medium font-number mt-1">
-            {stamp}
-          </p>
-        </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <p className="text-[10px] text-ink-400 font-medium font-number px-2.5 pb-2 ml-[3.25rem] -mt-1">
+          {stamp}
+        </p>
+
         {isUnread && (
           <span
-            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
+            className="absolute top-3 right-3 w-2 h-2 rounded-full bg-rose-400"
             aria-label="unread"
           />
         )}
-      </button>
+      </article>
     </li>
   );
 }
