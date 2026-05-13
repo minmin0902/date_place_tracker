@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { Smile } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
@@ -8,6 +8,7 @@ import {
   useReactions,
   useToggleReaction,
 } from "@/hooks/useReactions";
+import { useReactionBatch } from "@/hooks/useReactionBatch";
 import type { ReactionTarget } from "@/lib/database.types";
 
 // Instagram-style reaction strip that lives directly under a memo /
@@ -16,9 +17,18 @@ import type { ReactionTarget } from "@/lib/database.types";
 // new emoji is one extra tap. Tapping a bubble you've already used
 // removes your reaction.
 //
-// Polymorphic — `target` is one of memo / place caption / food caption.
-// The hook resolves which FK column to write.
-export function ReactionRow({
+// Two data paths:
+//   - Inside a <ReactionProvider> (PlaceDetailPage tree): reads the
+//     pre-bucketed slice from context. One bulk fetch covers every
+//     reaction on the page → no per-row HTTP.
+//   - Outside any provider: falls back to a per-target useReactions
+//     query. Used by surfaces that don't have the place context yet
+//     (e.g. compare/list pages that may surface a single memo).
+//
+// Wrapped in React.memo so an unrelated parent re-render (a sibling
+// memo posting, a profile refetch, etc.) doesn't cascade through
+// every reaction strip on the page.
+function ReactionRowImpl({
   target,
   size = "md",
   align = "start",
@@ -31,7 +41,11 @@ export function ReactionRow({
 }) {
   const { user } = useAuth();
   const { data: couple } = useCouple();
-  const reactionsQ = useReactions(target);
+  const batch = useReactionBatch();
+  // Per-target query is enabled only when no batch provider exists.
+  // Passing null short-circuits the hook so we don't fire duplicate
+  // HTTP for rows already covered by the bulk fetch.
+  const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Close-on-outside-click ref. We don't use a portal — the palette
@@ -39,7 +53,7 @@ export function ReactionRow({
   // running off the screen edge in any realistic layout.
   const paletteRef = useRef<HTMLDivElement | null>(null);
 
-  const rows = reactionsQ.data ?? [];
+  const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
   const summary = useMemo(() => summarize(rows, user?.id), [rows, user?.id]);
 
   if (!user || !couple) return null;
@@ -60,14 +74,12 @@ export function ReactionRow({
       target,
       emoji,
       existingId,
+      // When the provider is mounted we pass placeId through so the
+      // mutation can keep the bulk cache in sync optimistically.
+      placeId: batch?.placeId ?? null,
     });
   }
 
-  // Hide a fully empty row's "+" trigger on tiny sm layouts so a memo
-  // with zero reactions doesn't grow taller than it has to. Tapping
-  // the parent comment's [😀] icon (added in MemoThread) will surface
-  // the palette via paletteOpen there if needed; for the standalone
-  // case we always show the small smile button.
   const hasAny = summary.length > 0;
 
   return (
@@ -113,9 +125,6 @@ export function ReactionRow({
         {paletteOpen && (
           <div
             className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-full shadow-lg flex items-center gap-0.5 p-1`}
-            // Click-outside on the next render cycle would need a
-            // useEffect listener — for this transient palette we just
-            // close after a pick or when the user re-taps the +.
             onPointerLeave={() => setPaletteOpen(false)}
           >
             {QUICK_REACTIONS.map((emoji) => {
@@ -143,3 +152,16 @@ export function ReactionRow({
     </div>
   );
 }
+
+// memo with a custom comparator: target objects come in fresh per
+// render at the call sites (we build {kind, id} inline), so a
+// reference-equality memo would never hit. Compare on (kind, id, size,
+// align) — everything that visibly affects render.
+export const ReactionRow = memo(
+  ReactionRowImpl,
+  (prev, next) =>
+    prev.target.kind === next.target.kind &&
+    prev.target.id === next.target.id &&
+    prev.size === next.size &&
+    prev.align === next.align
+);

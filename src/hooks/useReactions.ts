@@ -103,6 +103,11 @@ export function useToggleReaction() {
       // so we can DELETE without a round-trip to find it. Optional —
       // we fall back to a SELECT when missing.
       existingId?: string | null;
+      // When the row lives inside a ReactionProvider tree, the
+      // bulk query at ["reactions-by-place", placeId] also needs
+      // invalidating after a toggle. Caller (ReactionRow) reads
+      // placeId from the provider context and passes it through.
+      placeId?: string | null;
     }): Promise<{ added: Reaction | null; removedId: string | null }> => {
       if (ALLOW_NO_AUTH) {
         return toggleLocalReaction(input);
@@ -153,17 +158,45 @@ export function useToggleReaction() {
       // Optimistic update so the bubble flips on tap — couples like
       // the instant feedback, and the trigger-driven notification
       // still fires authoritatively after the server insert lands.
+      // Touches BOTH the per-target cache and (if inside a provider)
+      // the bulk place-tree cache, otherwise the bubble would un-flip
+      // on the next render while waiting for the bulk refetch.
       const key = reactionsKey(input.target);
+      const bulkKey: readonly unknown[] | null = input.placeId
+        ? (["reactions-by-place", input.placeId] as const)
+        : null;
       await qc.cancelQueries({ queryKey: key });
+      if (bulkKey) await qc.cancelQueries({ queryKey: bulkKey });
       const prev = qc.getQueryData<Reaction[]>(key) ?? [];
+      const prevBulk = bulkKey
+        ? (qc.getQueryData<Reaction[]>(bulkKey) ?? [])
+        : null;
       const mine = prev.find(
         (r) => r.user_id === input.userId && r.emoji === input.emoji
       );
+      const matchesTarget = (r: Reaction) => {
+        if (input.target.kind === "memo") return r.memo_id === input.target.id;
+        if (input.target.kind === "place") return r.place_id === input.target.id;
+        return r.food_id === input.target.id;
+      };
       if (mine) {
         qc.setQueryData<Reaction[]>(
           key,
           prev.filter((r) => r.id !== mine.id)
         );
+        if (bulkKey && prevBulk) {
+          qc.setQueryData<Reaction[]>(
+            bulkKey,
+            prevBulk.filter(
+              (r) =>
+                !(
+                  matchesTarget(r) &&
+                  r.user_id === input.userId &&
+                  r.emoji === input.emoji
+                )
+            )
+          );
+        }
       } else {
         const optimistic: Reaction = {
           id: `optimistic-${crypto.randomUUID()}`,
@@ -176,14 +209,30 @@ export function useToggleReaction() {
           created_at: new Date().toISOString(),
         };
         qc.setQueryData<Reaction[]>(key, [...prev, optimistic]);
+        if (bulkKey && prevBulk) {
+          qc.setQueryData<Reaction[]>(bulkKey, [...prevBulk, optimistic]);
+        }
       }
-      return { prev, key };
+      return { prev, key, prevBulk, bulkKey };
     },
     onError: (_err, _input, ctx) => {
-      if (ctx) qc.setQueryData(ctx.key, ctx.prev);
+      if (ctx) {
+        qc.setQueryData(ctx.key, ctx.prev);
+        if (ctx.bulkKey && ctx.prevBulk !== null) {
+          qc.setQueryData(ctx.bulkKey, ctx.prevBulk);
+        }
+      }
     },
     onSettled: (_data, _err, input) => {
       void qc.invalidateQueries({ queryKey: reactionsKey(input.target) });
+      // Also refresh the bulk place-tree fetch if the row is inside
+      // a ReactionProvider — otherwise the batched buckets stay stale
+      // and the just-flipped emoji would snap back on the next render.
+      if (input.placeId) {
+        void qc.invalidateQueries({
+          queryKey: ["reactions-by-place", input.placeId],
+        });
+      }
     },
   });
 }

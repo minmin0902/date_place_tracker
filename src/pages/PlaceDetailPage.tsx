@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -33,6 +33,7 @@ import { MediaThumb } from "@/components/MediaThumb";
 import { MemoComment } from "@/components/MemoComment";
 import { MemoThread } from "@/components/MemoThread";
 import { ReactionRow } from "@/components/ReactionRow";
+import { ReactionProvider } from "@/hooks/useReactionBatch";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -203,6 +204,14 @@ export default function PlaceDetailPage() {
   }
 
   return (
+    // ReactionProvider does ONE bulk fetch of every reaction in this
+    // place's subtree (caption + every food caption + every thread
+    // memo). All ReactionRow children read their slice from the
+    // provider via context — collapses ~30-40 per-row HTTP calls
+    // into one. See src/hooks/useReactionBatch.tsx for the bucket
+    // shape and the SQL RPC in
+    // supabase/migrations/20260513_reactions_for_place_rpc.sql.
+    <ReactionProvider placeId={place.id}>
     <div>
       <PageHeader
         title={place.name}
@@ -493,6 +502,7 @@ export default function PlaceDetailPage() {
         onConfirm={() => void onConfirmMoveToWishlist()}
       />
     </div>
+    </ReactionProvider>
   );
 }
 
@@ -783,7 +793,11 @@ function FoodCard({
 // rows exist — the parent FoodCard would otherwise have to thread the
 // count down manually. React-query dedupes the call against any other
 // useMemos with the same (foodId) key, so no extra network.
-function FoodMemoBlock({ food }: { food: Food }) {
+//
+// memo wrapper at the bottom keeps this from re-rendering when a
+// sibling food card updates — props are just `food` (stable ref
+// from usePlace cache) so default shallow equality suffices.
+function FoodMemoBlockImpl({ food }: { food: Food }) {
   const thread = useMemos({ foodId: food.id });
   const count = thread.data?.length ?? 0;
   return (
@@ -818,6 +832,8 @@ function FoodMemoBlock({ food }: { food: Food }) {
     </div>
   );
 }
+
+const FoodMemoBlock = memo(FoodMemoBlockImpl);
 
 // Compact chef-credit badge under the food name. Tone matches the
 // home-cooking color cue used elsewhere (peach=me, rose=partner,

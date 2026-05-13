@@ -1,21 +1,28 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { AppShell } from "@/components/AppShell";
 import LoginPage from "@/pages/LoginPage";
-import CoupleSetupPage from "@/pages/CoupleSetupPage";
+// HomePage stays eager because it's the landing route — every cold
+// start lands here and a Suspense flash on the very first paint feels
+// like the app is loading twice. Every other route is React.lazy so
+// the initial bundle drops from a single ~850KB chunk into per-route
+// chunks fetched on demand. PWA caches the chunks after first visit
+// so repeat navigation is still instant.
 import HomePage from "@/pages/HomePage";
-import PlaceFormPage from "@/pages/PlaceFormPage";
-import PlaceDetailPage from "@/pages/PlaceDetailPage";
-import FoodFormPage from "@/pages/FoodFormPage";
-import WishlistFormPage from "@/pages/WishlistFormPage";
-import RecipesPage from "@/pages/RecipesPage";
-import ComparePage from "@/pages/ComparePage";
-import MapPage from "@/pages/MapPage";
-import SettingsPage from "@/pages/SettingsPage";
-import ProfileEditPage from "@/pages/ProfileEditPage";
-import NotificationsPage from "@/pages/NotificationsPage";
+import CoupleSetupPage from "@/pages/CoupleSetupPage";
+const PlaceFormPage = lazy(() => import("@/pages/PlaceFormPage"));
+const PlaceDetailPage = lazy(() => import("@/pages/PlaceDetailPage"));
+const FoodFormPage = lazy(() => import("@/pages/FoodFormPage"));
+const WishlistFormPage = lazy(() => import("@/pages/WishlistFormPage"));
+const RecipesPage = lazy(() => import("@/pages/RecipesPage"));
+const ComparePage = lazy(() => import("@/pages/ComparePage"));
+const MapPage = lazy(() => import("@/pages/MapPage"));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const ProfileEditPage = lazy(() => import("@/pages/ProfileEditPage"));
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -104,26 +111,33 @@ function Gate() {
   }
 
   return (
-    <Routes>
-      {/* Every authenticated route lives under AppShell so the bottom nav
-          stays visible on place/food detail & form pages too. */}
-      <Route element={<AppShell />}>
-        <Route index element={<HomePage />} />
-        <Route path="map" element={<MapPage />} />
-        <Route path="compare" element={<ComparePage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
-        <Route path="profile/:who" element={<ProfileEditPage />} />
-        <Route path="places/new" element={<PlaceFormPage />} />
-        <Route path="places/:id" element={<PlaceDetailPage />} />
-        <Route path="places/:id/edit" element={<PlaceFormPage />} />
-        <Route path="wishlist/new" element={<WishlistFormPage />} />
-        <Route path="recipes" element={<RecipesPage />} />
-        <Route path="places/:id/foods/new" element={<FoodFormPage />} />
-        <Route path="places/:id/foods/:foodId/edit" element={<FoodFormPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    // Suspense fallback uses the same loading shell as Gate's auth
+    // check so the visual feel during a lazy chunk fetch matches the
+    // initial auth boot. Mounted ONCE at the route container level so
+    // every lazy route shares it — no need to wrap each <Route> in
+    // its own boundary.
+    <Suspense fallback={<LoadingScreen note="잠시만요… · 加载中…" />}>
+      <Routes>
+        {/* Every authenticated route lives under AppShell so the bottom nav
+            stays visible on place/food detail & form pages too. */}
+        <Route element={<AppShell />}>
+          <Route index element={<HomePage />} />
+          <Route path="map" element={<MapPage />} />
+          <Route path="compare" element={<ComparePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="profile/:who" element={<ProfileEditPage />} />
+          <Route path="places/new" element={<PlaceFormPage />} />
+          <Route path="places/:id" element={<PlaceDetailPage />} />
+          <Route path="places/:id/edit" element={<PlaceFormPage />} />
+          <Route path="wishlist/new" element={<WishlistFormPage />} />
+          <Route path="recipes" element={<RecipesPage />} />
+          <Route path="places/:id/foods/new" element={<FoodFormPage />} />
+          <Route path="places/:id/foods/:foodId/edit" element={<FoodFormPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useMemoAuthor } from "@/hooks/useProfile";
 import { MediaThumb } from "./MediaThumb";
 
@@ -52,7 +53,14 @@ function relativeKo(iso: string): string {
 //
 // `authorId === null` is handled by the hook (renders as the partner)
 // to keep legacy rows from blanking out before the SQL backfill runs.
-export function MemoComment({
+//
+// Wrapped in React.memo (export bottom of file) so unrelated parent
+// re-renders — sibling memo posting, reaction toggle elsewhere on the
+// page — don't cascade through all 30+ memos on a busy place. All
+// props are primitives or stable references (string body, author id,
+// photo array from query cache), so default shallow equality is the
+// right comparator.
+function MemoCommentImpl({
   memo,
   authorId,
   createdAt,
@@ -144,3 +152,5 @@ export function MemoComment({
     </div>
   );
 }
+
+export const MemoComment = memo(MemoCommentImpl);
