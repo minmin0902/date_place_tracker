@@ -44,7 +44,10 @@ const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell 
 ];
 
 // Bundled-reaction row. Holds every individual notification row in
-// the bundle so a tap can mark all of them read at once.
+// the bundle so a tap can mark all of them read at once. Keyed by
+// (actor, target, date) so reactions on the same memo across two
+// different days stay separated under their own date headers
+// instead of merging into a single misleading row.
 type ReactionGroup = {
   kind: "reaction-group";
   items: NotificationRow[];
@@ -55,38 +58,43 @@ type ReactionGroup = {
   latest: NotificationRow;
 };
 
-// Stronger second-level grouping: every notification on the SAME
-// place during the SAME calendar day by the SAME actor collapses
-// into one row showing per-kind counts. This is what the inbox
-// actually feels cluttered with — a single "let's record yesterday's
-// trip" session generates 1 place + 5 menus + 2 memos + a few
-// reactions = 10+ rows that all reference the same outing. We
-// fold them into "짝꿍이 'Day2'에 활동 · 📍1 🍽5 💬2 ❤️3".
-type PlaceDayGroup = {
-  kind: "place-day-group";
-  items: NotificationRow[];
-  counts: {
-    place: number;
-    food: number;
-    memo: number;
-    reply: number;
-    reaction: number;
-    rating: number;
-    revisit: number;
-  };
-  emojis: string[];
-  latest: NotificationRow;
-  placeId: string;
-  // Resolved display name for the place — taken from a member
-  // notification where kind='place' (preview is the place name),
-  // else fall back to whatever preview is on the latest member.
-  placeName: string | null;
+// Date section header — emitted whenever we cross a day boundary
+// walking the (newest-first) feed. Same shape regardless of locale;
+// the renderer picks ko/zh based on context.
+type DateHeader = {
+  kind: "date-header";
+  key: string;
+  ko: string;
+  zh: string;
 };
 
 type DisplayRow =
+  | DateHeader
   | { kind: "single"; item: NotificationRow }
-  | ReactionGroup
-  | PlaceDayGroup;
+  | ReactionGroup;
+
+// Resolve a date into a friendly day label. "오늘"/"어제" for the
+// last two days (most-frequent case in a couple's inbox), absolute
+// "M월 D일 · M月D日" for anything older. Uses local time so the
+// boundary matches the user's clock, not UTC.
+function dateLabelFor(iso: string): { key: string; ko: string; zh: string } {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfDay = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const today = startOfDay(now);
+  const yesterday = today - 86400000;
+  const itemDay = startOfDay(d);
+  if (itemDay === today) return { key: "today", ko: "오늘", zh: "今天" };
+  if (itemDay === yesterday) return { key: "yesterday", ko: "어제", zh: "昨天" };
+  const mo = d.getMonth() + 1;
+  const da = d.getDate();
+  return {
+    key: `${d.getFullYear()}-${mo}-${da}`,
+    ko: `${mo}월 ${da}일`,
+    zh: `${mo}月${da}日`,
+  };
+}
 
 function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
   if (filter === "all") return true;
@@ -147,94 +155,57 @@ export default function NotificationsPage() {
     return items.filter((n) => matchesFilter(n.kind, filter));
   }, [items, filter]);
 
-  // Two-level grouping:
-  //   Level 1 (PlaceDayGroup): per (place_id × calendar-day × actor).
-  //     A single recording session that touches one place lands as
-  //     one row regardless of how many menus / memos / reactions it
-  //     produced. This is the most aggressive collapse and the one
-  //     that actually solves the "너무 난잡" complaint.
-  //   Level 2 (ReactionGroup): within an otherwise-quiet day on a
-  //     place where the partner only added emoji reactions to the
-  //     same sub-target, fall back to the lighter ReactionGroup so
-  //     the emoji bag is still surfaced visually.
-  // Items with no place_id (rare — push notifications expect a
-  // place anchor) fall through as singles unchanged.
+  // Display rows = (1) date section header whenever we cross a day
+  // boundary walking the newest-first feed, plus (2) one row per
+  // notification, with reactions on the same target/day bundled
+  // into a single emoji-bag row. Each individual event keeps its
+  // own preview (place name / food name / memo body / etc) so
+  // nothing important is hidden behind a summary — sections only
+  // reorganize the list, they don't collapse it.
   const displayRows = useMemo<DisplayRow[]>(() => {
-    // Group by calendar-day key. UTC slice is good enough here — we
-    // just need same-session events to share a bucket, not strict
-    // local-day alignment.
-    const dayOf = (iso: string) => iso.slice(0, 10);
-    const slots: { row: DisplayRow }[] = [];
-    const groupIndex = new Map<string, number>();
-    const incrementCount = (g: PlaceDayGroup, kind: NotificationRow["kind"]) => {
-      switch (kind) {
-        case "place": g.counts.place += 1; break;
-        case "food": g.counts.food += 1; break;
-        case "memo":
-        case "memo_thread": g.counts.memo += 1; break;
-        case "memo_reply": g.counts.reply += 1; break;
-        case "reaction": g.counts.reaction += 1; break;
-        case "rating": g.counts.rating += 1; break;
-        case "revisit": g.counts.revisit += 1; break;
-      }
-    };
+    const out: DisplayRow[] = [];
+    const reactionGroupsByKey = new Map<string, ReactionGroup>();
+    let currentDateKey: string | null = null;
 
     for (const n of visibleItems) {
-      if (!n.place_id) {
-        slots.push({ row: { kind: "single", item: n } });
-        continue;
+      const label = dateLabelFor(n.created_at);
+      if (label.key !== currentDateKey) {
+        out.push({
+          kind: "date-header",
+          key: label.key,
+          ko: label.ko,
+          zh: label.zh,
+        });
+        currentDateKey = label.key;
+        // Reaction grouping is bounded to within a single date
+        // section — clearing the map at each boundary keeps a
+        // ❤️ on Monday from merging with a ❤️ on Wednesday under
+        // the same memo.
+        reactionGroupsByKey.clear();
       }
-      const key = `${n.place_id}|${dayOf(n.created_at)}|${n.actor_id}`;
-      const idx = groupIndex.get(key);
-      if (idx !== undefined) {
-        const g = slots[idx].row as PlaceDayGroup;
-        g.items.push(n);
-        incrementCount(g, n.kind);
-        if (n.kind === "reaction" && n.preview && !g.emojis.includes(n.preview)) {
-          g.emojis.push(n.preview);
+      if (n.kind === "reaction") {
+        const groupKey = `${n.actor_id}|${n.place_id ?? ""}|${n.food_id ?? ""}|${n.memo_id ?? ""}`;
+        const existing = reactionGroupsByKey.get(groupKey);
+        if (existing) {
+          existing.items.push(n);
+          if (n.preview && !existing.emojis.includes(n.preview)) {
+            existing.emojis.push(n.preview);
+          }
+          continue;
         }
-        // Prefer an explicit place-row preview for the display name;
-        // anything else is a soft fallback.
-        if (n.kind === "place" && n.preview) g.placeName = n.preview;
-        else if (!g.placeName && n.preview) g.placeName = n.preview;
+        const g: ReactionGroup = {
+          kind: "reaction-group",
+          items: [n],
+          emojis: n.preview ? [n.preview] : [],
+          latest: n,
+        };
+        reactionGroupsByKey.set(groupKey, g);
+        out.push(g);
         continue;
       }
-      const newGroup: PlaceDayGroup = {
-        kind: "place-day-group",
-        items: [n],
-        counts: { place: 0, food: 0, memo: 0, reply: 0, reaction: 0, rating: 0, revisit: 0 },
-        emojis: n.kind === "reaction" && n.preview ? [n.preview] : [],
-        latest: n,
-        placeId: n.place_id,
-        placeName: n.preview ?? null,
-      };
-      incrementCount(newGroup, n.kind);
-      slots.push({ row: newGroup });
-      groupIndex.set(key, slots.length - 1);
+      out.push({ kind: "single", item: n });
     }
-
-    // Post-process: downgrade single-event groups to bare singles,
-    // and reactions-only groups (one place, one day, all on the same
-    // sub-target) to a ReactionGroup so the emoji bag stays visible.
-    return slots.map(({ row }): DisplayRow => {
-      if (row.kind !== "place-day-group") return row;
-      if (row.items.length === 1) return { kind: "single", item: row.items[0] };
-      const allReactions = row.items.every((i) => i.kind === "reaction");
-      if (allReactions) {
-        const sig = (i: NotificationRow) =>
-          `${i.memo_id ?? ""}|${i.food_id ?? ""}|${i.place_id ?? ""}`;
-        const first = sig(row.items[0]);
-        if (row.items.every((i) => sig(i) === first)) {
-          return {
-            kind: "reaction-group",
-            items: row.items,
-            emojis: row.emojis,
-            latest: row.latest,
-          };
-        }
-      }
-      return row;
-    });
+    return out;
   }, [visibleItems]);
 
   return (
@@ -344,13 +315,19 @@ export default function NotificationsPage() {
         {!isLoading && displayRows.length > 0 && (
           <ul className="space-y-1.5">
             {displayRows.map((row) => {
+              if (row.kind === "date-header") {
+                return (
+                  <DateSectionHeader
+                    key={`hdr-${row.key}`}
+                    ko={row.ko}
+                    zh={row.zh}
+                  />
+                );
+              }
               if (row.kind === "single") {
                 return <NotificationItem key={row.item.id} item={row.item} />;
               }
-              if (row.kind === "reaction-group") {
-                return <ReactionGroupItem key={row.latest.id} group={row} />;
-              }
-              return <PlaceDayGroupItem key={row.latest.id} group={row} />;
+              return <ReactionGroupItem key={row.latest.id} group={row} />;
             })}
           </ul>
         )}
@@ -493,110 +470,19 @@ function ReactionGroupItem({ group }: { group: ReactionGroup }) {
   );
 }
 
-// Place-day bundle. One row representing every event the partner
-// produced on a single place during one calendar day. Renders as a
-// tally summary (📍 1 · 🍽 5 · 💬 2 · ❤️😘 3) so the user scans
-// "what happened" rather than scrolling through 10 near-identical
-// rows. Tap → mark all members read + deep-link to the place.
-function PlaceDayGroupItem({ group }: { group: PlaceDayGroup }) {
-  const navigate = useNavigate();
-  const markRead = useMarkNotificationRead();
-  const { name, avatarUrl } = useActorDisplay(group.latest.actor_id);
-
-  const isUnread = group.items.some((i) => !i.read_at);
-  const unreadIds = group.items.filter((i) => !i.read_at).map((i) => i.id);
-
-  function onTap() {
-    if (unreadIds.length && !markRead.isPending) {
-      for (const id of unreadIds) {
-        void markRead.mutateAsync(id);
-      }
-    }
-    navigate(`/places/${group.placeId}`);
-  }
-
-  const stamp = relativeKo(group.latest.created_at);
-  const initial = Array.from(name)[0] ?? "·";
-  const toneCls = "bg-rose-100 text-rose-500";
-  const c = group.counts;
-  // Build the count line: only show kinds with non-zero counts so
-  // sparse days don't render "· 0 · 0 · 0".
-  type Chip = { emoji: string; n: number };
-  const chips: Chip[] = [];
-  if (c.place) chips.push({ emoji: "📍", n: c.place });
-  if (c.food) chips.push({ emoji: "🍽", n: c.food });
-  if (c.memo) chips.push({ emoji: "💬", n: c.memo });
-  if (c.reply) chips.push({ emoji: "↪️", n: c.reply });
-  if (c.rating) chips.push({ emoji: "⭐", n: c.rating });
-  if (c.revisit) chips.push({ emoji: "💗", n: c.revisit });
-
+// Day-bucket section header. Sits between groups of notifications
+// in the feed so the user can scan "오늘 · 어제 · 5월 12일" without
+// hunting through timestamps. Plain <li> so it integrates with the
+// surrounding <ul> stacking without breaking the bullet-list semantics.
+function DateSectionHeader({ ko, zh }: { ko: string; zh: string }) {
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onTap}
-        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
-          isUnread
-            ? "bg-peach-50/60 border-peach-200/60"
-            : "bg-white border-cream-200 hover:bg-cream-50"
-        }`}
-      >
-        <div
-          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
-        >
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span>{initial}</span>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] leading-snug truncate">
-            <span className="font-bold text-ink-900">{name}</span>
-            {group.placeName && (
-              <>
-                <span className="text-ink-400 mx-1">·</span>
-                <span className="text-ink-700">{group.placeName}</span>
-              </>
-            )}
-          </p>
-          <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-0.5">
-            {chips.map((chip) => (
-              <span
-                key={chip.emoji}
-                className="inline-flex items-center gap-0.5 text-[11px] text-ink-600"
-              >
-                <span>{chip.emoji}</span>
-                <span className="font-number font-bold">{chip.n}</span>
-              </span>
-            ))}
-            {/* Reactions get their distinct emoji bag inline so the
-                user can see WHICH emojis without opening the place. */}
-            {c.reaction > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-[11px] text-ink-600">
-                <span className="text-[13px] leading-none">
-                  {group.emojis.join("")}
-                </span>
-                <span className="font-number font-bold">{c.reaction}</span>
-              </span>
-            )}
-            <span className="text-[10px] text-ink-400">·</span>
-            <span className="text-[10px] text-ink-400 font-medium font-number">
-              {stamp}
-            </span>
-          </div>
-        </div>
-        {isUnread && (
-          <span
-            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
-            aria-label="unread"
-          />
-        )}
-      </button>
+    <li className="pt-3 first:pt-0 pb-0.5 px-1 select-none">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-bold text-ink-400 tracking-wide">
+          {ko} <span className="text-ink-300 font-medium">· {zh}</span>
+        </span>
+        <div className="h-px flex-1 bg-cream-100" />
+      </div>
     </li>
   );
 }
