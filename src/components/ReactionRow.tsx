@@ -3,7 +3,7 @@ import { Smile } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  EXTENDED_REACTIONS,
+  QUICK_REACTIONS,
   summarize,
   useReactions,
   useToggleReaction,
@@ -144,17 +144,16 @@ function ReactionRowImpl({
           )}
         </button>
         {paletteOpen && (
-          // Extended picker — 6×4 grid of curated couple-flavored
-          // emojis (hearts / feels / hype / food). Quick reactions
-          // are included here too so this single popover is the full
-          // source of truth for "any reaction you can tap". Outside-
-          // tap dismiss handled by the useEffect above (touch devices
-          // don't fire pointerleave).
+          // Horizontal pill row — same compact UX as before the
+          // extended grid experiment. Just the 6 quick reactions
+          // (incl. 뽀뽀 😘), laid out left-to-right in a small
+          // pill. Outside-tap dismiss handled by the useEffect
+          // above (touch devices don't fire pointerleave).
           <div
             ref={paletteRef}
-            className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-2xl shadow-lg p-1.5 grid grid-cols-6 gap-0.5`}
+            className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-full shadow-lg flex items-center gap-0.5 p-1`}
           >
-            {EXTENDED_REACTIONS.map((emoji) => {
+            {QUICK_REACTIONS.map((emoji) => {
               const cur = summary.find((s) => s.emoji === emoji);
               const mineId = cur?.mineId ?? null;
               const mine = !!mineId;
