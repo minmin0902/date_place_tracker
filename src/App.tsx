@@ -18,7 +18,19 @@ import ProfileEditPage from "@/pages/ProfileEditPage";
 import NotificationsPage from "@/pages/NotificationsPage";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      // iOS PWA backgrounds + foregrounds extremely aggressively
+      // (home → app switch → return) and the default true triggered
+      // every place/memo/reaction subscription to refetch on each
+      // focus event, which caused a visible re-render wave. Hooks
+      // that genuinely need focus-driven freshness (notification
+      // unread badge) opt back in per-query.
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 
 // Supabase throws PostgrestError (plain object with message/details/hint/code)
