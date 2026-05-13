@@ -97,9 +97,9 @@ export function MemoThread({
   });
 
   const allMemos = memosQuery.data ?? [];
-  // Split into top-level + replies, keyed by parent. Existing rows
-  // pre-dating this migration all have parent_id=null so they show up
-  // as top-level — no backfill needed.
+  // Split into top-level + parent→children index. Existing rows
+  // pre-dating this migration all have parent_id=null so they show
+  // up as top-level — no backfill needed.
   const { topLevel, childrenByParent } = useMemo(() => {
     const top: Memo[] = [];
     const map = new Map<string, Memo[]>();
@@ -114,6 +114,31 @@ export function MemoThread({
     }
     return { topLevel: top, childrenByParent: map };
   }, [allMemos]);
+
+  // Walk every descendant under a root memo (depth-unbounded), then
+  // flatten into chronological order. Visually we render all replies
+  // at a single indent regardless of nesting depth — mobile width
+  // can't sustain a stairstep, and chat-style flat threads are how
+  // every messenger handles "reply to a reply".
+  const gatherDescendants = useMemo(() => {
+    return (rootId: string): Memo[] => {
+      const out: Memo[] = [];
+      const visit = (parentId: string) => {
+        const direct = childrenByParent.get(parentId);
+        if (!direct) return;
+        for (const c of direct) {
+          out.push(c);
+          visit(c.id);
+        }
+      };
+      visit(rootId);
+      // Sort by created_at asc so even mixed-depth descendants read
+      // top-to-bottom as they were written.
+      return out.sort((a, b) =>
+        a.created_at < b.created_at ? -1 : 1
+      );
+    };
+  }, [childrenByParent]);
 
   const isSm = size === "sm";
 
@@ -189,7 +214,10 @@ export function MemoThread({
       {/* Top-level thread, oldest first — reads top-to-bottom like a
           comment feed. Each row hosts its own reactions + reply ui.  */}
       {topLevel.map((m) => {
-        const replies = childrenByParent.get(m.id) ?? [];
+        // Walk the entire subtree, not just direct children, so a
+        // reply-to-a-reply still shows up in this top-level row's
+        // flat reply list.
+        const descendants = gatherDescendants(m.id);
         const isAuthor = m.author_id === user?.id;
         const replyingHere = replyingTo === m.id;
         return (
@@ -260,13 +288,17 @@ export function MemoThread({
               </div>
             )}
 
-            {/* Nested replies — same MemoComment in sm size, indented
-                under the parent. Each gets its own reactions but no
-                reply button (1-level cap). */}
-            {replies.length > 0 && (
+            {/* Replies — every descendant of the top-level memo,
+                flattened into chronological order at a single indent
+                level. Each reply gets its OWN [답글] button + inline
+                composer so the user can keep nesting indefinitely.
+                Depth grows in the DB (memos.parent_id chain) but
+                stays visually flat to keep mobile width usable. */}
+            {descendants.length > 0 && (
               <div className={`${isSm ? "ml-10" : "ml-11"} space-y-2 pt-1`}>
-                {replies.map((r) => {
+                {descendants.map((r) => {
                   const rAuthor = r.author_id === user?.id;
+                  const rReplyingHere = replyingTo === r.id;
                   return (
                     // Replies get their own anchor too — a reply
                     // notification deep-links to the reply itself,
@@ -274,32 +306,63 @@ export function MemoThread({
                     <div
                       key={r.id}
                       id={`memo-${r.id}`}
-                      className="flex items-start gap-2 scroll-mt-24"
+                      className="space-y-1 scroll-mt-24"
                     >
-                      <div className="flex-1 min-w-0">
-                        <MemoComment
-                          memo={r.body}
-                          authorId={r.author_id}
-                          createdAt={r.updated_at ?? r.created_at}
-                          photoUrls={r.photo_urls}
-                          size="sm"
-                        />
-                        <div className="ml-10 mt-1">
-                          <ReactionRow
-                            target={{ kind: "memo", id: r.id }}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <MemoComment
+                            memo={r.body}
+                            authorId={r.author_id}
+                            createdAt={r.updated_at ?? r.created_at}
+                            photoUrls={r.photo_urls}
                             size="sm"
                           />
+                          <div className="ml-10 mt-1 flex items-center justify-between gap-2">
+                            <ReactionRow
+                              target={{ kind: "memo", id: r.id }}
+                              size="sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReplyingTo(
+                                  rReplyingHere ? null : r.id
+                                )
+                              }
+                              className="text-[11px] font-bold text-ink-400 hover:text-peach-500 transition px-1 py-0.5 active:scale-95"
+                            >
+                              {rReplyingHere
+                                ? "취소 · 取消"
+                                : "답글 · 回复"}
+                            </button>
+                          </div>
                         </div>
+                        {rAuthor && (
+                          <button
+                            type="button"
+                            onClick={() => void onDelete(r.id)}
+                            className="p-2 -m-1 rounded-full text-ink-300 hover:text-rose-400 hover:bg-rose-50 active:scale-90 transition flex-shrink-0"
+                            aria-label="delete reply"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
-                      {rAuthor && (
-                        <button
-                          type="button"
-                          onClick={() => void onDelete(r.id)}
-                          className="p-2 -m-1 rounded-full text-ink-300 hover:text-rose-400 hover:bg-rose-50 active:scale-90 transition flex-shrink-0"
-                          aria-label="delete reply"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                      {/* Reply-to-this-reply composer. parent_id =
+                          r.id so the new memo nests one deeper in
+                          the DB chain; the visual stays flat thanks
+                          to gatherDescendants flattening above. */}
+                      {rReplyingHere && couple && user && (
+                        <div className="ml-10">
+                          <ReplyComposer
+                            parentId={r.id}
+                            onSend={(text) =>
+                              void onSendReply(r.id, text)
+                            }
+                            onCancel={() => setReplyingTo(null)}
+                            pending={addMemo.isPending}
+                          />
+                        </div>
                       )}
                     </div>
                   );
