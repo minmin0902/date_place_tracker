@@ -743,7 +743,14 @@ export default function HomePage() {
         released={released}
         justFinished={justFinished}
       />
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-cream-200/60 px-5 safe-top">
+      {/* sticky header: bg-cream-50 (matches AppShell page bg) instead
+          of bg-white/80 + backdrop-blur-md. The blur was the most
+          expensive piece on this page — every scroll frame on a long
+          timeline had iOS re-rasterizing the header band over the
+          changing content below. Solid bg matching the page color
+          is visually equivalent (no see-through) and costs zero
+          per-frame paint. */}
+      <header className="sticky top-0 z-20 bg-cream-50 border-b border-cream-200/60 px-5 safe-top">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h1 className="text-[22px] sm:text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">

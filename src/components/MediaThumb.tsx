@@ -49,7 +49,9 @@ export function MediaThumb({
       {/* preload="metadata" gives us the first frame as a poster
           without downloading the whole clip; muted + playsInline
           keep iOS Safari from auto-fullscreen on tap and let the
-          preview render inline. */}
+          preview render inline. preload is already the de-facto
+          "lazy" knob for video — only the first frame downloads
+          until the user actually plays. */}
       <video
         src={src}
         className={className}
@@ -65,7 +67,22 @@ export function MediaThumb({
       )}
     </span>
   ) : (
-    <img src={src} alt={alt ?? ""} className={className} />
+    // loading="lazy" — browser defers the GET until the img is
+    // within ~viewport of being visible. On a busy place detail
+    // page (8 foods × 5 photos + memo attachments) this turns 50+
+    // concurrent requests at first paint into a steady stream as
+    // the user scrolls, which is the single biggest first-paint
+    // win on mobile networks.
+    //
+    // decoding="async" lets the decoder run off the main thread —
+    // matters when many imgs land in the same paint frame.
+    <img
+      src={src}
+      alt={alt ?? ""}
+      className={className}
+      loading="lazy"
+      decoding="async"
+    />
   );
 
   if (!clickable) return inner;
