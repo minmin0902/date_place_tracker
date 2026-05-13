@@ -12,12 +12,35 @@ import type { Reaction, ReactionTarget } from "@/lib/database.types";
 
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
 
-// Quick-react set shown under every memo / caption. Five is the sweet
-// spot — wide enough to cover the common reactions on a couples diary
-// (love / yum / aww / fire / agree) without being so many that the row
-// wraps on a 360px phone. Keep emoji-only (no labels) so it works
-// without translation between Korean + Chinese viewers.
-export const QUICK_REACTIONS = ["❤️", "😋", "🥹", "🔥", "👍"] as const;
+// Quick-react set surfaced as inline pill buttons on every memo /
+// caption. Six is still mobile-friendly (fits ~360px wide phones)
+// and now includes 뽀뽀 (😘) which is the most-requested couple
+// reaction. Keep emoji-only (no labels) so it works without
+// translation between Korean + Chinese viewers.
+//
+// The wider EXTENDED_REACTIONS palette opens behind the "+" button —
+// see ReactionRow.tsx. Quick pills cover the 80% case; the picker
+// covers everything else without forcing us to grow this row.
+export const QUICK_REACTIONS = [
+  "❤️",
+  "😘",
+  "😋",
+  "🥹",
+  "🔥",
+  "👍",
+] as const;
+
+// Bigger picker for the "+" button. Curated for couple-app vocabulary:
+// hearts/affection on top, feels in the middle, hype + food/drink at
+// the bottom. 6 cols × 4 rows so it lays out as a tidy grid even on
+// a narrow phone. QUICK_REACTIONS are intentionally included here too
+// so the picker also lets you re-tap a quick reaction.
+export const EXTENDED_REACTIONS = [
+  "❤️", "😘", "💋", "🤍", "💕", "💖",
+  "😋", "🤤", "🥹", "🥺", "😍", "🥰",
+  "🔥", "✨", "🎉", "🌟", "💯", "🤩",
+  "🍽️", "🥂", "🍷", "🍵", "🍰", "🍾",
+] as const;
 
 // Query key scope is the target itself — flat reactions list per
 // (memo|place|food) id, so a successful toggle invalidates exactly

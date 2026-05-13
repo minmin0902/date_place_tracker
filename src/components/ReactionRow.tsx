@@ -1,9 +1,9 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Smile } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  QUICK_REACTIONS,
+  EXTENDED_REACTIONS,
   summarize,
   useReactions,
   useToggleReaction,
@@ -48,10 +48,31 @@ function ReactionRowImpl({
   const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // Close-on-outside-click ref. We don't use a portal — the palette
-  // is small enough to live inline next to the "+" button without
-  // running off the screen edge in any realistic layout.
+  // Anchor + palette refs. paletteAnchorRef is the wrapper around the
+  // "+" button; paletteRef is the popover itself. Used by the
+  // outside-tap effect to dismiss the picker when the user taps
+  // anywhere else (most users won't pointer-leave on touch).
+  const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const paletteRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!paletteOpen) return;
+    function onDown(e: PointerEvent) {
+      const t = e.target as Node;
+      if (
+        paletteAnchorRef.current?.contains(t) ||
+        paletteRef.current?.contains(t)
+      ) {
+        return;
+      }
+      setPaletteOpen(false);
+    }
+    // pointerdown over click — fires before the next tap can register
+    // anything else (e.g. a thread memo button below). Capture phase
+    // so React's bubble-phase handlers on inner elements still run.
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [paletteOpen]);
 
   const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
   const summary = useMemo(() => summarize(rows, user?.id), [rows, user?.id]);
@@ -105,7 +126,7 @@ function ReactionRowImpl({
           </button>
         );
       })}
-      <div className="relative" ref={paletteRef}>
+      <div className="relative" ref={paletteAnchorRef}>
         <button
           type="button"
           onClick={() => setPaletteOpen((v) => !v)}
@@ -123,11 +144,17 @@ function ReactionRowImpl({
           )}
         </button>
         {paletteOpen && (
+          // Extended picker — 6×4 grid of curated couple-flavored
+          // emojis (hearts / feels / hype / food). Quick reactions
+          // are included here too so this single popover is the full
+          // source of truth for "any reaction you can tap". Outside-
+          // tap dismiss handled by the useEffect above (touch devices
+          // don't fire pointerleave).
           <div
-            className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-full shadow-lg flex items-center gap-0.5 p-1`}
-            onPointerLeave={() => setPaletteOpen(false)}
+            ref={paletteRef}
+            className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-2xl shadow-lg p-1.5 grid grid-cols-6 gap-0.5`}
           >
-            {QUICK_REACTIONS.map((emoji) => {
+            {EXTENDED_REACTIONS.map((emoji) => {
               const cur = summary.find((s) => s.emoji === emoji);
               const mineId = cur?.mineId ?? null;
               const mine = !!mineId;

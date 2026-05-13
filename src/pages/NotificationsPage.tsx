@@ -55,9 +55,38 @@ type ReactionGroup = {
   latest: NotificationRow;
 };
 
+// Stronger second-level grouping: every notification on the SAME
+// place during the SAME calendar day by the SAME actor collapses
+// into one row showing per-kind counts. This is what the inbox
+// actually feels cluttered with — a single "let's record yesterday's
+// trip" session generates 1 place + 5 menus + 2 memos + a few
+// reactions = 10+ rows that all reference the same outing. We
+// fold them into "짝꿍이 'Day2'에 활동 · 📍1 🍽5 💬2 ❤️3".
+type PlaceDayGroup = {
+  kind: "place-day-group";
+  items: NotificationRow[];
+  counts: {
+    place: number;
+    food: number;
+    memo: number;
+    reply: number;
+    reaction: number;
+    rating: number;
+    revisit: number;
+  };
+  emojis: string[];
+  latest: NotificationRow;
+  placeId: string;
+  // Resolved display name for the place — taken from a member
+  // notification where kind='place' (preview is the place name),
+  // else fall back to whatever preview is on the latest member.
+  placeName: string | null;
+};
+
 type DisplayRow =
   | { kind: "single"; item: NotificationRow }
-  | ReactionGroup;
+  | ReactionGroup
+  | PlaceDayGroup;
 
 function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
   if (filter === "all") return true;
@@ -118,44 +147,94 @@ export default function NotificationsPage() {
     return items.filter((n) => matchesFilter(n.kind, filter));
   }, [items, filter]);
 
-  // Group consecutive reactions on the same target+actor into a
-  // single bundled row — Instagram-style "❤️😋 + 짝꿍이 이모지
-  // 5개 남김". This is the main spam vector since one memo can
-  // accumulate 5+ emoji taps and each one used to create its own
-  // inbox row. Bundling keeps the unread badge accurate (any unread
-  // member → group is unread) and a single tap marks them all read.
-  // Non-reaction kinds (memo / reply / food / etc) stay as
-  // individual rows because each carries unique content the user
-  // wants to scan.
+  // Two-level grouping:
+  //   Level 1 (PlaceDayGroup): per (place_id × calendar-day × actor).
+  //     A single recording session that touches one place lands as
+  //     one row regardless of how many menus / memos / reactions it
+  //     produced. This is the most aggressive collapse and the one
+  //     that actually solves the "너무 난잡" complaint.
+  //   Level 2 (ReactionGroup): within an otherwise-quiet day on a
+  //     place where the partner only added emoji reactions to the
+  //     same sub-target, fall back to the lighter ReactionGroup so
+  //     the emoji bag is still surfaced visually.
+  // Items with no place_id (rare — push notifications expect a
+  // place anchor) fall through as singles unchanged.
   const displayRows = useMemo<DisplayRow[]>(() => {
-    const groupsByKey = new Map<string, ReactionGroup>();
-    const out: DisplayRow[] = [];
+    // Group by calendar-day key. UTC slice is good enough here — we
+    // just need same-session events to share a bucket, not strict
+    // local-day alignment.
+    const dayOf = (iso: string) => iso.slice(0, 10);
+    const slots: { row: DisplayRow }[] = [];
+    const groupIndex = new Map<string, number>();
+    const incrementCount = (g: PlaceDayGroup, kind: NotificationRow["kind"]) => {
+      switch (kind) {
+        case "place": g.counts.place += 1; break;
+        case "food": g.counts.food += 1; break;
+        case "memo":
+        case "memo_thread": g.counts.memo += 1; break;
+        case "memo_reply": g.counts.reply += 1; break;
+        case "reaction": g.counts.reaction += 1; break;
+        case "rating": g.counts.rating += 1; break;
+        case "revisit": g.counts.revisit += 1; break;
+      }
+    };
+
     for (const n of visibleItems) {
-      if (n.kind !== "reaction") {
-        out.push({ kind: "single", item: n });
+      if (!n.place_id) {
+        slots.push({ row: { kind: "single", item: n } });
         continue;
       }
-      const key = `${n.actor_id}|${n.place_id ?? ""}|${n.food_id ?? ""}|${n.memo_id ?? ""}`;
-      const existing = groupsByKey.get(key);
-      if (existing) {
-        existing.items.push(n);
-        if (n.preview && !existing.emojis.includes(n.preview)) {
-          existing.emojis.push(n.preview);
+      const key = `${n.place_id}|${dayOf(n.created_at)}|${n.actor_id}`;
+      const idx = groupIndex.get(key);
+      if (idx !== undefined) {
+        const g = slots[idx].row as PlaceDayGroup;
+        g.items.push(n);
+        incrementCount(g, n.kind);
+        if (n.kind === "reaction" && n.preview && !g.emojis.includes(n.preview)) {
+          g.emojis.push(n.preview);
         }
+        // Prefer an explicit place-row preview for the display name;
+        // anything else is a soft fallback.
+        if (n.kind === "place" && n.preview) g.placeName = n.preview;
+        else if (!g.placeName && n.preview) g.placeName = n.preview;
         continue;
       }
-      const group: ReactionGroup = {
-        kind: "reaction-group",
+      const newGroup: PlaceDayGroup = {
+        kind: "place-day-group",
         items: [n],
-        // Bag of distinct emojis, newest-first since we walk
-        // visibleItems newest-first.
-        emojis: n.preview ? [n.preview] : [],
+        counts: { place: 0, food: 0, memo: 0, reply: 0, reaction: 0, rating: 0, revisit: 0 },
+        emojis: n.kind === "reaction" && n.preview ? [n.preview] : [],
         latest: n,
+        placeId: n.place_id,
+        placeName: n.preview ?? null,
       };
-      groupsByKey.set(key, group);
-      out.push(group);
+      incrementCount(newGroup, n.kind);
+      slots.push({ row: newGroup });
+      groupIndex.set(key, slots.length - 1);
     }
-    return out;
+
+    // Post-process: downgrade single-event groups to bare singles,
+    // and reactions-only groups (one place, one day, all on the same
+    // sub-target) to a ReactionGroup so the emoji bag stays visible.
+    return slots.map(({ row }): DisplayRow => {
+      if (row.kind !== "place-day-group") return row;
+      if (row.items.length === 1) return { kind: "single", item: row.items[0] };
+      const allReactions = row.items.every((i) => i.kind === "reaction");
+      if (allReactions) {
+        const sig = (i: NotificationRow) =>
+          `${i.memo_id ?? ""}|${i.food_id ?? ""}|${i.place_id ?? ""}`;
+        const first = sig(row.items[0]);
+        if (row.items.every((i) => sig(i) === first)) {
+          return {
+            kind: "reaction-group",
+            items: row.items,
+            emojis: row.emojis,
+            latest: row.latest,
+          };
+        }
+      }
+      return row;
+    });
   }, [visibleItems]);
 
   return (
@@ -263,14 +342,16 @@ export default function NotificationsPage() {
           <FilteredEmptyState />
         )}
         {!isLoading && displayRows.length > 0 && (
-          <ul className="space-y-2">
-            {displayRows.map((row) =>
-              row.kind === "single" ? (
-                <NotificationItem key={row.item.id} item={row.item} />
-              ) : (
-                <ReactionGroupItem key={row.latest.id} group={row} />
-              )
-            )}
+          <ul className="space-y-1.5">
+            {displayRows.map((row) => {
+              if (row.kind === "single") {
+                return <NotificationItem key={row.item.id} item={row.item} />;
+              }
+              if (row.kind === "reaction-group") {
+                return <ReactionGroupItem key={row.latest.id} group={row} />;
+              }
+              return <PlaceDayGroupItem key={row.latest.id} group={row} />;
+            })}
           </ul>
         )}
       </div>
@@ -360,14 +441,14 @@ function ReactionGroupItem({ group }: { group: ReactionGroup }) {
       <button
         type="button"
         onClick={onTap}
-        className={`w-full text-left flex items-start gap-3 p-3 rounded-2xl transition active:scale-[0.99] border ${
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60"
             : "bg-white border-cream-200 hover:bg-cream-50"
         }`}
       >
         <div
-          className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[14px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
         >
           {avatarUrl ? (
             <img
@@ -380,38 +461,138 @@ function ReactionGroupItem({ group }: { group: ReactionGroup }) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] leading-snug">
+          <p className="text-[12px] leading-snug">
             <span className="font-bold text-ink-900">{name}</span>
-            <span className="text-ink-500 mx-1">·</span>
-            <span className="text-ink-500 text-[12px]">
-              {targetLabel} 이모지 남김 · 留了表情
+            <span className="text-ink-400 mx-1">·</span>
+            <span className="text-ink-500">
+              {targetLabel} 이모지 · 表情
             </span>
           </p>
-          {/* Emoji bag + count. Distinct emojis flow inline; count
-              shows total taps (including duplicates) so the user
-              knows there were 5 reactions even if they were all
-              the same emoji. */}
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className="text-base leading-none tracking-tight">
+          {/* Emoji bag + count on one tight line. */}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[14px] leading-none">
               {group.emojis.join("")}
             </span>
-            <span className="text-[11px] text-ink-500">
-              <span className="font-number font-bold">
-                {group.items.length}
-              </span>
-              개 · 共{" "}
-              <span className="font-number font-bold">
-                {group.items.length}
-              </span>
+            <span className="text-[10px] text-ink-400 font-number font-bold">
+              {group.items.length}
+            </span>
+            <span className="text-[10px] text-ink-400">·</span>
+            <span className="text-[10px] text-ink-400 font-medium font-number">
+              {stamp}
             </span>
           </div>
-          <p className="text-[10px] text-ink-400 font-medium font-number mt-1.5">
-            {stamp}
-          </p>
         </div>
         {isUnread && (
           <span
-            className="w-2 h-2 rounded-full bg-rose-400 mt-2 flex-shrink-0"
+            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
+            aria-label="unread"
+          />
+        )}
+      </button>
+    </li>
+  );
+}
+
+// Place-day bundle. One row representing every event the partner
+// produced on a single place during one calendar day. Renders as a
+// tally summary (📍 1 · 🍽 5 · 💬 2 · ❤️😘 3) so the user scans
+// "what happened" rather than scrolling through 10 near-identical
+// rows. Tap → mark all members read + deep-link to the place.
+function PlaceDayGroupItem({ group }: { group: PlaceDayGroup }) {
+  const navigate = useNavigate();
+  const markRead = useMarkNotificationRead();
+  const { name, avatarUrl } = useActorDisplay(group.latest.actor_id);
+
+  const isUnread = group.items.some((i) => !i.read_at);
+  const unreadIds = group.items.filter((i) => !i.read_at).map((i) => i.id);
+
+  function onTap() {
+    if (unreadIds.length && !markRead.isPending) {
+      for (const id of unreadIds) {
+        void markRead.mutateAsync(id);
+      }
+    }
+    navigate(`/places/${group.placeId}`);
+  }
+
+  const stamp = relativeKo(group.latest.created_at);
+  const initial = Array.from(name)[0] ?? "·";
+  const toneCls = "bg-rose-100 text-rose-500";
+  const c = group.counts;
+  // Build the count line: only show kinds with non-zero counts so
+  // sparse days don't render "· 0 · 0 · 0".
+  type Chip = { emoji: string; n: number };
+  const chips: Chip[] = [];
+  if (c.place) chips.push({ emoji: "📍", n: c.place });
+  if (c.food) chips.push({ emoji: "🍽", n: c.food });
+  if (c.memo) chips.push({ emoji: "💬", n: c.memo });
+  if (c.reply) chips.push({ emoji: "↪️", n: c.reply });
+  if (c.rating) chips.push({ emoji: "⭐", n: c.rating });
+  if (c.revisit) chips.push({ emoji: "💗", n: c.revisit });
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
+          isUnread
+            ? "bg-peach-50/60 border-peach-200/60"
+            : "bg-white border-cream-200 hover:bg-cream-50"
+        }`}
+      >
+        <div
+          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] leading-snug truncate">
+            <span className="font-bold text-ink-900">{name}</span>
+            {group.placeName && (
+              <>
+                <span className="text-ink-400 mx-1">·</span>
+                <span className="text-ink-700">{group.placeName}</span>
+              </>
+            )}
+          </p>
+          <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-0.5">
+            {chips.map((chip) => (
+              <span
+                key={chip.emoji}
+                className="inline-flex items-center gap-0.5 text-[11px] text-ink-600"
+              >
+                <span>{chip.emoji}</span>
+                <span className="font-number font-bold">{chip.n}</span>
+              </span>
+            ))}
+            {/* Reactions get their distinct emoji bag inline so the
+                user can see WHICH emojis without opening the place. */}
+            {c.reaction > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[11px] text-ink-600">
+                <span className="text-[13px] leading-none">
+                  {group.emojis.join("")}
+                </span>
+                <span className="font-number font-bold">{c.reaction}</span>
+              </span>
+            )}
+            <span className="text-[10px] text-ink-400">·</span>
+            <span className="text-[10px] text-ink-400 font-medium font-number">
+              {stamp}
+            </span>
+          </div>
+        </div>
+        {isUnread && (
+          <span
+            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
             aria-label="unread"
           />
         )}
@@ -515,14 +696,14 @@ function NotificationItem({ item }: { item: NotificationRow }) {
       <button
         type="button"
         onClick={onTap}
-        className={`w-full text-left flex items-start gap-3 p-3 rounded-2xl transition active:scale-[0.99] border ${
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60"
             : "bg-white border-cream-200 hover:bg-cream-50"
         }`}
       >
         <div
-          className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[14px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
         >
           {avatarUrl ? (
             <img
@@ -535,24 +716,24 @@ function NotificationItem({ item }: { item: NotificationRow }) {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] leading-snug">
+          <p className="text-[12px] leading-snug">
             <span className="font-bold text-ink-900">{name}</span>
-            <span className="text-ink-500 mx-1">·</span>
-            <span className="text-ink-500 text-[12px]">{verb}</span>
+            <span className="text-ink-400 mx-1">·</span>
+            <span className="text-ink-500">{verb}</span>
           </p>
           {item.preview && (
-            <p className="text-[12px] text-ink-700 mt-1 line-clamp-2 break-keep flex items-start gap-1.5">
-              <span className="text-ink-400 mt-0.5 flex-shrink-0">{icon}</span>
-              <span>{item.preview}</span>
+            <p className="text-[12px] text-ink-700 mt-0.5 line-clamp-1 break-keep flex items-center gap-1">
+              <span className="text-ink-400 flex-shrink-0">{icon}</span>
+              <span className="truncate">{item.preview}</span>
             </p>
           )}
-          <p className="text-[10px] text-ink-400 font-medium font-number mt-1.5">
+          <p className="text-[10px] text-ink-400 font-medium font-number mt-0.5">
             {stamp}
           </p>
         </div>
         {isUnread && (
           <span
-            className="w-2 h-2 rounded-full bg-rose-400 mt-2 flex-shrink-0"
+            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
             aria-label="unread"
           />
         )}
