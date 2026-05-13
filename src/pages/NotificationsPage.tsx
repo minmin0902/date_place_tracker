@@ -472,14 +472,12 @@ export default function NotificationsPage() {
       }
     }
 
-    // Bundles with exactly one event read better as flat single rows
-    // — the card chrome around a single sub-row felt heavy.
-    return out.map((row): DisplayRow => {
-      if (row.kind === "activity-bundle" && row.allItems.length === 1) {
-        return { kind: "single", item: row.allItems[0] };
-      }
-      return row;
-    });
+    // Keep bundles even at N=1 in the 전체 tab — the user wants
+    // memo/reply notifications to ALWAYS show their parent place
+    // as a bold header line, not a truncated breadcrumb. The card
+    // layout enforces that "place at top, content underneath" shape
+    // regardless of how many sub-events landed.
+    return out;
   }, [visibleItems, filter]);
 
   return (
@@ -698,9 +696,31 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
               ? "rating"
               : "revisit";
 
+  // Count distinct kinds in the bundle. With exactly one kind we
+  // use that kind's specific verb ("메모 남김 · 留了言"); with multiple
+  // we fall back to a generic "활동 · 动态". The place-creation flag
+  // takes priority either way so new-place bundles always read as
+  // "새 장소 등록" even if they also contain menus / memos.
+  const kindCount =
+    (bundle.foods.length > 0 ? 1 : 0) +
+    (bundle.memos.length + bundle.replies.length > 0 ? 1 : 0) +
+    (bundle.reactions.length > 0 ? 1 : 0) +
+    (bundle.ratings.length > 0 ? 1 : 0) +
+    (bundle.revisit ? 1 : 0);
   const headerVerb = bundle.placeEvent
-    ? { ko: "새 장소 등록", zh: "添加了新地点", color: "text-emerald-600" }
-    : { ko: "활동", zh: "动态", color: "text-ink-500" };
+    ? {
+        ko: "새 장소 등록",
+        zh: "添加了新地点",
+        color: "text-emerald-600",
+      }
+    : kindCount === 1
+      ? (() => {
+          // Look up the kind's spec and parse out the bilingual verb.
+          const spec = kindSpec(primaryKind);
+          const [ko, zh] = spec.verb.split(" · ");
+          return { ko, zh: zh ?? "", color: spec.textColor };
+        })()
+      : { ko: "활동", zh: "动态", color: "text-ink-500" };
 
   // Build the body — one sub-row per non-empty kind. Order matches
   // the rough sequence of a recording session: place → menus →
