@@ -32,16 +32,20 @@ import type { NotificationRow } from "@/lib/database.types";
 // Resolver for "what does this notification belong to?". Built once
 // from the places list at the top of the page and made available to
 // every row via context, so a 50-row inbox doesn't fire 50 lookups.
-// Returns the parent place name + (optionally) the food name so
-// each row can render breadcrumb context like
-// "Day2 jd宝宝 left 早饭 → Fried土豆".
+// Returns names AND the primary memo set at creation, so a "메뉴
+// 추가 · Fried土豆" row can also surface "바삭바삭 맛있었어" right
+// next to it without a separate fetch.
 type ContextResolver = {
   placeNameOf: (placeId: string | null | undefined) => string | null;
   foodNameOf: (foodId: string | null | undefined) => string | null;
+  placeMemoOf: (placeId: string | null | undefined) => string | null;
+  foodMemoOf: (foodId: string | null | undefined) => string | null;
 };
 const RowContext = createContext<ContextResolver>({
   placeNameOf: () => null,
   foodNameOf: () => null,
+  placeMemoOf: () => null,
+  foodMemoOf: () => null,
 });
 function useRowContext() {
   return useContext(RowContext);
@@ -137,17 +141,25 @@ function composeContextLine(
 ): string {
   const placeName = ctx.placeNameOf(item.place_id);
   const foodName = ctx.foodNameOf(item.food_id);
+  const clip = (s: string, n = 40) => (s.length > n ? s.slice(0, n) + "…" : s);
 
-  // place / revisit / memo (primary edit on a place): preview is
-  // already the place name itself, no extra breadcrumb needed.
-  if (item.kind === "place" || item.kind === "revisit") {
+  // place / revisit: preview is already the place name. For a new
+  // place, surface the primary memo (if any) on the same line so
+  // "Day2 jd宝宝 left 早饭 — '처음 와봤어'" reads at a glance.
+  if (item.kind === "place") {
+    const base = item.preview ?? placeName ?? "";
+    const memo = ctx.placeMemoOf(item.place_id);
+    return memo ? `${base} — "${clip(memo)}"` : base;
+  }
+  if (item.kind === "revisit") {
     return item.preview ?? placeName ?? "";
   }
-  // food / rating: parent place name first, then the food.
+  // food / rating: place name → food name → food's memo (if any).
   if (item.kind === "food" || item.kind === "rating") {
-    return [placeName, item.preview ?? foodName]
-      .filter(Boolean)
-      .join(" · ");
+    const parts = [placeName, item.preview ?? foodName].filter(Boolean) as string[];
+    const memo = ctx.foodMemoOf(item.food_id);
+    const base = parts.join(" · ");
+    return memo ? `${base} — "${clip(memo)}"` : base;
   }
   // memo_thread / memo_reply / memo edit: show parent place (+ food
   // if the memo lives on a specific dish), then the memo body in
@@ -324,15 +336,22 @@ export default function NotificationsPage() {
   const rowContext = useMemo<ContextResolver>(() => {
     const placeNameById = new Map<string, string>();
     const foodNameById = new Map<string, string>();
+    const placeMemoById = new Map<string, string>();
+    const foodMemoById = new Map<string, string>();
     for (const p of places ?? []) {
       placeNameById.set(p.id, p.name);
+      if (p.memo && p.memo.trim()) placeMemoById.set(p.id, p.memo.trim());
       for (const f of p.foods ?? []) {
         foodNameById.set(f.id, f.name);
+        if (f.memo && f.memo.trim())
+          foodMemoById.set(f.id, f.memo.trim());
       }
     }
     return {
       placeNameOf: (id) => (id ? (placeNameById.get(id) ?? null) : null),
       foodNameOf: (id) => (id ? (foodNameById.get(id) ?? null) : null),
+      placeMemoOf: (id) => (id ? (placeMemoById.get(id) ?? null) : null),
+      foodMemoOf: (id) => (id ? (foodMemoById.get(id) ?? null) : null),
     };
   }, [places]);
 
@@ -363,16 +382,20 @@ export default function NotificationsPage() {
     return items.filter((n) => matchesFilter(n.kind, filter));
   }, [items, filter]);
 
-  // Display rows = date headers interleaved with one ActivityBundle
-  // card per (place_id, day, actor) trio, OR a flat single row when
-  // a bundle ended up with only one event. Walking newest-first lets
-  // us emit bundles in latest-first order naturally — each bundle's
-  // first-encountered member is its newest, so output position
-  // matches the "what just happened" feed reading direction.
+  // Display rows = date headers interleaved with either:
+  //   - "전체" filter (all): one ActivityBundle card per
+  //     (place_id, day, actor) trio so a recording session
+  //     collapses into one navigable card.
+  //   - Any other filter (새기록 / 메모/이모지 / 평점 / 또갈래):
+  //     no bundling at all — when the user has filtered to a
+  //     specific surface they want to see every item in detail.
+  // Walking newest-first lets bundles emit in latest-first order
+  // since each bundle's first-encountered member is its newest.
   const displayRows = useMemo<DisplayRow[]>(() => {
     const out: DisplayRow[] = [];
     const bundles = new Map<string, ActivityBundle>();
     let currentDateKey: string | null = null;
+    const shouldBundle = filter === "all";
 
     for (const n of visibleItems) {
       const label = dateLabelFor(n.created_at);
@@ -390,9 +413,10 @@ export default function NotificationsPage() {
         bundles.clear();
       }
 
-      if (!n.place_id) {
-        // Orphan (shouldn't happen — every trigger sets place_id —
-        // but harmless: render as a flat single).
+      if (!shouldBundle || !n.place_id) {
+        // Filter is narrowed (the user is looking at one surface),
+        // OR this item has no place_id to bundle on — render as a
+        // detailed single row.
         out.push({ kind: "single", item: n });
         continue;
       }
@@ -456,7 +480,7 @@ export default function NotificationsPage() {
       }
       return row;
     });
-  }, [visibleItems]);
+  }, [visibleItems, filter]);
 
   return (
     <RowContext.Provider value={rowContext}>
@@ -633,6 +657,11 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
   const { name, avatarUrl } = useActorDisplay(bundle.actorId);
   const rowCtx = useRowContext();
   const placeName = rowCtx.placeNameOf(bundle.placeId);
+  // Primary memo on the place itself — if the partner wrote a note
+  // when they created it ("처음 와봤어!"), surface it in the header.
+  const placeMemo = bundle.placeEvent
+    ? rowCtx.placeMemoOf(bundle.placeId)
+    : null;
 
   const isUnread = bundle.allItems.some((i) => !i.read_at);
   const unreadIds = bundle.allItems
@@ -685,15 +714,25 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
   };
   const subRows: SubRow[] = [];
   if (bundle.foods.length > 0) {
-    const names = bundle.foods.map((f) => f.preview).filter(Boolean) as string[];
-    const visible = names.slice(0, 3).join(", ");
-    const more = names.length > 3 ? ` 외 ${names.length - 3}개` : "";
+    // Enrich each food name with its memo when one exists, so the
+    // sub-row reads like "Fried土豆 — "바삭", 牛排, 鸡腿 — "최고"".
+    // Memo is clipped to a short excerpt so the row stays one line.
+    const clip = (s: string, n = 24) =>
+      s.length > n ? s.slice(0, n) + "…" : s;
+    const parts: string[] = [];
+    for (const f of bundle.foods) {
+      if (!f.preview) continue;
+      const memo = rowCtx.foodMemoOf(f.food_id);
+      parts.push(memo ? `${f.preview} — "${clip(memo)}"` : f.preview);
+    }
+    const visible = parts.slice(0, 3).join(", ");
+    const more = parts.length > 3 ? ` 외 ${parts.length - 3}개` : "";
     subRows.push({
       key: "food",
       Icon: Utensils,
       color: "text-amber-600",
       label: `메뉴 ${bundle.foods.length}개 · 菜品 ${bundle.foods.length}`,
-      preview: names.length ? `${visible}${more}` : null,
+      preview: parts.length ? `${visible}${more}` : null,
     });
   }
   if (bundle.ratings.length > 0) {
@@ -706,28 +745,28 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
       preview: names.length ? names.slice(0, 3).join(", ") : null,
     });
   }
-  if (bundle.memos.length > 0) {
-    const previews = bundle.memos.map((m) => m.preview).filter(Boolean) as string[];
-    const visible = previews.slice(0, 2).join(" · ");
-    const more = previews.length > 2 ? ` 외 ${previews.length - 2}개` : "";
+  // Memos + replies share a single sub-row — visually they're both
+  // "comments" from the user's point of view, and splitting them
+  // doubled the bundle's row count without adding scannable info.
+  // Replies get a small ↪ prefix inline so they're still
+  // distinguishable from top-level memos.
+  if (bundle.memos.length + bundle.replies.length > 0) {
+    const parts: string[] = [];
+    for (const m of bundle.memos) {
+      if (m.preview) parts.push(`"${m.preview}"`);
+    }
+    for (const r of bundle.replies) {
+      if (r.preview) parts.push(`↪ "${r.preview}"`);
+    }
+    const total = bundle.memos.length + bundle.replies.length;
+    const visible = parts.slice(0, 2).join(" · ");
+    const more = parts.length > 2 ? ` 외 ${parts.length - 2}개` : "";
     subRows.push({
       key: "memo",
       Icon: MessageCircle,
       color: "text-sky-600",
-      label: `메모 ${bundle.memos.length}개 · 留言 ${bundle.memos.length}`,
-      preview: previews.length ? `"${visible}"${more}` : null,
-    });
-  }
-  if (bundle.replies.length > 0) {
-    const previews = bundle.replies.map((r) => r.preview).filter(Boolean) as string[];
-    const visible = previews.slice(0, 2).join(" · ");
-    const more = previews.length > 2 ? ` 외 ${previews.length - 2}개` : "";
-    subRows.push({
-      key: "reply",
-      Icon: CornerDownRight,
-      color: "text-indigo-600",
-      label: `답글 ${bundle.replies.length}개 · 回复 ${bundle.replies.length}`,
-      preview: previews.length ? `"${visible}"${more}` : null,
+      label: `메모/답글 ${total}개 · 留言 ${total}`,
+      preview: parts.length ? `${visible}${more}` : null,
     });
   }
   if (bundle.reactions.length > 0) {
@@ -791,6 +830,15 @@ function ActivityBundleItem({ bundle }: { bundle: ActivityBundle }) {
           {placeName && (
             <p className="text-[12px] text-ink-700 font-bold mt-0.5 line-clamp-1 break-keep truncate">
               {placeName}
+            </p>
+          )}
+          {/* Place's primary memo — shown only when this bundle is
+              ABOUT a new place AND that place was created with a
+              memo. Reads as a small italic quote under the place
+              name, separate from the activity sub-rows below. */}
+          {placeMemo && (
+            <p className="text-[11px] text-ink-500 italic mt-0.5 line-clamp-2 break-keep">
+              "{placeMemo}"
             </p>
           )}
           {/* Indented sub-rows — visual hierarchy under the place
