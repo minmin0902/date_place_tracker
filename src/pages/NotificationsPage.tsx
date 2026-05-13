@@ -26,29 +26,49 @@ import {
 import { useActorDisplay } from "@/hooks/useProfile";
 import type { NotificationRow } from "@/lib/database.types";
 
-// Filter buckets — collapse the six raw notification kinds into five
-// user-facing categories so the chip row stays scannable. "메모" lumps
-// both legacy single-memo edits and threaded comments since the user
-// thinks of them as the same surface.
-type FilterKey = "all" | "place" | "memo" | "reaction" | "rating" | "revisit";
+// Filter buckets — collapse the seven raw notification kinds into
+// four user-facing categories so the chip row stays scannable. The
+// "메모/이모지" bucket lumps every conversation-style event (memo
+// edits, threaded comments, nested replies) AND reactions on those
+// same targets — the user thinks of "짝꿍이 내 메모에 반응한 거"
+// as one surface regardless of whether it was a text reply or an
+// emoji tap.
+type FilterKey = "all" | "place" | "memo" | "rating" | "revisit";
 
 const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell }[] = [
   { key: "all", ko: "전체", zh: "全部", icon: Bell },
   { key: "place", ko: "새 기록", zh: "新记录", icon: Plus },
-  { key: "memo", ko: "메모", zh: "留言", icon: MessageCircle },
-  { key: "reaction", ko: "이모지", zh: "表情", icon: Smile },
+  { key: "memo", ko: "메모/이모지", zh: "留言/表情", icon: MessageCircle },
   { key: "rating", ko: "평점", zh: "打分", icon: Star },
   { key: "revisit", ko: "또 갈래", zh: "想再去", icon: Heart },
 ];
 
+// Bundled-reaction row. Holds every individual notification row in
+// the bundle so a tap can mark all of them read at once.
+type ReactionGroup = {
+  kind: "reaction-group";
+  items: NotificationRow[];
+  // Distinct emojis the partner left on this target. Order = newest
+  // first since visibleItems is sorted newest-first.
+  emojis: string[];
+  // Display anchor row (newest member) — drives timestamp + deep-link.
+  latest: NotificationRow;
+};
+
+type DisplayRow =
+  | { kind: "single"; item: NotificationRow }
+  | ReactionGroup;
+
 function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
   if (filter === "all") return true;
   if (filter === "place") return kind === "place" || kind === "food";
-  // The "memo" bucket lumps every conversation-style event: legacy
-  // primary-memo edits, threaded comments, and now nested replies.
   if (filter === "memo")
-    return kind === "memo" || kind === "memo_thread" || kind === "memo_reply";
-  if (filter === "reaction") return kind === "reaction";
+    return (
+      kind === "memo" ||
+      kind === "memo_thread" ||
+      kind === "memo_reply" ||
+      kind === "reaction"
+    );
   if (filter === "rating") return kind === "rating";
   if (filter === "revisit") return kind === "revisit";
   return true;
@@ -80,7 +100,6 @@ export default function NotificationsPage() {
       all: 0,
       place: 0,
       memo: 0,
-      reaction: 0,
       rating: 0,
       revisit: 0,
     };
@@ -98,6 +117,46 @@ export default function NotificationsPage() {
     if (filter === "all") return items;
     return items.filter((n) => matchesFilter(n.kind, filter));
   }, [items, filter]);
+
+  // Group consecutive reactions on the same target+actor into a
+  // single bundled row — Instagram-style "❤️😋 + 짝꿍이 이모지
+  // 5개 남김". This is the main spam vector since one memo can
+  // accumulate 5+ emoji taps and each one used to create its own
+  // inbox row. Bundling keeps the unread badge accurate (any unread
+  // member → group is unread) and a single tap marks them all read.
+  // Non-reaction kinds (memo / reply / food / etc) stay as
+  // individual rows because each carries unique content the user
+  // wants to scan.
+  const displayRows = useMemo<DisplayRow[]>(() => {
+    const groupsByKey = new Map<string, ReactionGroup>();
+    const out: DisplayRow[] = [];
+    for (const n of visibleItems) {
+      if (n.kind !== "reaction") {
+        out.push({ kind: "single", item: n });
+        continue;
+      }
+      const key = `${n.actor_id}|${n.place_id ?? ""}|${n.food_id ?? ""}|${n.memo_id ?? ""}`;
+      const existing = groupsByKey.get(key);
+      if (existing) {
+        existing.items.push(n);
+        if (n.preview && !existing.emojis.includes(n.preview)) {
+          existing.emojis.push(n.preview);
+        }
+        continue;
+      }
+      const group: ReactionGroup = {
+        kind: "reaction-group",
+        items: [n],
+        // Bag of distinct emojis, newest-first since we walk
+        // visibleItems newest-first.
+        emojis: n.preview ? [n.preview] : [],
+        latest: n,
+      };
+      groupsByKey.set(key, group);
+      out.push(group);
+    }
+    return out;
+  }, [visibleItems]);
 
   return (
     <div className="relative">
@@ -203,11 +262,15 @@ export default function NotificationsPage() {
         {!isLoading && items && items.length > 0 && visibleItems.length === 0 && (
           <FilteredEmptyState />
         )}
-        {!isLoading && visibleItems.length > 0 && (
+        {!isLoading && displayRows.length > 0 && (
           <ul className="space-y-2">
-            {visibleItems.map((n) => (
-              <NotificationItem key={n.id} item={n} />
-            ))}
+            {displayRows.map((row) =>
+              row.kind === "single" ? (
+                <NotificationItem key={row.item.id} item={row.item} />
+              ) : (
+                <ReactionGroupItem key={row.latest.id} group={row} />
+              )
+            )}
           </ul>
         )}
       </div>
@@ -243,6 +306,117 @@ function FilteredEmptyState() {
         다른 카테고리 / 전체로 바꿔보세요 · 试试其他分类或「全部」
       </p>
     </div>
+  );
+}
+
+// Bundled-reactions row. Renders the emoji list + a single count
+// summary instead of N separate rows for "❤️", "😋", "🥹" etc. on
+// the same target. Tap marks every member as read in parallel, then
+// navigates to the latest's deep link.
+function ReactionGroupItem({ group }: { group: ReactionGroup }) {
+  const navigate = useNavigate();
+  const markRead = useMarkNotificationRead();
+  const { name, avatarUrl } = useActorDisplay(group.latest.actor_id);
+
+  const linkTo = (() => {
+    const item = group.latest;
+    if (!item.place_id) return null;
+    const base = `/places/${item.place_id}`;
+    if (item.memo_id) return `${base}#memo-${item.memo_id}`;
+    if (item.food_id) return `${base}#food-${item.food_id}`;
+    return base;
+  })();
+
+  const isUnread = group.items.some((i) => !i.read_at);
+  const unreadIds = group.items
+    .filter((i) => !i.read_at)
+    .map((i) => i.id);
+
+  function onTap() {
+    if (unreadIds.length && !markRead.isPending) {
+      // Fire all mark-read mutations in parallel. They're tiny
+      // single-row UPDATEs and the failure mode (one fails) is
+      // harmless — the user can just tap again later.
+      for (const id of unreadIds) {
+        void markRead.mutateAsync(id);
+      }
+    }
+    if (linkTo) navigate(linkTo);
+  }
+
+  const stamp = relativeKo(group.latest.created_at);
+  const initial = Array.from(name)[0] ?? "·";
+  const toneCls = "bg-rose-100 text-rose-500";
+  // Short target label so the user knows WHERE the reactions
+  // landed. Mirrors the verbs on single notifications.
+  const targetLabel = group.latest.memo_id
+    ? "메모에 · 在留言上"
+    : group.latest.food_id
+      ? "메뉴에 · 在菜品上"
+      : "장소에 · 在地点上";
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className={`w-full text-left flex items-start gap-3 p-3 rounded-2xl transition active:scale-[0.99] border ${
+          isUnread
+            ? "bg-peach-50/60 border-peach-200/60"
+            : "bg-white border-cream-200 hover:bg-cream-50"
+        }`}
+      >
+        <div
+          className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[14px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+        >
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span>{initial}</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] leading-snug">
+            <span className="font-bold text-ink-900">{name}</span>
+            <span className="text-ink-500 mx-1">·</span>
+            <span className="text-ink-500 text-[12px]">
+              {targetLabel} 이모지 남김 · 留了表情
+            </span>
+          </p>
+          {/* Emoji bag + count. Distinct emojis flow inline; count
+              shows total taps (including duplicates) so the user
+              knows there were 5 reactions even if they were all
+              the same emoji. */}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className="text-base leading-none tracking-tight">
+              {group.emojis.join("")}
+            </span>
+            <span className="text-[11px] text-ink-500">
+              <span className="font-number font-bold">
+                {group.items.length}
+              </span>
+              개 · 共{" "}
+              <span className="font-number font-bold">
+                {group.items.length}
+              </span>
+            </span>
+          </div>
+          <p className="text-[10px] text-ink-400 font-medium font-number mt-1.5">
+            {stamp}
+          </p>
+        </div>
+        {isUnread && (
+          <span
+            className="w-2 h-2 rounded-full bg-rose-400 mt-2 flex-shrink-0"
+            aria-label="unread"
+          />
+        )}
+      </button>
+    </li>
   );
 }
 
