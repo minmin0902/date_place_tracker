@@ -5,20 +5,27 @@ import { useAuth } from "./useAuth";
 
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
 
-// Read the current user's inbox. Newest first.
-// Limited to 50 — enough for the inbox view, no infinite scroll yet
-// (a couple's app generates a few notifications a day, not hundreds).
+// Read the current user's inbox — last 14 days, newest first.
+// Time-window instead of a hard 50-row cap so a busy day doesn't
+// truncate the same day's activity mid-stream. 500-row safety
+// ceiling is just a guardrail against pathological scenarios; in
+// practice a couple's inbox rarely exceeds ~100 events / two weeks.
+const INBOX_DAYS = 14;
 export function useNotifications() {
   const { user } = useAuth();
   return useQuery({
     queryKey: ["notifications", user?.id],
     enabled: !!user && !ALLOW_NO_AUTH,
     queryFn: async (): Promise<NotificationRow[]> => {
+      const since = new Date(
+        Date.now() - INBOX_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString();
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
+        .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(500);
       if (error) throw error;
       return (data ?? []) as NotificationRow[];
     },
