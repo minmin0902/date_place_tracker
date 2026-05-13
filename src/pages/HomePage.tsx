@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
@@ -1428,7 +1428,13 @@ function timelineTheme(isHomeCooked: boolean) {
       };
 }
 
-function TimelineItem({
+// Memoized so pull-to-refresh (60Hz pull state updates) + sibling
+// state changes don't re-render every row in a long timeline. All
+// props are stable refs from react-query cache or scalars, so default
+// shallow equality is correct.
+const TimelineItem = memo(TimelineItemImpl);
+
+function TimelineItemImpl({
   place,
   locale,
   isLast,
@@ -1636,7 +1642,8 @@ function LayoutToggle({
 // the left, score on the right. Tap routes to the place detail since
 // food editing/photos live there. Same theme treatment (peach for
 // 외식 / teal for 집밥) as TimelineItem so the two views feel related.
-function MenuRow({
+const MenuRow = memo(MenuRowImpl);
+function MenuRowImpl({
   food,
   place,
   locale,
@@ -1788,7 +1795,8 @@ function MenuRow({
 
 // ---------- timeline grid item (2-col photo-first feed) ----------
 
-function TimelineGridItem({
+const TimelineGridItem = memo(TimelineGridItemImpl);
+function TimelineGridItemImpl({
   place,
   locale,
   viewerId,

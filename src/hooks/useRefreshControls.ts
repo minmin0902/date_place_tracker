@@ -49,6 +49,33 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
   const startY = useRef<number | null>(null);
   const tracking = useRef(false);
   const crossedThreshold = useRef(false);
+  // Latest refs for values that change during a session but shouldn't
+  // re-attach the touch listeners. Previously this effect had
+  // `[refreshAll, refreshing]` deps — every refresh start/end tore
+  // down and rebuilt all 4 touch listeners mid-gesture, which added
+  // its own bit of jank right when the user was waiting on the
+  // spinner.
+  const refreshAllRef = useRef(refreshAll);
+  const refreshingRef = useRef(refreshing);
+  refreshAllRef.current = refreshAll;
+  refreshingRef.current = refreshing;
+  // rAF-coalesced pending pull value. touchmove fires at native
+  // ~60Hz; without coalescing we'd run a full React state update
+  // (which re-renders every subscriber, including long timelines)
+  // for each frame. With rAF we apply the latest value once per
+  // paint, which is the most React can actually act on anyway.
+  const pendingPull = useRef<number | null>(null);
+  const rafId = useRef<number | null>(null);
+  const scheduledPullCommit = () => {
+    if (rafId.current !== null) return;
+    rafId.current = requestAnimationFrame(() => {
+      rafId.current = null;
+      if (pendingPull.current !== null) {
+        setPull(pendingPull.current);
+        pendingPull.current = null;
+      }
+    });
+  };
 
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
@@ -66,7 +93,8 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
       if (!tracking.current || startY.current === null) return;
       const dy = e.touches[0].clientY - startY.current;
       if (dy <= 0) {
-        setPull(0);
+        pendingPull.current = 0;
+        scheduledPullCommit();
         tracking.current = false;
         return;
       }
@@ -79,18 +107,26 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
       } else if (crossedThreshold.current && damped < PULL_THRESHOLD) {
         crossedThreshold.current = false;
       }
-      setPull(damped);
+      pendingPull.current = damped;
+      scheduledPullCommit();
     }
     function onTouchEnd() {
       if (!tracking.current) return;
       tracking.current = false;
       startY.current = null;
+      // Cancel any pending rAF commit so the touchend value lands
+      // synchronously without an extra delayed setPull stomping it.
+      if (rafId.current !== null) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = null;
+        pendingPull.current = null;
+      }
       // Flip released so PullIndicator picks up the transition.
       setReleased(true);
       setPull((current) => {
-        if (current >= PULL_THRESHOLD && !refreshing) {
+        if (current >= PULL_THRESHOLD && !refreshingRef.current) {
           setRefreshing(true);
-          Promise.resolve(refreshAll())
+          Promise.resolve(refreshAllRef.current())
             .finally(() => {
               setRefreshing(false);
               setPull(0);
@@ -113,8 +149,14 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
       window.removeEventListener("touchcancel", onTouchEnd);
+      if (rafId.current !== null) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = null;
+      }
     };
-  }, [refreshAll, refreshing]);
+    // Empty deps — listeners are mounted once and read from refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onManualRefresh = useCallback(async () => {
     if (manualRefreshing || refreshing) return;
