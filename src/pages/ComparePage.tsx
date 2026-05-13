@@ -457,8 +457,15 @@ export default function ComparePage() {
 
   // 4.5+ 풀을 한 번에 정렬해두고 상위 3개를 트로피, 나머지를 천생연분
   // 서브섹션으로 분배. 임계값 통일로 두 섹션이 더 이상 겹치지 않음.
+  //
+  // drink food category 는 별도의 "술" 랭킹(boozeSorted) 이 이미
+  // 들고 있으니, 메뉴 명예의전당에는 중복 노출 안 되게 제외. 술이
+  // 4.5+면 술 랭킹에서 1등으로 뜨고 메뉴 트로피에선 빠짐 —
+  // CLAUDE.md "Place category vs food category" 룰 그대로 food
+  // category 축으로 필터.
   const fameAll = [...filteredRows]
     .filter((r) => r.mine >= FAME && r.partner >= FAME)
+    .filter((r) => !r.foodCategories.includes("drink"))
     .sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
   const fameTop = fameAll.slice(0, 3);
   const fameRest = fameAll.slice(3);

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -64,6 +64,49 @@ export default function PlaceDetailPage() {
   // otherwise an empty card hangs there with no content.
   const placeMemos = useMemos({ placeId: id });
   const placeThreadCount = placeMemos.data?.length ?? 0;
+
+  // Hash-anchor deep link: RecipesPage links here with
+  // `/places/<id>#food-<foodId>` so users can tap a recipe and land
+  // directly on its food card. We wait until `place` (and therefore
+  // foods) is loaded, then run two rAFs — same trick the
+  // ScrollManager uses to let layout settle before scrolling. After
+  // the scroll, briefly apply a ring highlight so the user sees
+  // exactly which row they landed on.
+  useEffect(() => {
+    if (!place) return;
+    const hash = location.hash;
+    if (!hash || !hash.startsWith("#food-")) return;
+    const elId = hash.slice(1);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Pulse — Tailwind ring classes added then removed after 1.4s.
+        // Plain DOM manipulation rather than React state so the
+        // highlight doesn't trigger a re-render of the entire foods
+        // list, and so we don't fight the existing memo on FoodCard.
+        el.classList.add(
+          "ring-2",
+          "ring-peach-400",
+          "ring-offset-2",
+          "transition-shadow"
+        );
+        const t = setTimeout(() => {
+          el.classList.remove(
+            "ring-2",
+            "ring-peach-400",
+            "ring-offset-2",
+            "transition-shadow"
+          );
+        }, 1400);
+        return () => clearTimeout(t);
+      });
+    });
+    // `place` in deps so this runs once data is ready, not on the
+    // initial null render. location.hash in deps so deep-linking
+    // again (same page, different food) re-triggers the scroll.
+  }, [place, location.hash]);
 
   async function toggleRevisit() {
     if (!place || !user || !couple) return;
@@ -596,7 +639,11 @@ function FoodCard({
         : [];
 
   return (
-    <div className="card p-4 relative">
+    // id="food-<id>" anchor so deep links from the recipes page
+    // (e.g. /places/abc#food-xyz) can scrollIntoView this card. The
+    // hash-scroll effect at the top of PlaceDetailPage handles the
+    // highlight pulse.
+    <div id={`food-${food.id}`} className="card p-4 relative scroll-mt-24">
       <div className="absolute top-3 right-3 flex gap-1">
         <Link
           to={`/places/${placeId}/foods/${food.id}/edit`}

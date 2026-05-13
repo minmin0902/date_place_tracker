@@ -190,7 +190,13 @@ function MadeRecipeCard({
     (food.my_rating ?? 0) + (food.partner_rating ?? 0);
   return (
     <Link
-      to={`/places/${placeId}`}
+      // Deep-link straight to the recipe card via hash anchor on the
+      // food's id. PlaceDetailPage reads location.hash on mount and
+      // scrollIntoView's the matching `food-<id>` element, briefly
+      // highlighting it so the user sees what they landed on. Without
+      // the hash they'd land at the top of a long detail page and
+      // have to hunt for the menu they tapped.
+      to={`/places/${placeId}#food-${food.id}`}
       className="block bg-white rounded-2xl border border-cream-200 shadow-soft overflow-hidden active:scale-[0.98] transition"
     >
       <div className="aspect-square relative bg-cream-50">
