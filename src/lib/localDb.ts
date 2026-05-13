@@ -3,6 +3,8 @@ import type {
   Place,
   Food,
   Memo,
+  Reaction,
+  ReactionTarget,
   WishlistKind,
   WishlistPlace,
 } from "./database.types";
@@ -12,6 +14,7 @@ type LocalDB = {
   places: Place[];
   foods: Food[];
   memos: Memo[];
+  reactions: Reaction[];
   wishlist: WishlistPlace[];
   photos: Record<string, string>; // path -> dataURL
 };
@@ -23,7 +26,7 @@ export const LOCAL_USER_2_EMAIL = "luoyuhan2025@gmail.com";
 
 // Bump the storage key whenever the seed shape changes so stale dev data from
 // an earlier version gets discarded automatically.
-const KEY = "local_db_v7";
+const KEY = "local_db_v8";
 
 // Fixed ids so the seed is idempotent across reloads.
 const SEED_COUPLE_ID = "seed-couple-1";
@@ -93,6 +96,7 @@ function makeSeedDb(): LocalDB {
     ],
     wishlist: [],
     memos: [],
+    reactions: [],
     photos: {},
   };
 }
@@ -335,6 +339,7 @@ export function addMemo(input: {
   authorId: string;
   body: string;
   photoUrls?: string[] | null;
+  parentId?: string | null;
 }): Memo {
   const db = load();
   const now = new Date().toISOString();
@@ -346,6 +351,7 @@ export function addMemo(input: {
     author_id: input.authorId,
     body: input.body,
     photo_urls: input.photoUrls?.length ? input.photoUrls : null,
+    parent_id: input.parentId ?? null,
     created_at: now,
     updated_at: now,
   };
@@ -356,6 +362,65 @@ export function addMemo(input: {
 
 export function deleteMemo(id: string) {
   const db = load();
-  db.memos = (db.memos ?? []).filter((m) => m.id !== id);
+  // Cascade replies of the deleted parent so the thread doesn't keep
+  // orphaned children — mirrors the FK ON DELETE CASCADE in Postgres.
+  db.memos = (db.memos ?? []).filter(
+    (m) => m.id !== id && m.parent_id !== id
+  );
+  // Also drop any reactions that target the deleted memo.
+  db.reactions = (db.reactions ?? []).filter((r) => r.memo_id !== id);
   save(db);
+}
+
+// ---------------------------------------------------------------
+// Reactions (polymorphic — memo / place caption / food caption).
+// ---------------------------------------------------------------
+
+function targetFilter(target: ReactionTarget) {
+  return (r: Reaction) => {
+    if (target.kind === "memo") return r.memo_id === target.id;
+    if (target.kind === "place") return r.place_id === target.id;
+    return r.food_id === target.id;
+  };
+}
+
+export function getReactions(target: ReactionTarget): Reaction[] {
+  const db = load();
+  return (db.reactions ?? [])
+    .filter(targetFilter(target))
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+}
+
+export function toggleReaction(input: {
+  coupleId: string;
+  userId: string;
+  target: ReactionTarget;
+  emoji: string;
+}): { added: Reaction | null; removedId: string | null } {
+  const db = load();
+  const existing = (db.reactions ?? []).find(
+    (r) =>
+      r.user_id === input.userId &&
+      r.emoji === input.emoji &&
+      targetFilter(input.target)(r)
+  );
+  if (existing) {
+    db.reactions = (db.reactions ?? []).filter((r) => r.id !== existing.id);
+    save(db);
+    return { added: null, removedId: existing.id };
+  }
+  const now = new Date().toISOString();
+  const r: Reaction = {
+    id: crypto.randomUUID(),
+    couple_id: input.coupleId,
+    memo_id: input.target.kind === "memo" ? input.target.id : null,
+    place_id: input.target.kind === "place" ? input.target.id : null,
+    food_id: input.target.kind === "food" ? input.target.id : null,
+    user_id: input.userId,
+    emoji: input.emoji,
+    created_at: now,
+  };
+  db.reactions = [...(db.reactions ?? []), r];
+  save(db);
+  return { added: r, removedId: null };
 }

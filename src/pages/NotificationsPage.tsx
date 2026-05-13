@@ -11,6 +11,8 @@ import {
   Plus,
   RefreshCw,
   Check,
+  Smile,
+  CornerDownRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
@@ -28,12 +30,13 @@ import type { NotificationRow } from "@/lib/database.types";
 // user-facing categories so the chip row stays scannable. "메모" lumps
 // both legacy single-memo edits and threaded comments since the user
 // thinks of them as the same surface.
-type FilterKey = "all" | "place" | "memo" | "rating" | "revisit";
+type FilterKey = "all" | "place" | "memo" | "reaction" | "rating" | "revisit";
 
 const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell }[] = [
   { key: "all", ko: "전체", zh: "全部", icon: Bell },
   { key: "place", ko: "새 기록", zh: "新记录", icon: Plus },
   { key: "memo", ko: "메모", zh: "留言", icon: MessageCircle },
+  { key: "reaction", ko: "이모지", zh: "表情", icon: Smile },
   { key: "rating", ko: "평점", zh: "打分", icon: Star },
   { key: "revisit", ko: "또 갈래", zh: "想再去", icon: Heart },
 ];
@@ -41,7 +44,11 @@ const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell 
 function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
   if (filter === "all") return true;
   if (filter === "place") return kind === "place" || kind === "food";
-  if (filter === "memo") return kind === "memo" || kind === "memo_thread";
+  // The "memo" bucket lumps every conversation-style event: legacy
+  // primary-memo edits, threaded comments, and now nested replies.
+  if (filter === "memo")
+    return kind === "memo" || kind === "memo_thread" || kind === "memo_reply";
+  if (filter === "reaction") return kind === "reaction";
   if (filter === "rating") return kind === "rating";
   if (filter === "revisit") return kind === "revisit";
   return true;
@@ -73,6 +80,7 @@ export default function NotificationsPage() {
       all: 0,
       place: 0,
       memo: 0,
+      reaction: 0,
       rating: 0,
       revisit: 0,
     };
@@ -276,6 +284,10 @@ function NotificationItem({ item }: { item: NotificationRow }) {
         return <Heart className="w-4 h-4" />;
       case "rating":
         return <Star className="w-4 h-4" />;
+      case "reaction":
+        return <Smile className="w-4 h-4" />;
+      case "memo_reply":
+        return <CornerDownRight className="w-4 h-4" />;
       case "memo":
       case "memo_thread":
       default:
@@ -292,6 +304,10 @@ function NotificationItem({ item }: { item: NotificationRow }) {
         return "메모 수정 · 改了备注";
       case "memo_thread":
         return "메모 남김 · 留了言";
+      case "memo_reply":
+        return "답글 남김 · 回了你";
+      case "reaction":
+        return "이모지 남김 · 表情回应";
       case "revisit":
         return "또 갈래 · 想再去";
       case "rating":

@@ -32,6 +32,7 @@ import { CATEGORY_EMOJI, categoryEmojiOf } from "@/lib/constants";
 import { MediaThumb } from "@/components/MediaThumb";
 import { MemoComment } from "@/components/MemoComment";
 import { MemoThread } from "@/components/MemoThread";
+import { ReactionRow } from "@/components/ReactionRow";
 import type { Food } from "@/lib/database.types";
 
 const DIFF_THRESHOLD = 1;
@@ -361,19 +362,49 @@ export default function PlaceDetailPage() {
               — primary memo, thread memos, OR the live composer. After
               a fresh create the composer is hidden + no memos exist
               yet, so the whole card collapses instead of leaving an
-              empty bubble. */}
+              empty bubble.
+
+              When a primary memo exists it reads as an Instagram-style
+              caption: the MemoComment up top, an emoji reaction row
+              directly beneath, then a soft divider with the "댓글 N"
+              label that hands off into the existing MemoThread. */}
           {(place.memo || placeThreadCount > 0 || !justCreated) && (
             <div className="card p-4 space-y-3">
               {place.memo && (
-                <MemoComment
-                  memo={place.memo}
-                  authorId={place.memo_author_id}
-                  // memo_updated_at tracks ONLY memo edits — unrelated
-                  // saves (revisit toggle, photo add) leave it alone.
-                  // Falls back to created_at on legacy rows the
-                  // backfill migration may have missed.
-                  createdAt={place.memo_updated_at ?? place.created_at}
-                />
+                <div className="space-y-2">
+                  <MemoComment
+                    memo={place.memo}
+                    authorId={place.memo_author_id}
+                    // memo_updated_at tracks ONLY memo edits — unrelated
+                    // saves (revisit toggle, photo add) leave it alone.
+                    // Falls back to created_at on legacy rows the
+                    // backfill migration may have missed.
+                    createdAt={place.memo_updated_at ?? place.created_at}
+                  />
+                  {/* Reactions on the caption itself — scope='place'
+                      so they attach to places.memo (which isn't a
+                      memos row, hence the polymorphic shape). Indented
+                      to align with the caption body, not the avatar. */}
+                  <div className="ml-11">
+                    <ReactionRow
+                      target={{ kind: "place", id: place.id }}
+                      size="md"
+                    />
+                  </div>
+                </div>
+              )}
+              {/* "댓글" label only appears when there's a caption to
+                  separate FROM. On a memo-less place the thread reads
+                  as standalone memos — no need for the divider. */}
+              {place.memo && (
+                <div className="flex items-center gap-2 pt-1">
+                  <div className="h-px flex-1 bg-cream-100" />
+                  <span className="text-[11px] font-bold text-ink-400 tracking-wide">
+                    댓글 <span className="font-number">{placeThreadCount}</span> · 评论{" "}
+                    <span className="font-number">{placeThreadCount}</span>
+                  </span>
+                  <div className="h-px flex-1 bg-cream-100" />
+                </div>
               )}
               <MemoThread placeId={place.id} hideComposer={justCreated} />
             </div>
@@ -736,18 +767,54 @@ function FoodCard({
       {/* Memo block — primary memo (typed in the create form) plus
           the thread of any extra memos either partner has added since.
           Rendered together inside a tinted box so the conversation
-          reads as a unit, separate from the rating bars above. */}
-      <div className="mt-3 rounded-2xl bg-cream-50/60 border border-cream-100 px-3 py-3 space-y-3">
-        {food.memo && (
+          reads as a unit, separate from the rating bars above.
+
+          Caption-style framing: the primary memo reads as a caption
+          with its own reactions row, then a "댓글 N" divider hands
+          off into the thread below. Same pattern as the place card,
+          scaled down via size="sm". */}
+      <FoodMemoBlock food={food} />
+    </div>
+  );
+}
+
+// Caption + reactions + thread for a single food card. Pulled out as
+// a sub-component so it can call useMemos() to know how many thread
+// rows exist — the parent FoodCard would otherwise have to thread the
+// count down manually. React-query dedupes the call against any other
+// useMemos with the same (foodId) key, so no extra network.
+function FoodMemoBlock({ food }: { food: Food }) {
+  const thread = useMemos({ foodId: food.id });
+  const count = thread.data?.length ?? 0;
+  return (
+    <div className="mt-3 rounded-2xl bg-cream-50/60 border border-cream-100 px-3 py-3 space-y-2.5">
+      {food.memo && (
+        <div className="space-y-1.5">
           <MemoComment
             memo={food.memo}
             authorId={food.memo_author_id}
             createdAt={food.memo_updated_at ?? food.created_at}
             size="sm"
           />
-        )}
-        <MemoThread foodId={food.id} size="sm" />
-      </div>
+          <div className="ml-10">
+            <ReactionRow
+              target={{ kind: "food", id: food.id }}
+              size="sm"
+            />
+          </div>
+        </div>
+      )}
+      {food.memo && (
+        <div className="flex items-center gap-2 pt-0.5">
+          <div className="h-px flex-1 bg-cream-100" />
+          <span className="text-[10px] font-bold text-ink-400 tracking-wide">
+            댓글 <span className="font-number">{count}</span> · 评论{" "}
+            <span className="font-number">{count}</span>
+          </span>
+          <div className="h-px flex-1 bg-cream-100" />
+        </div>
+      )}
+      <MemoThread foodId={food.id} size="sm" />
     </div>
   );
 }

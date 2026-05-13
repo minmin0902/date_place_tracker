@@ -178,8 +178,10 @@ export type Database = {
             | "food"
             | "memo"
             | "memo_thread"
+            | "memo_reply"
             | "revisit"
-            | "rating";
+            | "rating"
+            | "reaction";
           actor_id: string;
           place_id: string | null;
           food_id: string | null;
@@ -197,8 +199,10 @@ export type Database = {
             | "food"
             | "memo"
             | "memo_thread"
+            | "memo_reply"
             | "revisit"
-            | "rating";
+            | "rating"
+            | "reaction";
           actor_id: string;
           place_id?: string | null;
           food_id?: string | null;
@@ -245,6 +249,10 @@ export type Database = {
           // Optional small attachments (photo or short video) on the
           // comment itself. Same shape as places.photo_urls.
           photo_urls: string[] | null;
+          // Single-level threading: null = top-level comment, set =
+          // nested reply under that parent. UI only exposes the reply
+          // button on top-level rows so depth never grows past 1.
+          parent_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -256,10 +264,38 @@ export type Database = {
           author_id: string;
           body: string;
           photo_urls?: string[] | null;
+          parent_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["memos"]["Insert"]>;
+      };
+      reactions: {
+        Row: {
+          id: string;
+          couple_id: string;
+          // Exactly one of memo_id / place_id / food_id is set —
+          // primary memos live on places.memo / foods.memo (not a
+          // memos row), so reactions on those captions target the
+          // parent place/food directly.
+          memo_id: string | null;
+          place_id: string | null;
+          food_id: string | null;
+          user_id: string;
+          emoji: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          couple_id: string;
+          memo_id?: string | null;
+          place_id?: string | null;
+          food_id?: string | null;
+          user_id: string;
+          emoji: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["reactions"]["Insert"]>;
       };
       wishlist_places: {
         Row: {
@@ -309,6 +345,13 @@ export type Database = {
 export type Place = Database["public"]["Tables"]["places"]["Row"];
 export type Food = Database["public"]["Tables"]["foods"]["Row"];
 export type Memo = Database["public"]["Tables"]["memos"]["Row"];
+export type Reaction = Database["public"]["Tables"]["reactions"]["Row"];
+// The three target shapes for a reaction. Discriminated union keeps
+// hook callers from passing two ids at once.
+export type ReactionTarget =
+  | { kind: "memo"; id: string }
+  | { kind: "place"; id: string }
+  | { kind: "food"; id: string };
 export type NotificationRow =
   Database["public"]["Tables"]["notifications"]["Row"];
 export type PushSubscriptionRow =

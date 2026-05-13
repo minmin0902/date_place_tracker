@@ -52,6 +52,9 @@ export function useAddMemo() {
       // Optional photo/video URLs already uploaded to storage. The
       // composer hands these in after PhotoUploader has finished.
       photoUrls?: string[] | null;
+      // 1-level threading. NULL = top-level memo on the place/food's
+      // primary caption; set = nested reply under that parent memo.
+      parentId?: string | null;
     }): Promise<Memo> => {
       const body = input.body.trim();
       if (!body) throw new Error("empty memo");
@@ -68,6 +71,7 @@ export function useAddMemo() {
           author_id: input.authorId,
           body,
           photo_urls: photos,
+          parent_id: input.parentId ?? null,
         })
         .select()
         .single();
