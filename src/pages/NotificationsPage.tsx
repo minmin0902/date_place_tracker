@@ -6,6 +6,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -21,6 +22,7 @@ import {
   Smile,
   CornerDownRight,
 } from "lucide-react";
+import { MediaThumb } from "@/components/MediaThumb";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
@@ -34,7 +36,8 @@ import { useActorDisplay } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
-import type { NotificationRow } from "@/lib/database.types";
+import { supabase } from "@/lib/supabase";
+import type { Memo as MemoRow, NotificationRow } from "@/lib/database.types";
 
 // Resolver for "what does this notification belong to?". Built once
 // from the places list at the top of the page and made available to
@@ -47,6 +50,11 @@ type ContextResolver = {
   foodNameOf: (foodId: string | null | undefined) => string | null;
   placeMemoOf: (placeId: string | null | undefined) => string | null;
   foodMemoOf: (foodId: string | null | undefined) => string | null;
+  placePhotoOf: (placeId: string | null | undefined) => string | null;
+  foodPhotoOf: (foodId: string | null | undefined) => string | null;
+  memoTextOf: (memoId: string | null | undefined) => string | null;
+  parentMemoTextOf: (memoId: string | null | undefined) => string | null;
+  memoPhotoOf: (memoId: string | null | undefined) => string | null;
   // Back-derive the parent place from a food. Memo / reaction
   // notifications that target a food carry food_id but NULL
   // place_id (the underlying memos.place_id column is xor'd with
@@ -61,11 +69,57 @@ const RowContext = createContext<ContextResolver>({
   foodNameOf: () => null,
   placeMemoOf: () => null,
   foodMemoOf: () => null,
+  placePhotoOf: () => null,
+  foodPhotoOf: () => null,
+  memoTextOf: () => null,
+  parentMemoTextOf: () => null,
+  memoPhotoOf: () => null,
   foodPlaceIdOf: () => null,
   foodPlaceNameOf: () => null,
 });
 function useRowContext() {
   return useContext(RowContext);
+}
+
+function useNotificationMemoLookup(items: NotificationRow[] | undefined) {
+  const memoIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (items ?? [])
+            .map((n) => n.memo_id)
+            .filter((id): id is string => !!id)
+        )
+      ),
+    [items]
+  );
+
+  return useQuery({
+    queryKey: ["notifications", "memo-lookup", memoIds],
+    enabled: memoIds.length > 0,
+    queryFn: async (): Promise<Map<string, MemoRow>> => {
+      const { data, error } = await supabase
+        .from("memos")
+        .select("*")
+        .in("id", memoIds);
+      if (error) throw error;
+      const rows = (data ?? []) as MemoRow[];
+      const parentIds = Array.from(
+        new Set(rows.map((m) => m.parent_id).filter((id): id is string => !!id))
+      );
+      let parents: MemoRow[] = [];
+      if (parentIds.length > 0) {
+        const { data: parentData, error: parentError } = await supabase
+          .from("memos")
+          .select("*")
+          .in("id", parentIds);
+        if (parentError) throw parentError;
+        parents = (parentData ?? []) as MemoRow[];
+      }
+      return new Map([...rows, ...parents].map((m) => [m.id, m]));
+    },
+    staleTime: 30_000,
+  });
 }
 
 // Per-kind visual spec — drives both the avatar-corner badge and the
@@ -144,67 +198,55 @@ function kindSpec(kind: NotificationRow["kind"]): KindSpec {
   }
 }
 
-// Compose a breadcrumb-style preview line that surfaces the parent
-// context (which place / which food) along with the kind-specific
-// payload (memo body, emoji, etc.). The raw `notifications.preview`
-// only carries the most-recent payload — for "메뉴 추가" it's the
-// food name, for memo it's the body, for reaction it's the emoji.
-// The user wants to see "added a menu to WHICH place" without
-// opening it, so we resolve names from the loaded places map and
-// stitch them in.
-function composeContextLine(
-  item: NotificationRow,
-  ctx: ContextResolver
-): string {
-  // For food-scoped events the notification row's place_id is NULL
-  // (DB column is xor'd with food_id). Recover via the food's
-  // parent so the breadcrumb still reads "PlaceName · FoodName · ...".
-  const placeName =
-    ctx.placeNameOf(item.place_id) ?? ctx.foodPlaceNameOf(item.food_id);
-  const foodName = ctx.foodNameOf(item.food_id);
-  const clip = (s: string, n = 40) => (s.length > n ? s.slice(0, n) + "…" : s);
+function thumbnailFor(item: NotificationRow, ctx: ContextResolver): string | null {
+  if (item.memo_id) {
+    const memoPhoto = ctx.memoPhotoOf(item.memo_id);
+    if (memoPhoto) return memoPhoto;
+  }
+  if (item.food_id) {
+    const foodPhoto = ctx.foodPhotoOf(item.food_id);
+    if (foodPhoto) return foodPhoto;
+  }
+  const placeId = item.place_id ?? ctx.foodPlaceIdOf(item.food_id);
+  return ctx.placePhotoOf(placeId);
+}
 
-  // place / revisit: preview is already the place name. For a new
-  // place, surface the primary memo (if any) on the same line so
-  // "Day2 jd宝宝 left 早饭 — '처음 와봤어'" reads at a glance.
-  if (item.kind === "place") {
-    const base = item.preview ?? placeName ?? "";
-    const memo = ctx.placeMemoOf(item.place_id);
-    return memo ? `${base} — "${clip(memo)}"` : base;
+function clipText(s: string, n = 64) {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+function quoteText(s: string, n = 64) {
+  return `"${clipText(s, n)}"`;
+}
+
+function NotificationThumb({
+  src,
+  label,
+}: {
+  src: string | null;
+  label?: string | null;
+}) {
+  if (!src) {
+    return (
+      <span
+        className="w-12 h-12 rounded-xl bg-cream-100 border border-cream-200 flex items-center justify-center text-ink-300 flex-shrink-0"
+        aria-hidden
+      >
+        <MapPin className="w-5 h-5" />
+      </span>
+    );
   }
-  if (item.kind === "revisit") {
-    return item.preview ?? placeName ?? "";
-  }
-  // food / rating: place name → food name → food's memo (if any).
-  if (item.kind === "food" || item.kind === "rating") {
-    const parts = [placeName, item.preview ?? foodName].filter(Boolean) as string[];
-    const memo = ctx.foodMemoOf(item.food_id);
-    const base = parts.join(" · ");
-    return memo ? `${base} — "${clip(memo)}"` : base;
-  }
-  // memo_thread / memo_reply / memo edit: show parent place (+ food
-  // if the memo lives on a specific dish), then the memo body in
-  // quotes so it reads as "Day2 · Fried土豆 · "맛있었어"".
-  if (
-    item.kind === "memo" ||
-    item.kind === "memo_thread" ||
-    item.kind === "memo_reply"
-  ) {
-    const parts: string[] = [];
-    if (placeName) parts.push(placeName);
-    if (foodName) parts.push(foodName);
-    if (item.preview) parts.push(`"${item.preview}"`);
-    return parts.join(" · ");
-  }
-  // reaction: parent + sub-target + the emoji itself.
-  if (item.kind === "reaction") {
-    const parts: string[] = [];
-    if (placeName) parts.push(placeName);
-    if (foodName) parts.push(foodName);
-    if (item.preview) parts.push(item.preview);
-    return parts.join(" · ");
-  }
-  return item.preview ?? "";
+  return (
+    <span className="w-12 h-12 rounded-xl overflow-hidden border border-cream-200 bg-cream-100 flex-shrink-0">
+      <MediaThumb
+        src={src}
+        alt={label ?? ""}
+        className="w-full h-full object-cover"
+        showPlayBadge
+        clickable={false}
+      />
+    </span>
+  );
 }
 
 // Small circular badge anchored to the bottom-right corner of an
@@ -232,6 +274,7 @@ function KindBadge({ kind }: { kind: NotificationRow["kind"] }) {
 // as one surface regardless of whether it was a text reply or an
 // emoji tap.
 type FilterKey = "all" | "place" | "memo" | "rating" | "revisit";
+type InboxMode = "all" | "unread";
 
 const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell }[] = [
   { key: "all", ko: "전체", zh: "全部", icon: Bell },
@@ -244,8 +287,8 @@ const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell 
 // ActivityBundle — the headline grouping: every notification that
 // targets the SAME place on the SAME day by the SAME actor collapses
 // into ONE card whose header is the place name and whose body lists
-// the sub-activities (menus, memos, replies, reactions, rating,
-// revisit) as indented sub-rows. The user's mental model is "what
+// the sub-activities (menus, memos, replies, rating, revisit) as
+// indented sub-rows. The user's mental model is "what
 // did 짝꿍 do at THAT place today", so the place becomes the bucket
 // and everything else nests underneath.
 //
@@ -263,17 +306,27 @@ type ActivityBundle = {
   memos: NotificationRow[]; // memo + memo_thread
   replies: NotificationRow[]; // memo_reply
   ratings: NotificationRow[];
-  reactions: NotificationRow[];
-  // Distinct emojis across all reactions in this bundle — used to
-  // render the reaction sub-row as "❤️😘 3" without surfacing every
-  // duplicate emoji.
-  reactionEmojis: string[];
   revisit: NotificationRow | null;
   // Flat union of every member, used for mark-all-read + total count.
   allItems: NotificationRow[];
   // Newest member — drives the displayed timestamp + read state.
   latest: NotificationRow;
   actorId: string;
+};
+
+// ReactionBundle — Instagram-style grouping for emoji taps. Several
+// reaction rows against the same place / food / memo collapse into a
+// single quiet row with one thumbnail on the right.
+type ReactionBundle = {
+  kind: "reaction-bundle";
+  key: string;
+  items: NotificationRow[];
+  latest: NotificationRow;
+  actorIds: string[];
+  emojis: string[];
+  placeId: string | null;
+  foodId: string | null;
+  memoId: string | null;
 };
 
 // Date section header — emitted whenever we cross a day boundary
@@ -289,6 +342,7 @@ type DateHeader = {
 type DisplayRow =
   | DateHeader
   | { kind: "single"; item: NotificationRow }
+  | ReactionBundle
   | ActivityBundle;
 
 // Resolve a date into a friendly day label. "오늘"/"어제" for the
@@ -345,6 +399,7 @@ export default function NotificationsPage() {
     onManualRefresh,
   } = useRefreshControls(refreshAll);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [mode, setMode] = useState<InboxMode>("all");
   // Filter chip taps re-bucket displayRows (Map-heavy useMemo) and
   // remount every row underneath. Marking the setFilter as a
   // transition lets React 18 yield to user input first, so the
@@ -360,11 +415,14 @@ export default function NotificationsPage() {
   useAuth();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
+  const { data: memoLookup } = useNotificationMemoLookup(items);
   const rowContext = useMemo<ContextResolver>(() => {
     const placeNameById = new Map<string, string>();
     const foodNameById = new Map<string, string>();
     const placeMemoById = new Map<string, string>();
     const foodMemoById = new Map<string, string>();
+    const placePhotoById = new Map<string, string>();
+    const foodPhotoById = new Map<string, string>();
     // Food → parent place reverse index so we can recover place
     // context for food-scoped memos / reactions whose notification
     // row has NULL place_id.
@@ -372,11 +430,15 @@ export default function NotificationsPage() {
     for (const p of places ?? []) {
       placeNameById.set(p.id, p.name);
       if (p.memo && p.memo.trim()) placeMemoById.set(p.id, p.memo.trim());
+      const placePhoto = p.photo_urls?.[0];
+      if (placePhoto) placePhotoById.set(p.id, placePhoto);
       for (const f of p.foods ?? []) {
         foodNameById.set(f.id, f.name);
         foodPlaceIdByFoodId.set(f.id, p.id);
         if (f.memo && f.memo.trim())
           foodMemoById.set(f.id, f.memo.trim());
+        const foodPhoto = f.photo_urls?.[0] ?? f.photo_url;
+        if (foodPhoto) foodPhotoById.set(f.id, foodPhoto);
       }
     }
     return {
@@ -384,6 +446,21 @@ export default function NotificationsPage() {
       foodNameOf: (id) => (id ? (foodNameById.get(id) ?? null) : null),
       placeMemoOf: (id) => (id ? (placeMemoById.get(id) ?? null) : null),
       foodMemoOf: (id) => (id ? (foodMemoById.get(id) ?? null) : null),
+      placePhotoOf: (id) => (id ? (placePhotoById.get(id) ?? null) : null),
+      foodPhotoOf: (id) => (id ? (foodPhotoById.get(id) ?? null) : null),
+      memoTextOf: (id) => {
+        if (!id) return null;
+        return memoLookup?.get(id)?.body ?? null;
+      },
+      parentMemoTextOf: (id) => {
+        if (!id) return null;
+        const memo = memoLookup?.get(id);
+        return memo?.parent_id ? (memoLookup?.get(memo.parent_id)?.body ?? null) : null;
+      },
+      memoPhotoOf: (id) => {
+        if (!id) return null;
+        return memoLookup?.get(id)?.photo_urls?.[0] ?? null;
+      },
       foodPlaceIdOf: (id) =>
         id ? (foodPlaceIdByFoodId.get(id) ?? null) : null,
       foodPlaceNameOf: (id) => {
@@ -392,9 +469,15 @@ export default function NotificationsPage() {
         return pid ? (placeNameById.get(pid) ?? null) : null;
       },
     };
-  }, [places]);
+  }, [places, memoLookup]);
 
-  const unreadCount = (items ?? []).filter((n) => !n.read_at).length;
+  const allItems = items ?? [];
+  const unreadItems = useMemo(
+    () => allItems.filter((n) => !n.read_at),
+    [allItems]
+  );
+  const unreadCount = unreadItems.length;
+  const sourceItems = mode === "unread" ? unreadItems : allItems;
 
   // Counts per filter bucket so each chip can show "(n)" — gives the
   // user a quick read on what's piled up without tapping each chip.
@@ -406,20 +489,19 @@ export default function NotificationsPage() {
       rating: 0,
       revisit: 0,
     };
-    for (const n of items ?? []) {
+    for (const n of sourceItems) {
       out.all += 1;
       for (const c of FILTER_CHIPS) {
         if (c.key !== "all" && matchesFilter(n.kind, c.key)) out[c.key] += 1;
       }
     }
     return out;
-  }, [items]);
+  }, [sourceItems]);
 
   const visibleItems = useMemo(() => {
-    if (!items) return [];
-    if (filter === "all") return items;
-    return items.filter((n) => matchesFilter(n.kind, filter));
-  }, [items, filter]);
+    if (filter === "all") return sourceItems;
+    return sourceItems.filter((n) => matchesFilter(n.kind, filter));
+  }, [sourceItems, filter]);
 
   // Display rows = date headers interleaved with either:
   //   - "전체" filter (all): one ActivityBundle card per
@@ -433,6 +515,7 @@ export default function NotificationsPage() {
   const displayRows = useMemo<DisplayRow[]>(() => {
     const out: DisplayRow[] = [];
     const bundles = new Map<string, ActivityBundle>();
+    const reactionBundles = new Map<string, ReactionBundle>();
     let currentDateKey: string | null = null;
     const shouldBundle = filter === "all";
 
@@ -450,6 +533,7 @@ export default function NotificationsPage() {
         // the boundary keeps a monday memo from joining a tuesday
         // bundle on the same place.
         bundles.clear();
+        reactionBundles.clear();
       }
 
       // Notifications for food-scoped events carry food_id but
@@ -458,6 +542,47 @@ export default function NotificationsPage() {
       // instead of orphaning as a flat single.
       const effectivePlaceId =
         n.place_id ?? rowContext.foodPlaceIdOf(n.food_id);
+
+      if (n.kind === "reaction") {
+        const targetKey =
+          n.memo_id ??
+          (n.food_id ? `food:${n.food_id}` : null) ??
+          (effectivePlaceId ? `place:${effectivePlaceId}` : n.id);
+        const k = `${label.key}|reaction|${targetKey}`;
+        let b = reactionBundles.get(k);
+        if (!b) {
+          b = {
+            kind: "reaction-bundle",
+            key: k,
+            items: [],
+            latest: n,
+            actorIds: [],
+            emojis: [],
+            placeId: effectivePlaceId,
+            foodId: n.food_id,
+            memoId: n.memo_id,
+          };
+          reactionBundles.set(k, b);
+          out.push(b);
+        }
+        b.items.push(n);
+        if (n.actor_id && !b.actorIds.includes(n.actor_id)) {
+          b.actorIds.push(n.actor_id);
+        }
+        if (n.preview && !b.emojis.includes(n.preview)) {
+          b.emojis.push(n.preview);
+        }
+        continue;
+      }
+
+      if (
+        n.kind === "memo" ||
+        n.kind === "memo_thread" ||
+        n.kind === "memo_reply"
+      ) {
+        out.push({ kind: "single", item: n });
+        continue;
+      }
 
       if (!shouldBundle || !effectivePlaceId) {
         // Filter is narrowed (the user is looking at one surface),
@@ -478,8 +603,6 @@ export default function NotificationsPage() {
           memos: [],
           replies: [],
           ratings: [],
-          reactions: [],
-          reactionEmojis: [],
           revisit: null,
           allItems: [],
           latest: n,
@@ -496,24 +619,11 @@ export default function NotificationsPage() {
         case "food":
           b.foods.push(n);
           break;
-        case "memo":
-        case "memo_thread":
-          b.memos.push(n);
-          break;
-        case "memo_reply":
-          b.replies.push(n);
-          break;
         case "rating":
           b.ratings.push(n);
           break;
         case "revisit":
           b.revisit = n;
-          break;
-        case "reaction":
-          b.reactions.push(n);
-          if (n.preview && !b.reactionEmojis.includes(n.preview)) {
-            b.reactionEmojis.push(n.preview);
-          }
           break;
       }
     }
@@ -539,7 +649,7 @@ export default function NotificationsPage() {
         title="알림 · 通知"
         subtitle={
           unreadCount > 0
-            ? `안 읽은 ${unreadCount}개 · 未读 ${unreadCount} 条`
+            ? `놓친 알림 ${unreadCount}개 · 未读 ${unreadCount} 条`
             : "전부 읽었어요 · 全部已读"
         }
         back
@@ -582,11 +692,60 @@ export default function NotificationsPage() {
         }
       />
 
-      {/* Category filter — horizontal-scrollable chip row so adding a
-          new kind later doesn't crowd the bar. Active chip pops with
-          peach tint; counts beside the label give a quick at-a-glance
-          read of what's piled up. */}
-      <div className="px-5 pb-3">
+      <div className="px-5 pb-3 space-y-3">
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-cream-100/70 border border-cream-200/70 p-1">
+          {(
+            [
+              {
+                key: "all",
+                label: "전체 · 全部",
+                count: allItems.length,
+                Icon: Bell,
+              },
+              {
+                key: "unread",
+                label: "안 읽음 · 未读",
+                count: unreadCount,
+                Icon: Check,
+              },
+            ] satisfies {
+              key: InboxMode;
+              label: string;
+              count: number;
+              Icon: typeof Bell;
+            }[]
+          ).map(({ key, label, count, Icon }) => {
+            const active = mode === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => startTransition(() => setMode(key))}
+                className={`h-10 rounded-xl text-[12px] font-black inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                  active
+                    ? "bg-white text-ink-900 shadow-sm"
+                    : "text-ink-500 hover:bg-white/60"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{label}</span>
+                <span
+                  className={`font-number text-[10px] px-1.5 py-0.5 rounded-full ${
+                    active
+                      ? "bg-peach-100 text-peach-500"
+                      : "bg-white/80 text-ink-400"
+                  }`}
+                >
+                  {count > 99 ? "99+" : count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Category filter — horizontal-scrollable chip row so adding a
+            new kind later doesn't crowd the bar. Counts follow the
+            current inbox mode, so "안 읽음" mode shows unread-by-kind. */}
         <div className="flex gap-1.5 overflow-x-auto hide-scrollbar -mx-1 px-1">
           {FILTER_CHIPS.map(({ key, ko, zh, icon: Icon }) => {
             const active = filter === key;
@@ -627,9 +786,14 @@ export default function NotificationsPage() {
             불러오는 중… · 加载中…
           </p>
         )}
-        {!isLoading && (!items || items.length === 0) && <EmptyState />}
-        {!isLoading && items && items.length > 0 && visibleItems.length === 0 && (
-          <FilteredEmptyState />
+        {!isLoading && allItems.length === 0 && <EmptyState />}
+        {!isLoading && allItems.length > 0 && sourceItems.length === 0 && (
+          <AllCaughtUpState />
+        )}
+        {!isLoading &&
+          sourceItems.length > 0 &&
+          visibleItems.length === 0 && (
+            <FilteredEmptyState unreadMode={mode === "unread"} />
         )}
         {!isLoading && displayRows.length > 0 && (
           <ul className="space-y-1.5">
@@ -645,6 +809,9 @@ export default function NotificationsPage() {
               }
               if (row.kind === "single") {
                 return <NotificationItem key={row.item.id} item={row.item} />;
+              }
+              if (row.kind === "reaction-bundle") {
+                return <ReactionBundleItem key={row.key} bundle={row} />;
               }
               return (
                 <ActivityBundleItem key={row.latest.id} bundle={row} />
@@ -672,20 +839,138 @@ function EmptyState() {
   );
 }
 
+function AllCaughtUpState() {
+  return (
+    <div className="text-center py-12">
+      <div className="w-12 h-12 mx-auto rounded-full bg-sage-100 text-sage-400 flex items-center justify-center mb-3">
+        <CheckCheck className="w-6 h-6" />
+      </div>
+      <p className="text-sm font-bold text-ink-700 mb-1">
+        놓친 알림은 없어요 · 没有未读通知
+      </p>
+      <p className="text-xs text-ink-400">
+        전체 탭에서 지난 알림을 다시 볼 수 있어요 · 可在全部里回看
+      </p>
+    </div>
+  );
+}
+
 // Distinct from EmptyState: there ARE notifications, just none in
 // the currently selected filter. Hint at clearing the filter so the
 // user doesn't think the inbox is empty.
-function FilteredEmptyState() {
+function FilteredEmptyState({ unreadMode }: { unreadMode: boolean }) {
   return (
     <div className="text-center py-12">
       <div className="text-4xl mb-2">🔍</div>
       <p className="text-sm font-bold text-ink-700 mb-1">
-        이 카테고리엔 알림이 없어요 · 该分类暂无通知
+        {unreadMode
+          ? "이 카테고리엔 안 읽은 알림이 없어요 · 该分类暂无未读"
+          : "이 카테고리엔 알림이 없어요 · 该分类暂无通知"}
       </p>
       <p className="text-xs text-ink-400">
         다른 카테고리 / 전체로 바꿔보세요 · 试试其他分类或「全部」
       </p>
     </div>
+  );
+}
+
+const ReactionBundleItem = memo(
+  ReactionBundleItemImpl,
+  (prev, next) => {
+    const a = prev.bundle;
+    const b = next.bundle;
+    if (a.latest.id !== b.latest.id) return false;
+    if (a.items.length !== b.items.length) return false;
+    if (a.emojis.join("") !== b.emojis.join("")) return false;
+    const aUnread = a.items.some((i) => !i.read_at);
+    const bUnread = b.items.some((i) => !i.read_at);
+    return aUnread === bUnread;
+  }
+);
+
+function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
+  const navigate = useNavigate();
+  const markRead = useMarkNotificationRead();
+  const rowCtx = useRowContext();
+  const { name, avatarUrl } = useActorDisplay(bundle.latest.actor_id);
+  const isUnread = bundle.items.some((i) => !i.read_at);
+  const unreadIds = bundle.items.filter((i) => !i.read_at).map((i) => i.id);
+  const effectivePlaceId =
+    bundle.placeId ?? rowCtx.foodPlaceIdOf(bundle.foodId);
+  const linkTo = (() => {
+    if (!effectivePlaceId) return null;
+    const base = `/places/${effectivePlaceId}`;
+    if (bundle.memoId) return `${base}#memo-${bundle.memoId}`;
+    if (bundle.foodId) return `${base}#food-${bundle.foodId}`;
+    return base;
+  })();
+  const targetName =
+    rowCtx.foodNameOf(bundle.foodId) ?? rowCtx.placeNameOf(effectivePlaceId);
+  const thumbSrc = thumbnailFor(bundle.latest, rowCtx);
+  const stamp = relativeKo(bundle.latest.created_at);
+  const actorCount = bundle.actorIds.length;
+  const actorLead =
+    actorCount > 1 ? `${name} 외 ${actorCount - 1}명` : name;
+  const emojiText = bundle.emojis.length ? bundle.emojis.join(" ") : "이모지";
+  const initial = Array.from(name)[0] ?? "·";
+
+  function onTap() {
+    if (unreadIds.length && !markRead.isPending) {
+      for (const id of unreadIds) void markRead.mutateAsync(id);
+    }
+    if (linkTo) navigate(linkTo);
+  }
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className={`relative w-full text-left flex items-center gap-2.5 p-2.5 rounded-2xl border active:scale-[0.99] transition-colors ${
+          isUnread
+            ? "bg-white border-rose-200/70 shadow-card"
+            : "bg-white border-cream-200 hover:bg-cream-50"
+        }`}
+      >
+        {isUnread && (
+          <span
+            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-rose-300"
+            aria-hidden
+          />
+        )}
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : "bg-rose-100 text-rose-500"}`}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+          <KindBadge kind="reaction" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] leading-snug text-ink-700">
+            <span className="font-bold text-ink-900">{actorLead}</span>
+            <span className="text-ink-400 mx-1">·</span>
+            <span className="font-bold text-rose-600">이모지 · 表情</span>
+          </p>
+          <p className="text-[12px] leading-snug mt-0.5 min-w-0 truncate">
+            <span className="font-bold text-rose-600">{emojiText}</span>
+            <span className="text-ink-400 font-number">
+              {" "}
+              · {bundle.items.length}개 · {stamp}
+            </span>
+          </p>
+        </div>
+        <NotificationThumb src={thumbSrc} label={targetName} />
+      </button>
+    </li>
   );
 }
 
@@ -719,11 +1004,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   const { name, avatarUrl } = useActorDisplay(bundle.actorId);
   const rowCtx = useRowContext();
   const placeName = rowCtx.placeNameOf(bundle.placeId);
-  // Primary memo on the place itself — if the partner wrote a note
-  // when they created it ("처음 와봤어!"), surface it in the header.
-  const placeMemo = bundle.placeEvent
-    ? rowCtx.placeMemoOf(bundle.placeId)
-    : null;
+  const thumbSrc = thumbnailFor(bundle.latest, rowCtx);
 
   const isUnread = bundle.allItems.some((i) => !i.read_at);
   const unreadIds = bundle.allItems
@@ -755,11 +1036,6 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   const initial = Array.from(name)[0] ?? "·";
   const toneCls = "bg-rose-100 text-rose-500";
 
-  // Primary kind drives the avatar-corner badge. A bundle that
-  // includes the place-creation event treats "place" as primary so
-  // the user sees "새 장소" treatment first. Otherwise, pick the
-  // kind with the most members (food > memo > reply > reaction >
-  // rating > revisit), breaking ties by what feels most visible.
   const primaryKind: NotificationRow["kind"] = bundle.placeEvent
     ? "place"
     : bundle.foods.length > 0
@@ -768,41 +1044,22 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
         ? "memo_thread"
         : bundle.replies.length > 0
           ? "memo_reply"
-          : bundle.reactions.length > 0
-            ? "reaction"
-            : bundle.ratings.length > 0
-              ? "rating"
-              : "revisit";
-
-  // Count distinct kinds in the bundle. With exactly one kind we
-  // use that kind's specific verb ("메모 남김 · 留了言"); with multiple
-  // we fall back to a generic "활동 · 动态". The place-creation flag
-  // takes priority either way so new-place bundles always read as
-  // "새 장소 등록" even if they also contain menus / memos.
-  const kindCount =
-    (bundle.foods.length > 0 ? 1 : 0) +
-    (bundle.memos.length + bundle.replies.length > 0 ? 1 : 0) +
-    (bundle.reactions.length > 0 ? 1 : 0) +
-    (bundle.ratings.length > 0 ? 1 : 0) +
-    (bundle.revisit ? 1 : 0);
+          : bundle.ratings.length > 0
+            ? "rating"
+            : "revisit";
   const headerVerb = bundle.placeEvent
     ? {
-        ko: "새 장소 등록",
-        zh: "添加了新地点",
+        label: "새 장소 · 新地点",
         color: "text-emerald-600",
       }
-    : kindCount === 1
-      ? (() => {
-          // Look up the kind's spec and parse out the bilingual verb.
-          const spec = kindSpec(primaryKind);
-          const [ko, zh] = spec.verb.split(" · ");
-          return { ko, zh: zh ?? "", color: spec.textColor };
-        })()
-      : { ko: "활동", zh: "动态", color: "text-ink-500" };
+    : {
+        label: "새 기록 · 新记录",
+        color: "text-ink-700",
+      };
 
   // Build the body — one sub-row per non-empty kind. Order matches
-  // the rough sequence of a recording session: place → menus →
-  // ratings → memos → replies → reactions → revisit.
+  // the rough sequence of a recording session, but comments/replies
+  // sit above ratings because they are the most missable actions.
   // Each sub-row carries its own onTap so the user can drill into
   // a specific stream (a memo, a food) instead of always landing
   // at the top of the place page.
@@ -817,21 +1074,6 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   const subRows: SubRow[] = [];
   const placeBase = `/places/${bundle.placeId}`;
   if (bundle.foods.length > 0) {
-    // Enrich each food name with its memo when one exists, so the
-    // sub-row reads like "Fried土豆 — "바삭", 牛排, 鸡腿 — "최고"".
-    // Memo is clipped to a short excerpt so the row stays one line.
-    const clip = (s: string, n = 24) =>
-      s.length > n ? s.slice(0, n) + "…" : s;
-    const parts: string[] = [];
-    for (const f of bundle.foods) {
-      if (!f.preview) continue;
-      const memo = rowCtx.foodMemoOf(f.food_id);
-      parts.push(memo ? `${f.preview} — "${clip(memo)}"` : f.preview);
-    }
-    const visible = parts.slice(0, 3).join(", ");
-    const more = parts.length > 3 ? ` 외 ${parts.length - 3}개` : "";
-    // Anchor to the latest food in the bundle (which is bundle.foods[0]
-    // since visibleItems walks newest-first).
     const target = bundle.foods[0]?.food_id
       ? `${placeBase}#food-${bundle.foods[0].food_id}`
       : placeBase;
@@ -840,22 +1082,8 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       Icon: Utensils,
       color: "text-amber-600",
       label: `메뉴 ${bundle.foods.length}개 · 菜品 ${bundle.foods.length}`,
-      preview: parts.length ? `${visible}${more}` : null,
+      preview: null,
       onTap: () => navigateScoped(target, bundle.foods),
-    });
-  }
-  if (bundle.ratings.length > 0) {
-    const names = bundle.ratings.map((r) => r.preview).filter(Boolean) as string[];
-    const target = bundle.ratings[0]?.food_id
-      ? `${placeBase}#food-${bundle.ratings[0].food_id}`
-      : placeBase;
-    subRows.push({
-      key: "rating",
-      Icon: Star,
-      color: "text-yellow-600",
-      label: `별점 ${bundle.ratings.length}개 · 打分 ${bundle.ratings.length}`,
-      preview: names.length ? names.slice(0, 3).join(", ") : null,
-      onTap: () => navigateScoped(target, bundle.ratings),
     });
   }
   // Memos + replies share a single sub-row — visually they're both
@@ -864,18 +1092,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   // Replies get a small ↪ prefix inline so they're still
   // distinguishable from top-level memos.
   if (bundle.memos.length + bundle.replies.length > 0) {
-    const parts: string[] = [];
-    for (const m of bundle.memos) {
-      if (m.preview) parts.push(`"${m.preview}"`);
-    }
-    for (const r of bundle.replies) {
-      if (r.preview) parts.push(`↪ "${r.preview}"`);
-    }
     const total = bundle.memos.length + bundle.replies.length;
-    const visible = parts.slice(0, 2).join(" · ");
-    const more = parts.length > 2 ? ` 외 ${parts.length - 2}개` : "";
-    // Prefer the latest memo's anchor; if all entries are replies,
-    // anchor to the reply.
     const latestMemo = bundle.memos[0] ?? bundle.replies[0];
     const target = latestMemo?.memo_id
       ? `${placeBase}#memo-${latestMemo.memo_id}`
@@ -885,29 +1102,22 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       Icon: MessageCircle,
       color: "text-sky-600",
       label: `메모/답글 ${total}개 · 留言 ${total}`,
-      preview: parts.length ? `${visible}${more}` : null,
+      preview: null,
       onTap: () =>
         navigateScoped(target, [...bundle.memos, ...bundle.replies]),
     });
   }
-  if (bundle.reactions.length > 0) {
-    const r0 = bundle.reactions[0];
-    const target = r0?.memo_id
-      ? `${placeBase}#memo-${r0.memo_id}`
-      : r0?.food_id
-        ? `${placeBase}#food-${r0.food_id}`
-        : placeBase;
+  if (bundle.ratings.length > 0) {
+    const target = bundle.ratings[0]?.food_id
+      ? `${placeBase}#food-${bundle.ratings[0].food_id}`
+      : placeBase;
     subRows.push({
-      key: "reaction",
-      Icon: Smile,
-      color: "text-rose-600",
-      label: `이모지 ${bundle.reactions.length} · 表情 ${bundle.reactions.length}`,
-      // Distinct emojis surface inline so the user sees ❤️😘🥹 at a
-      // glance without opening anything.
-      preview: bundle.reactionEmojis.length
-        ? bundle.reactionEmojis.join(" ")
-        : null,
-      onTap: () => navigateScoped(target, bundle.reactions),
+      key: "rating",
+      Icon: Star,
+      color: "text-yellow-600",
+      label: `별점 ${bundle.ratings.length}개 · 打分 ${bundle.ratings.length}`,
+      preview: null,
+      onTap: () => navigateScoped(target, bundle.ratings),
     });
   }
   if (bundle.revisit) {
@@ -933,10 +1143,16 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       <article
         className={`relative rounded-2xl border transition-colors ${
           isUnread
-            ? "bg-peach-50/60 border-peach-200/60"
+            ? "bg-peach-50/60 border-peach-200/60 shadow-card"
             : "bg-white border-cream-200"
         }`}
       >
+        {isUnread && (
+          <span
+            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-peach-400"
+            aria-hidden
+          />
+        )}
         <button
           type="button"
           onClick={onHeaderTap}
@@ -963,20 +1179,11 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
               <span className="font-bold text-ink-900">{name}</span>
               <span className="text-ink-400 mx-1">·</span>
               <span className={`font-bold ${headerVerb.color}`}>
-                {headerVerb.ko} · {headerVerb.zh}
+                {headerVerb.label}
               </span>
             </p>
-            {placeName && (
-              <p className="text-[12px] text-ink-700 font-bold mt-0.5 line-clamp-1 break-keep truncate">
-                {placeName}
-              </p>
-            )}
-            {placeMemo && (
-              <p className="text-[11px] text-ink-500 italic mt-0.5 line-clamp-2 break-keep">
-                "{placeMemo}"
-              </p>
-            )}
           </div>
+          <NotificationThumb src={thumbSrc} label={placeName} />
         </button>
 
         {/* Each sub-row is its own click target — same layout as the
@@ -1083,8 +1290,9 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   // PlaceDetailPage's hash effect resolves the element id and
   // scrollIntoView's it with a brief ring highlight pulse.
   const linkTo = (() => {
-    if (!item.place_id) return null;
-    const base = `/places/${item.place_id}`;
+    const effectivePlaceId = item.place_id ?? rowCtx.foodPlaceIdOf(item.food_id);
+    if (!effectivePlaceId) return null;
+    const base = `/places/${effectivePlaceId}`;
     if (item.memo_id) return `${base}#memo-${item.memo_id}`;
     if (item.food_id) return `${base}#food-${item.food_id}`;
     return base;
@@ -1102,8 +1310,67 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   }
 
   const isUnread = !item.read_at;
-  const spec = kindSpec(item.kind);
   const stamp = relativeKo(item.created_at);
+  const thumbSrc = thumbnailFor(item, rowCtx);
+  const parentMemoText =
+    item.kind === "memo_reply" ? rowCtx.parentMemoTextOf(item.memo_id) : null;
+  const memoText = item.preview ?? rowCtx.memoTextOf(item.memo_id);
+  const headline = (() => {
+    switch (item.kind) {
+      case "memo_reply":
+        return {
+          label: "답글 · 回复",
+          color: "text-indigo-600",
+        };
+      case "memo_thread":
+        return {
+          label: "메모 · 留言",
+          color: "text-sky-600",
+        };
+      case "memo":
+        return {
+          label: "메모 수정 · 改备注",
+          color: "text-sky-600",
+        };
+      case "food":
+        return {
+          label: "메뉴 · 菜品",
+          color: "text-amber-600",
+        };
+      case "place":
+        return {
+          label: "새 장소 · 新地点",
+          color: "text-emerald-600",
+        };
+      case "rating":
+        return {
+          label: "별점 · 打分",
+          color: "text-yellow-600",
+        };
+      case "revisit":
+        return {
+          label: "또 갈래 · 想再去",
+          color: "text-pink-600",
+        };
+      case "reaction":
+        return {
+          label: "이모지 · 表情",
+          color: "text-rose-600",
+        };
+    }
+  })();
+  const bodyLine = (() => {
+    if (
+      item.kind === "memo_reply" ||
+      item.kind === "memo_thread" ||
+      item.kind === "memo"
+    ) {
+      return memoText ? quoteText(memoText) : null;
+    }
+    if (item.kind === "food") return item.preview ? clipText(item.preview) : null;
+    if (item.kind === "reaction") return item.preview ?? null;
+    return null;
+  })();
   const initial = Array.from(name)[0] ?? "·";
   // Actor on a notification is always the partner (the trigger
   // excludes the recipient's own actions), so the colored fallback
@@ -1115,12 +1382,18 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
       <button
         type="button"
         onClick={onTap}
-        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition-colors active:scale-[0.99] border ${
+        className={`relative w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition-colors active:scale-[0.99] border ${
           isUnread
-            ? "bg-peach-50/60 border-peach-200/60"
+            ? "bg-peach-50/60 border-peach-200/60 shadow-card"
             : "bg-white border-cream-200 hover:bg-cream-50"
         }`}
       >
+        {isUnread && (
+          <span
+            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-peach-400"
+            aria-hidden
+          />
+        )}
         <div className="relative flex-shrink-0">
           <div
             className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
@@ -1141,21 +1414,25 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
           <p className="text-[12px] leading-snug">
             <span className="font-bold text-ink-900">{name}</span>
             <span className="text-ink-400 mx-1">·</span>
-            <span className={`font-bold ${spec.textColor}`}>{spec.verb}</span>
+            <span className={`font-bold ${headline.color}`}>
+              {headline.label}
+            </span>
           </p>
-          {(() => {
-            const contextLine = composeContextLine(item, rowCtx);
-            if (!contextLine) return null;
-            return (
-              <p className="text-[12px] text-ink-700 mt-0.5 line-clamp-1 break-keep">
-                <span className="truncate">{contextLine}</span>
-              </p>
-            );
-          })()}
+          {bodyLine && (
+            <p className="text-[12px] text-ink-800 mt-0.5 line-clamp-1 break-keep">
+              {bodyLine}
+            </p>
+          )}
+          {parentMemoText && (
+            <p className="text-[11px] text-ink-400 mt-0.5 line-clamp-1 break-keep">
+              ↪ {quoteText(parentMemoText, 52)}
+            </p>
+          )}
           <p className="text-[10px] text-ink-400 font-medium font-number mt-0.5">
             {stamp}
           </p>
         </div>
+        <NotificationThumb src={thumbSrc} label={bodyLine} />
         {isUnread && (
           <span
             className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"

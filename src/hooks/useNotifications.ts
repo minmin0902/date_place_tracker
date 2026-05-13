@@ -114,6 +114,22 @@ export function useMarkAllNotificationsRead() {
         .is("read_at", null);
       if (error) throw error;
     },
+    onMutate: async () => {
+      const key = ["notifications", user?.id] as const;
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<NotificationRow[]>(key);
+      if (prev) {
+        const now = new Date().toISOString();
+        qc.setQueryData<NotificationRow[]>(
+          key,
+          prev.map((n) => (n.read_at ? n : { ...n, read_at: now }))
+        );
+      }
+      return { prev, key };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications", user?.id] });
       qc.invalidateQueries({

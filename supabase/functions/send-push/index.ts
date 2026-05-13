@@ -34,6 +34,8 @@ type NotificationRow = {
     | "food"
     | "memo"
     | "memo_thread"
+    | "memo_reply"
+    | "reaction"
     | "revisit"
     | "rating";
   actor_id: string;
@@ -80,6 +82,10 @@ function renderPayload(n: NotificationRow, actorName: string) {
         return "改了备注";
       case "memo_thread":
         return "留了言";
+      case "memo_reply":
+        return "回复了你";
+      case "reaction":
+        return "用表情回应了你";
       case "revisit":
         return "想再去";
       case "rating":
