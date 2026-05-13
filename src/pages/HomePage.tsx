@@ -1,4 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { ExpandableList } from "@/components/ExpandableList";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
@@ -1130,16 +1132,29 @@ export default function HomePage() {
               );
             })()}
 
+            {/* Three layout strategies tuned by row weight:
+                - grid + menu: ExpandableList caps the initial mount
+                  at 20 and surfaces "더보기" for the rest. Their rows
+                  are light enough that virtualization would be
+                  overkill, but unbounded N×TimelineGridItem still
+                  hurt initial paint with no cap.
+                - timeline: window virtualizer. Rows are the heaviest
+                  on the page (connector line + photo + chips + memo
+                  preview) and the list can grow to hundreds for
+                  long-running couples. Virtualizing keeps DOM mount
+                  ≈ viewport + overscan regardless of total count. */}
             {listLayout === "grid" ? (
               <div className="mt-2 grid grid-cols-2 gap-3">
-                {filteredPlaces.map((p) => (
-                  <TimelineGridItem
-                    key={p.id}
-                    place={p}
-                    locale={i18n.language}
-                    viewerId={user?.id}
-                  />
-                ))}
+                <ExpandableList items={filteredPlaces} initial={20}>
+                  {(p) => (
+                    <TimelineGridItem
+                      key={p.id}
+                      place={p}
+                      locale={i18n.language}
+                      viewerId={user?.id}
+                    />
+                  )}
+                </ExpandableList>
               </div>
             ) : listLayout === "menu" ? (
               filteredMenus.length === 0 ? (
@@ -1149,31 +1164,27 @@ export default function HomePage() {
                 />
               ) : (
                 <div className="mt-2 space-y-2.5">
-                  {filteredMenus.map((m) => (
-                    <MenuRow
-                      key={`${m.place.id}-${m.food.id}`}
-                      food={m.food}
-                      place={m.place}
-                      locale={i18n.language}
-                      viewerId={user?.id}
-                      myDisplay={myDisplay}
-                      partnerDisplay={partnerDisplay}
-                    />
-                  ))}
+                  <ExpandableList items={filteredMenus} initial={20}>
+                    {(m) => (
+                      <MenuRow
+                        key={`${m.place.id}-${m.food.id}`}
+                        food={m.food}
+                        place={m.place}
+                        locale={i18n.language}
+                        viewerId={user?.id}
+                        myDisplay={myDisplay}
+                        partnerDisplay={partnerDisplay}
+                      />
+                    )}
+                  </ExpandableList>
                 </div>
               )
             ) : (
-              <div className="mt-2">
-                {filteredPlaces.map((p, idx) => (
-                  <TimelineItem
-                    key={p.id}
-                    place={p}
-                    locale={i18n.language}
-                    isLast={idx === filteredPlaces.length - 1}
-                    viewerId={user?.id}
-                  />
-                ))}
-              </div>
+              <VirtualTimeline
+                places={filteredPlaces}
+                locale={i18n.language}
+                viewerId={user?.id}
+              />
             )}
           </>
         )}
@@ -1433,6 +1444,115 @@ function timelineTheme(isHomeCooked: boolean) {
 // props are stable refs from react-query cache or scalars, so default
 // shallow equality is correct.
 const TimelineItem = memo(TimelineItemImpl);
+
+// Window-virtualized timeline. Replaces the naive `places.map(...)`
+// so only viewport + overscan rows are actually mounted in the DOM.
+// Why this matters: TimelineItem is the heaviest row on the page
+// (photo + connector line + chips + memo preview + multiple Link/
+// onClick handlers), and a long-running couple's timeline can grow
+// into the hundreds. Without virtualization, every entry mounts on
+// initial paint AND reconciles on every parent re-render (pull
+// state changes, filter toggles, etc) — that was the gap between
+// HomePage and ComparePage perceived smoothness.
+//
+// Implementation notes:
+// - useWindowVirtualizer scrolls against `window` (matches our
+//   document-level scroll + pull-to-refresh + ScrollManager).
+// - scrollMargin = container's offset from page top so virtualizer
+//   knows where its slice begins relative to scrollY. Measured
+//   after mount via a layout effect because containerRef is null
+//   on first render.
+// - measureElement attaches a ResizeObserver to each rendered row
+//   so variable heights (photo vs no photo, 1 vs 3 category chips)
+//   get reconciled with the layout offsets. estimateSize is only
+//   used until first measurement lands.
+// - isLast must come from the FULL list length, not the virtualized
+//   subset, so the connector line drops correctly on the actual
+//   last item even when it's offscreen / unmounted.
+function VirtualTimeline({
+  places,
+  locale,
+  viewerId,
+}: {
+  places: PlaceWithFoods[];
+  locale: string;
+  viewerId: string | undefined;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  // Capture the container's distance from page top once mounted, and
+  // again on resize (sticky header height can change with locale
+  // wrapping). Without this the virtualizer thinks scrollY=0 means
+  // "top of the timeline" and renders the wrong slice at first paint.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const measure = () => setScrollMargin(node.offsetTop);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(document.documentElement);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  const virtualizer = useWindowVirtualizer({
+    count: places.length,
+    estimateSize: () => 200,
+    overscan: 6,
+    scrollMargin,
+    // Stable string id per row so reorders (rare here — places
+    // sort by date_visited) don't fight the measurement cache.
+    getItemKey: (i) => places[i]?.id ?? i,
+  });
+
+  const items = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+
+  return (
+    <div
+      ref={containerRef}
+      className="mt-2"
+      style={{
+        position: "relative",
+        height: `${totalSize}px`,
+        // Hint the browser this region needs its own layer so
+        // virtualizer's translateY animations don't repaint the
+        // whole page.
+        contain: "layout style",
+      }}
+    >
+      {items.map((v) => {
+        const place = places[v.index];
+        if (!place) return null;
+        return (
+          <div
+            key={v.key}
+            data-index={v.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${v.start - virtualizer.options.scrollMargin}px)`,
+            }}
+          >
+            <TimelineItem
+              place={place}
+              locale={locale}
+              isLast={v.index === places.length - 1}
+              viewerId={viewerId}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function TimelineItemImpl({
   place,
