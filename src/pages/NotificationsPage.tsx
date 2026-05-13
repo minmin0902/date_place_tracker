@@ -26,6 +26,99 @@ import {
 import { useActorDisplay } from "@/hooks/useProfile";
 import type { NotificationRow } from "@/lib/database.types";
 
+// Per-kind visual spec — drives both the avatar-corner badge and the
+// verb text color so each row is instantly identifiable on first
+// glance. Bilingual labels matter less when the icon + color already
+// tell you "this is a menu add" / "this is a memo".
+type KindSpec = {
+  // lucide icon shown in the avatar-corner badge
+  Icon: typeof Bell;
+  // Tailwind bg-* for the badge fill
+  bg: string;
+  // Tailwind text-* for the verb line in the row body, matched to
+  // the badge color so badge + verb pair visually
+  textColor: string;
+  // Verb label, bilingual ("동사 · 动词")
+  verb: string;
+};
+function kindSpec(kind: NotificationRow["kind"]): KindSpec {
+  switch (kind) {
+    case "place":
+      return {
+        Icon: MapPin,
+        bg: "bg-emerald-500",
+        textColor: "text-emerald-600",
+        verb: "새 장소 · 新地点",
+      };
+    case "food":
+      return {
+        Icon: Utensils,
+        bg: "bg-amber-500",
+        textColor: "text-amber-600",
+        verb: "메뉴 추가 · 添加菜品",
+      };
+    case "memo":
+      return {
+        Icon: MessageCircle,
+        bg: "bg-sky-500",
+        textColor: "text-sky-600",
+        verb: "메모 수정 · 改了备注",
+      };
+    case "memo_thread":
+      return {
+        Icon: MessageCircle,
+        bg: "bg-sky-500",
+        textColor: "text-sky-600",
+        verb: "메모 남김 · 留了言",
+      };
+    case "memo_reply":
+      return {
+        Icon: CornerDownRight,
+        bg: "bg-indigo-500",
+        textColor: "text-indigo-600",
+        verb: "답글 · 回复",
+      };
+    case "reaction":
+      return {
+        Icon: Smile,
+        bg: "bg-rose-500",
+        textColor: "text-rose-600",
+        verb: "이모지 · 表情",
+      };
+    case "revisit":
+      return {
+        Icon: Heart,
+        bg: "bg-pink-500",
+        textColor: "text-pink-600",
+        verb: "또 갈래 · 想再去",
+      };
+    case "rating":
+      return {
+        Icon: Star,
+        bg: "bg-yellow-500",
+        textColor: "text-yellow-600",
+        verb: "별점 · 打分",
+      };
+  }
+}
+
+// Small circular badge anchored to the bottom-right corner of an
+// avatar. Background color + icon together communicate WHAT happened
+// (vs the avatar communicating WHO did it). ring-white separates the
+// badge from the avatar edge so it doesn't bleed into the photo.
+function KindBadge({ kind }: { kind: NotificationRow["kind"] }) {
+  const spec = kindSpec(kind);
+  const Icon = spec.Icon;
+  return (
+    <span
+      className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ring-2 ring-white text-white ${spec.bg}`}
+      aria-hidden
+    >
+      <Icon className="w-2.5 h-2.5" strokeWidth={2.5} />
+    </span>
+  );
+}
+
 // Filter buckets — collapse the seven raw notification kinds into
 // four user-facing categories so the chip row stays scannable. The
 // "메모/이모지" bucket lumps every conversation-style event (memo
@@ -58,6 +151,30 @@ type ReactionGroup = {
   latest: NotificationRow;
 };
 
+// Same-kind bundles. Within one date section, if the partner adds
+// 5 menus to a place we surface them as one "메뉴 5개 추가" row with
+// the menu names inline rather than five lookalike notifications.
+// Same idea for memos / replies on a single place.
+type FoodGroup = {
+  kind: "food-group";
+  items: NotificationRow[];
+  latest: NotificationRow;
+  placeId: string;
+  // Newest-first list of food names, used to render a short preview
+  // ("Fried土豆, 牛排, …").
+  names: string[];
+};
+
+type MemoGroup = {
+  kind: "memo-group";
+  items: NotificationRow[];
+  latest: NotificationRow;
+  placeId: string;
+  // Short newest-first list of memo previews so the user can see
+  // what's in the bundle without opening the place.
+  previews: string[];
+};
+
 // Date section header — emitted whenever we cross a day boundary
 // walking the (newest-first) feed. Same shape regardless of locale;
 // the renderer picks ko/zh based on context.
@@ -71,7 +188,9 @@ type DateHeader = {
 type DisplayRow =
   | DateHeader
   | { kind: "single"; item: NotificationRow }
-  | ReactionGroup;
+  | ReactionGroup
+  | FoodGroup
+  | MemoGroup;
 
 // Resolve a date into a friendly day label. "오늘"/"어제" for the
 // last two days (most-frequent case in a couple's inbox), absolute
@@ -156,15 +275,22 @@ export default function NotificationsPage() {
   }, [items, filter]);
 
   // Display rows = (1) date section header whenever we cross a day
-  // boundary walking the newest-first feed, plus (2) one row per
-  // notification, with reactions on the same target/day bundled
-  // into a single emoji-bag row. Each individual event keeps its
-  // own preview (place name / food name / memo body / etc) so
-  // nothing important is hidden behind a summary — sections only
-  // reorganize the list, they don't collapse it.
+  // boundary walking the newest-first feed, plus (2) per-kind bundles
+  // within each date section:
+  //   - food kind on same place → FoodGroup ("메뉴 5개 추가")
+  //   - memo / memo_thread / memo_reply on same place → MemoGroup
+  //   - reaction on same target → ReactionGroup (emoji bag)
+  //   - everything else → single row
+  // Bundles only kick in when count ≥ 2; a lone food/memo notification
+  // still renders as its full single row (which carries the food
+  // name / memo body that the user wants to see at a glance).
+  // Per-section maps reset at each date boundary so monday's events
+  // never bundle with tuesday's.
   const displayRows = useMemo<DisplayRow[]>(() => {
     const out: DisplayRow[] = [];
-    const reactionGroupsByKey = new Map<string, ReactionGroup>();
+    const reactionGroups = new Map<string, ReactionGroup>();
+    const foodGroups = new Map<string, FoodGroup>();
+    const memoGroups = new Map<string, MemoGroup>();
     let currentDateKey: string | null = null;
 
     for (const n of visibleItems) {
@@ -177,15 +303,17 @@ export default function NotificationsPage() {
           zh: label.zh,
         });
         currentDateKey = label.key;
-        // Reaction grouping is bounded to within a single date
-        // section — clearing the map at each boundary keeps a
-        // ❤️ on Monday from merging with a ❤️ on Wednesday under
-        // the same memo.
-        reactionGroupsByKey.clear();
+        // Grouping is bounded to within a single date section —
+        // clear the maps so a monday memo doesn't bundle with a
+        // tuesday memo on the same place.
+        reactionGroups.clear();
+        foodGroups.clear();
+        memoGroups.clear();
       }
+
       if (n.kind === "reaction") {
-        const groupKey = `${n.actor_id}|${n.place_id ?? ""}|${n.food_id ?? ""}|${n.memo_id ?? ""}`;
-        const existing = reactionGroupsByKey.get(groupKey);
+        const k = `${n.actor_id}|${n.place_id ?? ""}|${n.food_id ?? ""}|${n.memo_id ?? ""}`;
+        const existing = reactionGroups.get(k);
         if (existing) {
           existing.items.push(n);
           if (n.preview && !existing.emojis.includes(n.preview)) {
@@ -199,13 +327,77 @@ export default function NotificationsPage() {
           emojis: n.preview ? [n.preview] : [],
           latest: n,
         };
-        reactionGroupsByKey.set(groupKey, g);
+        reactionGroups.set(k, g);
         out.push(g);
         continue;
       }
+
+      if (n.kind === "food" && n.place_id) {
+        const k = `${n.place_id}|${n.actor_id}`;
+        const existing = foodGroups.get(k);
+        if (existing) {
+          existing.items.push(n);
+          if (n.preview && !existing.names.includes(n.preview)) {
+            existing.names.push(n.preview);
+          }
+          continue;
+        }
+        const g: FoodGroup = {
+          kind: "food-group",
+          items: [n],
+          latest: n,
+          placeId: n.place_id,
+          names: n.preview ? [n.preview] : [],
+        };
+        foodGroups.set(k, g);
+        out.push(g);
+        continue;
+      }
+
+      if (
+        (n.kind === "memo" ||
+          n.kind === "memo_thread" ||
+          n.kind === "memo_reply") &&
+        n.place_id
+      ) {
+        const k = `${n.place_id}|${n.actor_id}`;
+        const existing = memoGroups.get(k);
+        if (existing) {
+          existing.items.push(n);
+          if (n.preview && !existing.previews.includes(n.preview)) {
+            existing.previews.push(n.preview);
+          }
+          continue;
+        }
+        const g: MemoGroup = {
+          kind: "memo-group",
+          items: [n],
+          latest: n,
+          placeId: n.place_id,
+          previews: n.preview ? [n.preview] : [],
+        };
+        memoGroups.set(k, g);
+        out.push(g);
+        continue;
+      }
+
       out.push({ kind: "single", item: n });
     }
-    return out;
+
+    // Downgrade single-member groups back to plain singles. The
+    // bundled UI ("메뉴 N개") looks silly with N=1 — better to show
+    // the full single row that names the menu directly.
+    return out.map((row): DisplayRow => {
+      if (
+        (row.kind === "food-group" ||
+          row.kind === "memo-group" ||
+          row.kind === "reaction-group") &&
+        row.items.length === 1
+      ) {
+        return { kind: "single", item: row.items[0] };
+      }
+      return row;
+    });
   }, [visibleItems]);
 
   return (
@@ -327,6 +519,12 @@ export default function NotificationsPage() {
               if (row.kind === "single") {
                 return <NotificationItem key={row.item.id} item={row.item} />;
               }
+              if (row.kind === "food-group") {
+                return <FoodGroupItem key={row.latest.id} group={row} />;
+              }
+              if (row.kind === "memo-group") {
+                return <MemoGroupItem key={row.latest.id} group={row} />;
+              }
               return <ReactionGroupItem key={row.latest.id} group={row} />;
             })}
           </ul>
@@ -424,24 +622,27 @@ function ReactionGroupItem({ group }: { group: ReactionGroup }) {
             : "bg-white border-cream-200 hover:bg-cream-50"
         }`}
       >
-        <div
-          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
-        >
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span>{initial}</span>
-          )}
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+          <KindBadge kind="reaction" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[12px] leading-snug">
             <span className="font-bold text-ink-900">{name}</span>
             <span className="text-ink-400 mx-1">·</span>
-            <span className="text-ink-500">
+            <span className="font-bold text-rose-600">
               {targetLabel} 이모지 · 表情
             </span>
           </p>
@@ -458,6 +659,182 @@ function ReactionGroupItem({ group }: { group: ReactionGroup }) {
               {stamp}
             </span>
           </div>
+        </div>
+        {isUnread && (
+          <span
+            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
+            aria-label="unread"
+          />
+        )}
+      </button>
+    </li>
+  );
+}
+
+// Same-kind bundle: N menus the partner added to one place on one
+// day. Renders the count + a comma-joined preview of menu names so
+// the user can scan "what got added" without opening the place. Tap
+// → mark all read + navigate to the place (no anchor since the menus
+// are listed across the page anyway).
+function FoodGroupItem({ group }: { group: FoodGroup }) {
+  const navigate = useNavigate();
+  const markRead = useMarkNotificationRead();
+  const { name, avatarUrl } = useActorDisplay(group.latest.actor_id);
+
+  const isUnread = group.items.some((i) => !i.read_at);
+  const unreadIds = group.items.filter((i) => !i.read_at).map((i) => i.id);
+
+  function onTap() {
+    if (unreadIds.length && !markRead.isPending) {
+      for (const id of unreadIds) void markRead.mutateAsync(id);
+    }
+    navigate(`/places/${group.placeId}`);
+  }
+
+  const stamp = relativeKo(group.latest.created_at);
+  const initial = Array.from(name)[0] ?? "·";
+  const toneCls = "bg-rose-100 text-rose-500";
+  // Show up to 3 names inline; tail collapsed as "외 N개".
+  const visible = group.names.slice(0, 3);
+  const hidden = group.names.length - visible.length;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
+          isUnread
+            ? "bg-peach-50/60 border-peach-200/60"
+            : "bg-white border-cream-200 hover:bg-cream-50"
+        }`}
+      >
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+          <KindBadge kind="food" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] leading-snug">
+            <span className="font-bold text-ink-900">{name}</span>
+            <span className="text-ink-400 mx-1">·</span>
+            <span className="font-bold text-amber-600">
+              메뉴 <span className="font-number">{group.items.length}</span>개 추가 ·
+              添加菜品 {group.items.length}
+            </span>
+          </p>
+          {visible.length > 0 && (
+            <p className="text-[11px] text-ink-700 mt-0.5 line-clamp-1 break-keep">
+              <span className="truncate">
+                {visible.join(", ")}
+                {hidden > 0 && (
+                  <span className="text-ink-400"> 외 {hidden}개</span>
+                )}
+              </span>
+            </p>
+          )}
+          <p className="text-[10px] text-ink-400 font-medium font-number mt-0.5">
+            {stamp}
+          </p>
+        </div>
+        {isUnread && (
+          <span
+            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
+            aria-label="unread"
+          />
+        )}
+      </button>
+    </li>
+  );
+}
+
+// Same-kind bundle: memos + replies on one place on one day. Same
+// layout as FoodGroup but with memo previews and deep-link to the
+// latest memo so the user lands on the most recent comment.
+function MemoGroupItem({ group }: { group: MemoGroup }) {
+  const navigate = useNavigate();
+  const markRead = useMarkNotificationRead();
+  const { name, avatarUrl } = useActorDisplay(group.latest.actor_id);
+
+  const isUnread = group.items.some((i) => !i.read_at);
+  const unreadIds = group.items.filter((i) => !i.read_at).map((i) => i.id);
+
+  function onTap() {
+    if (unreadIds.length && !markRead.isPending) {
+      for (const id of unreadIds) void markRead.mutateAsync(id);
+    }
+    const memoId = group.latest.memo_id;
+    if (memoId) {
+      navigate(`/places/${group.placeId}#memo-${memoId}`);
+    } else {
+      navigate(`/places/${group.placeId}`);
+    }
+  }
+
+  const stamp = relativeKo(group.latest.created_at);
+  const initial = Array.from(name)[0] ?? "·";
+  const toneCls = "bg-rose-100 text-rose-500";
+  const visible = group.previews.slice(0, 2);
+  const hidden = group.previews.length - visible.length;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onTap}
+        className={`w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition active:scale-[0.99] border ${
+          isUnread
+            ? "bg-peach-50/60 border-peach-200/60"
+            : "bg-white border-cream-200 hover:bg-cream-50"
+        }`}
+      >
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+          {/* If the group is all replies, surface the reply icon
+              variant; mixed memo+reply groups use the memo icon. */}
+          <KindBadge
+            kind={
+              group.items.every((i) => i.kind === "memo_reply")
+                ? "memo_reply"
+                : "memo_thread"
+            }
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] leading-snug">
+            <span className="font-bold text-ink-900">{name}</span>
+            <span className="text-ink-400 mx-1">·</span>
+            <span className="font-bold text-sky-600">
+              메모/답글 <span className="font-number">{group.items.length}</span>개 ·
+              留言 {group.items.length}
+            </span>
+          </p>
+          {visible.length > 0 && (
+            <p className="text-[11px] text-ink-700 mt-0.5 line-clamp-1 break-keep">
+              <span className="truncate">
+                {visible.join(" · ")}
+                {hidden > 0 && (
+                  <span className="text-ink-400"> 외 {hidden}개</span>
+                )}
+              </span>
+            </p>
+          )}
+          <p className="text-[10px] text-ink-400 font-medium font-number mt-0.5">
+            {stamp}
+          </p>
         </div>
         {isUnread && (
           <span
@@ -528,48 +905,7 @@ function NotificationItem({ item }: { item: NotificationRow }) {
   }
 
   const isUnread = !item.read_at;
-  const icon = (() => {
-    switch (item.kind) {
-      case "place":
-        return <MapPin className="w-4 h-4" />;
-      case "food":
-        return <Utensils className="w-4 h-4" />;
-      case "revisit":
-        return <Heart className="w-4 h-4" />;
-      case "rating":
-        return <Star className="w-4 h-4" />;
-      case "reaction":
-        return <Smile className="w-4 h-4" />;
-      case "memo_reply":
-        return <CornerDownRight className="w-4 h-4" />;
-      case "memo":
-      case "memo_thread":
-      default:
-        return <MessageCircle className="w-4 h-4" />;
-    }
-  })();
-  const verb = (() => {
-    switch (item.kind) {
-      case "place":
-        return "새 장소 등록 · 添加了新地点";
-      case "food":
-        return "메뉴 추가 · 记下了新菜品";
-      case "memo":
-        return "메모 수정 · 改了备注";
-      case "memo_thread":
-        return "메모 남김 · 留了言";
-      case "memo_reply":
-        return "답글 남김 · 回了你";
-      case "reaction":
-        return "이모지 남김 · 表情回应";
-      case "revisit":
-        return "또 갈래 · 想再去";
-      case "rating":
-        return "별점 줬어요 · 打了分";
-      default:
-        return "";
-    }
-  })();
+  const spec = kindSpec(item.kind);
   const stamp = relativeKo(item.created_at);
   const initial = Array.from(name)[0] ?? "·";
   // Actor on a notification is always the partner (the trigger
@@ -588,28 +924,30 @@ function NotificationItem({ item }: { item: NotificationRow }) {
             : "bg-white border-cream-200 hover:bg-cream-50"
         }`}
       >
-        <div
-          className={`w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
-        >
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <span>{initial}</span>
-          )}
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </div>
+          <KindBadge kind={item.kind} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[12px] leading-snug">
             <span className="font-bold text-ink-900">{name}</span>
             <span className="text-ink-400 mx-1">·</span>
-            <span className="text-ink-500">{verb}</span>
+            <span className={`font-bold ${spec.textColor}`}>{spec.verb}</span>
           </p>
           {item.preview && (
-            <p className="text-[12px] text-ink-700 mt-0.5 line-clamp-1 break-keep flex items-center gap-1">
-              <span className="text-ink-400 flex-shrink-0">{icon}</span>
+            <p className="text-[12px] text-ink-700 mt-0.5 line-clamp-1 break-keep">
               <span className="truncate">{item.preview}</span>
             </p>
           )}

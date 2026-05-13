@@ -70,21 +70,57 @@ function ScrollManager() {
     }
 
     if (navType === "POP") {
-      // Restore. We wait two rAFs because the destination tree
-      // hasn't laid out yet on this synchronous tick — first frame
-      // mounts, second frame has heights settled (React Query
-      // cached data + suspense-less children).
+      // Restore. Single-shot scrollTo isn't robust when the
+      // destination is data-driven: react-query may render cached
+      // data immediately, but late effects (avatar loads, image
+      // height resolves, lazy chunks, etc.) keep the document
+      // growing for tens to hundreds of ms after mount. Without
+      // retry we scroll to N but then content reflows and we end
+      // up at min(N, scrollHeight). Solution: keep nudging the
+      // scroll back to target each frame for up to ~500ms, bailing
+      // immediately if the user starts interacting so we don't
+      // fight their gesture.
       const map = readMap();
       const target = map[pathname] ?? 0;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo(0, target);
-        });
+      if (target === 0) {
+        window.scrollTo(0, 0);
+        prevPath.current = pathname;
+        return;
+      }
+      let cancelled = false;
+      const stopAt = Date.now() + 600;
+      const bail = () => {
+        cancelled = true;
+      };
+      // Any user gesture aborts our retry loop. Once-listener +
+      // passive so we don't get in the way of native scroll.
+      window.addEventListener("wheel", bail, { passive: true, once: true });
+      window.addEventListener("touchstart", bail, {
+        passive: true,
+        once: true,
       });
-    } else {
-      // PUSH / REPLACE → go to top of the new route.
-      window.scrollTo(0, 0);
+      window.addEventListener("keydown", bail, { once: true });
+      const tick = () => {
+        if (cancelled) return;
+        window.scrollTo(0, target);
+        // Within a few pixels of target → done.
+        if (Math.abs(window.scrollY - target) <= 2) return;
+        if (Date.now() > stopAt) return;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(tick));
+      // Cleanup if the route changes again before we finish.
+      const cleanup = () => {
+        cancelled = true;
+        window.removeEventListener("wheel", bail);
+        window.removeEventListener("touchstart", bail);
+        window.removeEventListener("keydown", bail);
+      };
+      prevPath.current = pathname;
+      return cleanup;
     }
+    // PUSH / REPLACE → go to top of the new route.
+    window.scrollTo(0, 0);
     prevPath.current = pathname;
   }, [pathname, navType]);
 
