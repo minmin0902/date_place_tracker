@@ -1,9 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Smile } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  QUICK_REACTIONS,
+  REACTION_PALETTE_SECTIONS,
   summarize,
   useReactions,
   useToggleReaction,
@@ -101,8 +101,6 @@ function ReactionRowImpl({
     });
   }
 
-  const hasAny = summary.length > 0;
-
   return (
     <div className={`flex flex-wrap items-center gap-1 ${justify}`}>
       {summary.map((s) => {
@@ -137,41 +135,45 @@ function ReactionRowImpl({
           aria-label="add reaction"
           aria-expanded={paletteOpen}
         >
-          {hasAny ? (
-            <span className={`leading-none ${isSm ? "text-[11px]" : "text-[12px]"}`}>+</span>
-          ) : (
-            <Smile className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
-          )}
+          <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
         </button>
         {paletteOpen && (
-          // Horizontal pill row — same compact UX as before the
-          // extended grid experiment. Just the 6 quick reactions
-          // (incl. 뽀뽀 😘), laid out left-to-right in a small
-          // pill. Outside-tap dismiss handled by the useEffect
-          // above (touch devices don't fire pointerleave).
           <div
             ref={paletteRef}
-            className={`absolute z-30 mt-1 ${align === "end" ? "right-0" : "left-0"} bg-white border border-cream-200 rounded-full shadow-lg flex items-center gap-0.5 p-1`}
+            className={`absolute z-30 mt-1 ${
+              align === "end" ? "right-0" : "left-0"
+            } w-[min(18rem,calc(100vw-2rem))] max-h-64 overflow-y-auto hide-scrollbar bg-white border border-cream-200 rounded-2xl shadow-lg p-2`}
           >
-            {QUICK_REACTIONS.map((emoji) => {
-              const cur = summary.find((s) => s.emoji === emoji);
-              const mineId = cur?.mineId ?? null;
-              const mine = !!mineId;
-              return (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => onTapEmoji(emoji, mineId)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition active:scale-90 ${
-                    mine ? "bg-peach-100" : "hover:bg-cream-50"
-                  }`}
-                  aria-label={emoji}
-                  aria-pressed={mine}
-                >
-                  <span className="leading-none">{emoji}</span>
-                </button>
-              );
-            })}
+            {REACTION_PALETTE_SECTIONS.map((section, sectionIdx) => (
+              <div
+                key={sectionIdx}
+                className={`grid grid-cols-7 gap-1 ${
+                  sectionIdx > 0
+                    ? "mt-1 border-t border-cream-100 pt-1"
+                    : ""
+                }`}
+              >
+                {section.map((emoji) => {
+                  const cur = summary.find((s) => s.emoji === emoji);
+                  const mineId = cur?.mineId ?? null;
+                  const mine = !!mineId;
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => onTapEmoji(emoji, mineId)}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition active:scale-90 ${
+                        mine ? "bg-peach-100" : "hover:bg-cream-50"
+                      }`}
+                      aria-label={emoji}
+                      aria-pressed={mine}
+                    >
+                      <span className="leading-none">{emoji}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
       </div>

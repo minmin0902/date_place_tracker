@@ -17,6 +17,7 @@ import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { supabase } from "@/lib/supabase";
+import type { WishlistPlace } from "@/lib/database.types";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 const MAP_ID = "date-place-map";
@@ -29,6 +30,86 @@ type MapBreakdown = {
   backfillable: number;
   noAddress: number;
 };
+type GeocodeCandidate = Pick<
+  PlaceWithFoods,
+  "id" | "name" | "address" | "latitude" | "longitude"
+>;
+type PlaceMapMarker = Pick<
+  PlaceWithFoods,
+  | "id"
+  | "name"
+  | "address"
+  | "latitude"
+  | "longitude"
+  | "is_home_cooked"
+  | "want_to_revisit"
+>;
+type WishlistMapMarker = Pick<
+  WishlistPlace,
+  "id" | "name" | "address" | "latitude" | "longitude"
+>;
+type HomeLocation = LatLng | null;
+
+function useStableBySignature<T>(value: T, signature: string): T {
+  const ref = useRef<{ signature: string; value: T }>({ signature, value });
+  if (ref.current.signature !== signature) {
+    ref.current = { signature, value };
+  }
+  return ref.current.value;
+}
+
+function markerSignature(
+  items: readonly {
+    id: string;
+    name: string;
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    is_home_cooked?: boolean | null;
+    want_to_revisit?: boolean | null;
+  }[]
+) {
+  return items
+    .map((i) =>
+      [
+        i.id,
+        i.name,
+        i.address ?? "",
+        i.latitude ?? "",
+        i.longitude ?? "",
+        i.is_home_cooked ? "1" : "0",
+        i.want_to_revisit ? "1" : "0",
+      ].join("~")
+    )
+    .join("|");
+}
+
+function googleMapsLocale() {
+  if (typeof navigator === "undefined") {
+    return { language: "ko", region: "KR" };
+  }
+  const raw =
+    navigator.languages?.find(Boolean) ?? navigator.language ?? "ko-KR";
+  const normalized = raw.toLowerCase();
+  if (normalized.startsWith("zh")) {
+    const traditional =
+      normalized.includes("tw") ||
+      normalized.includes("hk") ||
+      normalized.includes("mo") ||
+      normalized.includes("hant");
+    return {
+      language: traditional ? "zh-TW" : "zh-CN",
+      region: traditional ? "TW" : "CN",
+    };
+  }
+  if (normalized.startsWith("ko")) return { language: "ko", region: "KR" };
+  if (normalized.startsWith("ja")) return { language: "ja", region: "JP" };
+  const [language, region] = raw.split("-");
+  return {
+    language: language || "en",
+    region: region?.toUpperCase() || "US",
+  };
+}
 
 // House-shaped pin for the couple's home address. Stands out from the
 // food markers via a different gradient + roof silhouette so users can
@@ -227,7 +308,7 @@ function RevisitPin() {
 // lat/lng gets geocoded once via google.maps.Geocoder, written back to
 // Supabase, and the places query is invalidated so the new marker appears.
 // Lives inside <APIProvider> so the Maps script is guaranteed to be loaded.
-function GeocodeBackfill({ places }: { places: PlaceWithFoods[] }) {
+function GeocodeBackfill({ places }: { places: GeocodeCandidate[] }) {
   const apiLoaded = useApiIsLoaded();
   const qc = useQueryClient();
   // Track ids we've already attempted this session so we don't loop on
@@ -386,22 +467,51 @@ export default function MapPage() {
   const qc = useQueryClient();
   const { data: places } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
+  const mapsLocale = useMemo(() => googleMapsLocale(), []);
   // selectedId can identify either a place ("place:<id>") or a
   // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
   // to look up. Plain id was unambiguous when only places existed.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
+  const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
+  const refreshLocation = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        if (!navigator.geolocation) {
+          setUserLoc("denied");
+          resolve();
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setUserLoc({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            });
+            resolve();
+          },
+          () => {
+            setUserLoc("denied");
+            resolve();
+          },
+          { timeout: 4000, maximumAge: 30_000 }
+        );
+      }),
+    []
+  );
   const refreshAll = useCallback(() => {
     const opts = { refetchType: "active" as const };
     return Promise.all([
       qc.invalidateQueries({ queryKey: ["places"], ...opts }),
       qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
       qc.invalidateQueries({ queryKey: ["couple"], ...opts }),
+      refreshLocation(),
     ]);
-  }, [qc]);
+  }, [qc, refreshLocation]);
 
   // Breakdown for the debug panel: how many places are on the map vs
   // how many are stuck without coordinates and why.
-  const breakdown = useMemo(() => {
+  const rawBreakdown = useMemo(() => {
     const total = places?.length ?? 0;
     let onMap = 0;
     let backfillable = 0; // address present but no lat/lng — Geocoder can fix
@@ -415,29 +525,49 @@ export default function MapPage() {
     }
     return { total, onMap, backfillable, noAddress };
   }, [places]);
-
-  // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
-  const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
+  const breakdown = useStableBySignature(
+    rawBreakdown,
+    `${rawBreakdown.total}|${rawBreakdown.onMap}|${rawBreakdown.backfillable}|${rawBreakdown.noAddress}`
+  );
 
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setUserLoc("denied");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setUserLoc("denied"),
-      { timeout: 8000, maximumAge: 60_000 }
-    );
-  }, []);
+    void refreshLocation();
+  }, [refreshLocation]);
 
-  const markers = useMemo(
+  const geocodeCandidatesRaw = useMemo<GeocodeCandidate[]>(
     () =>
-      (places ?? []).filter(
-        (p) => p.latitude != null && p.longitude != null
-      ),
+      (places ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        latitude: p.latitude,
+        longitude: p.longitude,
+      })),
     [places]
+  );
+  const geocodeCandidates = useStableBySignature(
+    geocodeCandidatesRaw,
+    markerSignature(geocodeCandidatesRaw)
+  );
+
+  const rawMarkers = useMemo<PlaceMapMarker[]>(
+    () =>
+      (places ?? [])
+        .filter((p) => p.latitude != null && p.longitude != null)
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          address: p.address,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          is_home_cooked: p.is_home_cooked,
+          want_to_revisit: p.want_to_revisit,
+        })),
+    [places]
+  );
+  const markers = useStableBySignature(
+    rawMarkers,
+    markerSignature(rawMarkers)
   );
 
   // Wishlist markers — only restaurant-kind entries with coords. Recipe
@@ -445,15 +575,27 @@ export default function MapPage() {
   // doesn't carry latitude/longitude), so they're filtered out by the
   // coord check anyway, but explicit `kind` filter keeps the count
   // meaningful when we later add other kinds.
-  const wishlistMarkers = useMemo(
+  const rawWishlistMarkers = useMemo<WishlistMapMarker[]>(
     () =>
-      (wishlist ?? []).filter(
-        (w) =>
-          w.kind !== "recipe" &&
-          w.latitude != null &&
-          w.longitude != null
-      ),
+      (wishlist ?? [])
+        .filter(
+          (w) =>
+            w.kind !== "recipe" &&
+            w.latitude != null &&
+            w.longitude != null
+        )
+        .map((w) => ({
+          id: w.id,
+          name: w.name,
+          address: w.address,
+          latitude: w.latitude,
+          longitude: w.longitude,
+        })),
     [wishlist]
+  );
+  const wishlistMarkers = useStableBySignature(
+    rawWishlistMarkers,
+    markerSignature(rawWishlistMarkers)
   );
 
   // Pick an initial center: user location first, else markers average, else Seoul.
@@ -478,6 +620,160 @@ export default function MapPage() {
   const selectedWish = selectedId?.startsWith("wish:")
     ? wishlistMarkers.find((w) => `wish:${w.id}` === selectedId) ?? null
     : null;
+  const homeLocation = useMemo<HomeLocation>(
+    () =>
+      couple?.home_latitude != null && couple?.home_longitude != null
+        ? {
+            lat: couple.home_latitude,
+            lng: couple.home_longitude,
+          }
+        : null,
+    [couple?.home_latitude, couple?.home_longitude]
+  );
+
+  const mapCanvas = useMemo(() => {
+    if (!KEY) return null;
+    if (!initialCenter) {
+      return (
+        <div className="h-full flex items-center justify-center text-sm text-ink-500">
+          로딩 중... · 加载中...
+        </div>
+      );
+    }
+    return (
+      <APIProvider
+        apiKey={KEY}
+        language={mapsLocale.language}
+        region={mapsLocale.region}
+      >
+        <GeocodeBackfill places={geocodeCandidates} />
+        <Map
+          mapId={MAP_ID}
+          defaultCenter={initialCenter}
+          defaultZoom={14}
+          gestureHandling="greedy"
+          // Now that the legend + counter graduated out of the
+          // map canvas, Google's default top-right controls
+          // (mapType / camera-tilt / rotate) have empty corner
+          // space again — keep them ON so users can flip 2D/3D.
+          // Fullscreen + keyboard-shortcut links stay off because
+          // they're not useful here and the keyboard-shortcuts
+          // link in particular bloats the bottom chrome.
+          disableDefaultUI={false}
+          controlSize={24}
+          fullscreenControl={false}
+          keyboardShortcuts={false}
+        >
+          {userLoc !== "denied" && userLoc && (
+            <AdvancedMarker position={userLoc} title="현재 위치 · 当前位置">
+              <div className="relative w-4 h-4">
+                <div className="absolute inset-0 bg-sky-400 rounded-full opacity-60 animate-ping" />
+                <div className="absolute inset-0 bg-sky-500 rounded-full border-2 border-white shadow-md" />
+              </div>
+            </AdvancedMarker>
+          )}
+          {homeLocation && (
+            <AdvancedMarker position={homeLocation} title="우리집 · 我们家">
+              <HomePin />
+            </AdvancedMarker>
+          )}
+          {markers.map((p) => (
+            <AdvancedMarker
+              key={`place-${p.id}`}
+              position={{ lat: p.latitude!, lng: p.longitude! }}
+              onClick={() => setSelectedId(`place:${p.id}`)}
+              title={
+                p.is_home_cooked
+                  ? `${p.name} · 집밥 · 在家做`
+                  : p.want_to_revisit
+                    ? `${p.name} · 또 갈래 · 想再去`
+                    : p.name
+              }
+            >
+              {p.is_home_cooked ? (
+                // Home-cooked entries get a small chef-hat marker so
+                // they read as "we cooked this" instead of "we went here".
+                <div className="text-2xl drop-shadow leading-none">🍳</div>
+              ) : p.want_to_revisit ? (
+                <RevisitPin />
+              ) : (
+                <div className="text-3xl drop-shadow">📍</div>
+              )}
+            </AdvancedMarker>
+          ))}
+          {wishlistMarkers.map((w) => (
+            <AdvancedMarker
+              key={`wish-${w.id}`}
+              position={{ lat: w.latitude!, lng: w.longitude! }}
+              onClick={() => setSelectedId(`wish:${w.id}`)}
+              title={`${w.name} · 가고싶다 · 想去`}
+            >
+              <WishlistPin />
+            </AdvancedMarker>
+          ))}
+          {selectedPlace &&
+            selectedPlace.latitude != null &&
+            selectedPlace.longitude != null && (
+              <InfoWindow
+                position={{
+                  lat: selectedPlace.latitude,
+                  lng: selectedPlace.longitude,
+                }}
+                onCloseClick={() => setSelectedId(null)}
+              >
+                <Link
+                  to={`/places/${selectedPlace.id}`}
+                  className="block min-w-[140px]"
+                >
+                  <p className="font-semibold">{selectedPlace.name}</p>
+                  {selectedPlace.address && (
+                    <p className="text-xs text-gray-500">
+                      {selectedPlace.address}
+                    </p>
+                  )}
+                </Link>
+              </InfoWindow>
+            )}
+          {selectedWish &&
+            selectedWish.latitude != null &&
+            selectedWish.longitude != null && (
+              <InfoWindow
+                position={{
+                  lat: selectedWish.latitude,
+                  lng: selectedWish.longitude,
+                }}
+                onCloseClick={() => setSelectedId(null)}
+              >
+                <Link to="/?tab=wishlist" className="block min-w-[140px]">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <span className="text-amber-600 text-[10px] font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                      가고싶다
+                    </span>
+                    {selectedWish.name}
+                  </p>
+                  {selectedWish.address && (
+                    <p className="text-xs text-gray-500">
+                      {selectedWish.address}
+                    </p>
+                  )}
+                </Link>
+              </InfoWindow>
+            )}
+        </Map>
+      </APIProvider>
+    );
+  }, [
+    geocodeCandidates,
+    homeLocation,
+    initialCenter,
+    markers,
+    mapsLocale.language,
+    mapsLocale.region,
+    selectedPlace,
+    selectedWish,
+    userLoc,
+    wishlistMarkers,
+  ]);
 
   if (!KEY) {
     return (
@@ -553,139 +849,7 @@ export default function MapPage() {
       )}
 
       <div className="flex-1 min-h-0 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
-        {initialCenter ? (
-          <APIProvider apiKey={KEY}>
-            <GeocodeBackfill places={places ?? []} />
-            <Map
-              mapId={MAP_ID}
-              defaultCenter={initialCenter}
-              defaultZoom={14}
-              gestureHandling="greedy"
-              // Now that the legend + counter graduated out of the
-              // map canvas, Google's default top-right controls
-              // (mapType / camera-tilt / rotate) have empty corner
-              // space again — keep them ON so users can flip 2D/3D.
-              // Fullscreen + keyboard-shortcut links stay off because
-              // they're not useful here and the keyboard-shortcuts
-              // link in particular bloats the bottom chrome.
-              disableDefaultUI={false}
-              fullscreenControl={false}
-              keyboardShortcuts={false}
-            >
-              {userLoc !== "denied" && userLoc && (
-                <AdvancedMarker position={userLoc} title="현재 위치 · 当前位置">
-                  <div className="relative w-4 h-4">
-                    <div className="absolute inset-0 bg-sky-400 rounded-full opacity-60 animate-ping" />
-                    <div className="absolute inset-0 bg-sky-500 rounded-full border-2 border-white shadow-md" />
-                  </div>
-                </AdvancedMarker>
-              )}
-              {couple?.home_latitude != null &&
-                couple?.home_longitude != null && (
-                  <AdvancedMarker
-                    position={{
-                      lat: couple.home_latitude,
-                      lng: couple.home_longitude,
-                    }}
-                    title="우리집 · 我们家"
-                  >
-                    <HomePin />
-                  </AdvancedMarker>
-                )}
-              {markers.map((p) => (
-                <AdvancedMarker
-                  key={`place-${p.id}`}
-                  position={{ lat: p.latitude!, lng: p.longitude! }}
-                  onClick={() => setSelectedId(`place:${p.id}`)}
-                  title={
-                    p.is_home_cooked
-                      ? `${p.name} · 집밥 · 在家做`
-                      : p.want_to_revisit
-                        ? `${p.name} · 또 갈래 · 想再去`
-                        : p.name
-                  }
-                >
-                  {p.is_home_cooked ? (
-                    // Home-cooked entries get a small chef-hat marker so
-                    // they read as "we cooked this" instead of "we went here".
-                    <div className="text-2xl drop-shadow leading-none">
-                      🍳
-                    </div>
-                  ) : p.want_to_revisit ? (
-                    <RevisitPin />
-                  ) : (
-                    <div className="text-3xl drop-shadow">📍</div>
-                  )}
-                </AdvancedMarker>
-              ))}
-              {wishlistMarkers.map((w) => (
-                <AdvancedMarker
-                  key={`wish-${w.id}`}
-                  position={{ lat: w.latitude!, lng: w.longitude! }}
-                  onClick={() => setSelectedId(`wish:${w.id}`)}
-                  title={`${w.name} · 가고싶다 · 想去`}
-                >
-                  <WishlistPin />
-                </AdvancedMarker>
-              ))}
-              {selectedPlace &&
-                selectedPlace.latitude != null &&
-                selectedPlace.longitude != null && (
-                  <InfoWindow
-                    position={{
-                      lat: selectedPlace.latitude,
-                      lng: selectedPlace.longitude,
-                    }}
-                    onCloseClick={() => setSelectedId(null)}
-                  >
-                    <Link
-                      to={`/places/${selectedPlace.id}`}
-                      className="block min-w-[140px]"
-                    >
-                      <p className="font-semibold">{selectedPlace.name}</p>
-                      {selectedPlace.address && (
-                        <p className="text-xs text-gray-500">
-                          {selectedPlace.address}
-                        </p>
-                      )}
-                    </Link>
-                  </InfoWindow>
-                )}
-              {selectedWish &&
-                selectedWish.latitude != null &&
-                selectedWish.longitude != null && (
-                  <InfoWindow
-                    position={{
-                      lat: selectedWish.latitude,
-                      lng: selectedWish.longitude,
-                    }}
-                    onCloseClick={() => setSelectedId(null)}
-                  >
-                    <Link
-                      to="/?tab=wishlist"
-                      className="block min-w-[140px]"
-                    >
-                      <p className="font-semibold flex items-center gap-1.5">
-                        <span className="text-amber-600 text-[10px] font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                          가고싶다
-                        </span>
-                        {selectedWish.name}
-                      </p>
-                      {selectedWish.address && (
-                        <p className="text-xs text-gray-500">
-                          {selectedWish.address}
-                        </p>
-                      )}
-                    </Link>
-                  </InfoWindow>
-                )}
-            </Map>
-          </APIProvider>
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-ink-500">
-            로딩 중... · 加载中...
-          </div>
-        )}
+        {mapCanvas}
       </div>
     </div>
   );

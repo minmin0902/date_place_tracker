@@ -34,6 +34,12 @@ function hapticTap(ms = 8) {
   }
 }
 
+function nextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 // Combined pull-to-refresh + manual-button refresh state. Pass the
 // callback that does the actual data invalidation; the hook handles
 // the gesture recognizer, button busy flag, and prevents double-fire.
@@ -132,7 +138,8 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
       setPull((current) => {
         if (current >= PULL_THRESHOLD && !refreshingRef.current) {
           setRefreshing(true);
-          Promise.resolve(refreshAllRef.current())
+          nextPaint()
+            .then(() => refreshAllRef.current())
             .finally(() => {
               setRefreshing(false);
               setPull(0);
@@ -146,15 +153,19 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
         return 0;
       });
     }
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("touchend", onTouchEnd);
-    window.addEventListener("touchcancel", onTouchEnd);
+    // Capture phase matters on the map page: Google Maps consumes
+    // touch events inside its canvas before they bubble to window, so
+    // the pull/refresh feedback never got a chance to animate there.
+    const touchOpts = { passive: true, capture: true } as const;
+    window.addEventListener("touchstart", onTouchStart, touchOpts);
+    window.addEventListener("touchmove", onTouchMove, touchOpts);
+    window.addEventListener("touchend", onTouchEnd, true);
+    window.addEventListener("touchcancel", onTouchEnd, true);
     return () => {
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onTouchEnd);
-      window.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("touchstart", onTouchStart, touchOpts);
+      window.removeEventListener("touchmove", onTouchMove, touchOpts);
+      window.removeEventListener("touchend", onTouchEnd, true);
+      window.removeEventListener("touchcancel", onTouchEnd, true);
       if (rafId.current !== null) {
         cancelAnimationFrame(rafId.current);
         rafId.current = null;
@@ -169,6 +180,7 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
     setManualRefreshing(true);
     hapticTap(6);
     try {
+      await nextPaint();
       await refreshAll();
       setJustFinished(true);
       setTimeout(() => setJustFinished(false), 700);
