@@ -806,37 +806,31 @@ export default function MapPage() {
           <MapRefreshControls breakdown={breakdown} refreshAll={refreshAll} />
         }
       />
-      {/* Legend + counter graduated out of the map canvas — sit above
-          it as a single horizontal row that holds even on a 360px
-          mobile width. Counter is a single-line stat; the sub-info
-          ("좌표 채우는 중 N", "주소 없음 N") drops to its own row
-          underneath only when relevant, so the main row never wraps. */}
-      {/* Legend chip — owns the full row so 다녀온 / 또 갈래 / 우리집
-          all stay readable. The MAP counter moved up to the header
-          right slot so this row never has to share width. */}
+      {/* Legend chip — one line, no wrap, no overflow. Bilingual
+          labels stayed before but 4 chips × bilingual didn't fit on a
+          360px phone and the row wrapped to two lines. Single language
+          (Korean) keeps every chip readable AND fits even with all 4
+          chips visible. Icons still carry the meaning at a glance. */}
       <div className="px-5 mb-2 flex-shrink-0">
-        <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 bg-white rounded-xl px-2.5 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden">
-          <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
-            <span className="text-sm leading-none">📍</span>
-            다녀온 · 去过
+        <div className="flex w-full items-center justify-around gap-1 bg-white rounded-xl px-2 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
+            <span className="text-[11px] leading-none flex-shrink-0">📍</span>
+            <span className="truncate">다녀온</span>
           </span>
-          {/* Mini RevisitPin — same SVG shapes as the actual map
-              marker, just shrunk to fit the legend so the icon
-              matches what the user sees on the map 1:1. */}
-          <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+          <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
             <RevisitPinMini />
-            또 갈래 · 二刷
+            <span className="truncate">또 갈래</span>
           </span>
           {wishlistMarkers.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+            <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
               <WishlistPinMini />
-              가고싶은 · 想去
+              <span className="truncate">가고싶은</span>
             </span>
           )}
           {couple?.home_latitude != null && couple?.home_longitude != null && (
-            <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
+            <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
               <HomePinMini />
-              우리집 · 我家
+              <span className="truncate">우리집</span>
             </span>
           )}
         </div>
