@@ -1,9 +1,7 @@
 import {
   memo,
-  useEffect,
   useMemo,
   useRef,
-  useState,
   type ChangeEvent,
   type ClipboardEvent,
   type CompositionEvent,
@@ -15,7 +13,6 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  QUICK_REACTIONS,
   summarize,
   useReactions,
   useToggleReaction,
@@ -25,8 +22,9 @@ import type { ReactionTarget } from "@/lib/database.types";
 
 // Instagram-style reaction strip that lives directly under a memo /
 // caption. Shows existing reactions as pill bubbles ("❤️ 2") and a
-// trailing "+" button that pops the quick-react palette so adding a
-// new emoji is one extra tap. Tapping a bubble you've already used
+// trailing "+" button that focuses a hidden emoji-only input. On
+// mobile this brings up the OS keyboard; selecting an emoji there
+// applies it as a reaction. Tapping a bubble you've already used
 // removes your reaction.
 //
 // Two data paths:
@@ -59,33 +57,7 @@ function ReactionRowImpl({
   // HTTP for rows already covered by the bulk fetch.
   const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  // Anchor + palette refs. paletteAnchorRef is the wrapper around the
-  // "+" button; paletteRef is the popover itself. Used by the
-  // outside-tap effect to dismiss the picker when the user taps
-  // anywhere else (most users won't pointer-leave on touch).
-  const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
-  const paletteRef = useRef<HTMLDivElement | null>(null);
   const keyboardEmojiInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!paletteOpen) return;
-    function onDown(e: PointerEvent) {
-      const t = e.target as Node;
-      if (
-        paletteAnchorRef.current?.contains(t) ||
-        paletteRef.current?.contains(t)
-      ) {
-        return;
-      }
-      setPaletteOpen(false);
-    }
-    // pointerdown over click — fires before the next tap can register
-    // anything else (e.g. a thread memo button below). Capture phase
-    // so React's bubble-phase handlers on inner elements still run.
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [paletteOpen]);
 
   const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
   const summary = useMemo(() => summarize(rows, user?.id), [rows, user?.id]);
@@ -96,17 +68,11 @@ function ReactionRowImpl({
   const pillBase = isSm
     ? "px-1.5 py-0.5 text-[11px] gap-1"
     : "px-2 py-0.5 text-[12px] gap-1";
-  const quickButton = isSm ? "w-7 h-7 text-base" : "w-8 h-8 text-lg";
   const justify = align === "end" ? "justify-end" : "justify-start";
-
-  function closePalette() {
-    setPaletteOpen(false);
-  }
 
   function onTapEmoji(emoji: string, existingId: string | null) {
     if (!couple || !user) return;
     if (toggle.isPending) return;
-    closePalette();
     void toggle.mutateAsync({
       coupleId: couple.id,
       userId: user.id,
@@ -233,78 +199,37 @@ function ReactionRowImpl({
           </button>
         );
       })}
-      <div className="relative" ref={paletteAnchorRef}>
+      <div className="relative">
         <button
           type="button"
-          onClick={() => {
-            setPaletteOpen((v) => !v);
-          }}
+          onClick={openKeyboardEmojiInput}
           disabled={toggle.isPending}
           className={`inline-flex items-center rounded-full border border-cream-200 bg-white text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95 ${
             isSm ? "px-1.5 py-0.5" : "px-2 py-0.5"
           }`}
-          aria-label="add reaction"
-          aria-expanded={paletteOpen}
+          aria-label="keyboard emoji"
         >
           <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
         </button>
-        {paletteOpen && (
-          <div
-            ref={paletteRef}
-            className={`absolute z-30 mt-1 ${
-              align === "end" ? "right-0" : "left-0"
-            } rounded-full bg-white border border-cream-200 p-1 shadow-lg`}
-          >
-            <div className="flex items-center gap-0.5">
-              {QUICK_REACTIONS.map((emoji) => {
-                const cur = summary.find((s) => s.emoji === emoji);
-                const mineId = cur?.mineId ?? null;
-                const mine = !!mineId;
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => onTapEmoji(emoji, mineId)}
-                    className={`${quickButton} rounded-full flex items-center justify-center transition active:scale-90 ${
-                      mine ? "bg-peach-100" : "hover:bg-cream-50"
-                    }`}
-                    aria-label={emoji}
-                    aria-pressed={mine}
-                  >
-                    <span className="leading-none">{emoji}</span>
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={openKeyboardEmojiInput}
-                className={`${quickButton} rounded-full flex items-center justify-center text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-90`}
-                aria-label="keyboard emoji"
-              >
-                <Plus className={isSm ? "w-4 h-4" : "w-5 h-5"} />
-              </button>
-            </div>
-            <input
-              ref={keyboardEmojiInputRef}
-              onBeforeInput={onKeyboardEmojiBeforeInput}
-              onChange={onKeyboardEmojiInput}
-              onCompositionEnd={onKeyboardEmojiCompositionEnd}
-              onPaste={onKeyboardEmojiPaste}
-              onDrop={onKeyboardEmojiDrop}
-              onKeyDown={onKeyboardEmojiKeyDown}
-              inputMode="text"
-              maxLength={16}
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              aria-label="emoji reaction input"
-              className="fixed bottom-0 left-0 h-px w-px opacity-0"
-              style={{ fontSize: 16 }}
-              tabIndex={-1}
-            />
-          </div>
-        )}
+        <input
+          ref={keyboardEmojiInputRef}
+          onBeforeInput={onKeyboardEmojiBeforeInput}
+          onChange={onKeyboardEmojiInput}
+          onCompositionEnd={onKeyboardEmojiCompositionEnd}
+          onPaste={onKeyboardEmojiPaste}
+          onDrop={onKeyboardEmojiDrop}
+          onKeyDown={onKeyboardEmojiKeyDown}
+          inputMode="text"
+          maxLength={16}
+          autoCapitalize="none"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-label="emoji reaction input"
+          className="fixed bottom-0 left-0 h-px w-px opacity-0"
+          style={{ fontSize: 16 }}
+          tabIndex={-1}
+        />
       </div>
     </div>
   );
