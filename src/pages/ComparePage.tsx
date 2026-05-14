@@ -1,4 +1,6 @@
 import {
+  memo,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -15,6 +17,7 @@ import {
 } from "@/lib/constants";
 import {
   ChefHat,
+  Check,
   ChevronDown,
   Dice5,
   Dna,
@@ -28,6 +31,7 @@ import {
   Wine,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
@@ -38,7 +42,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { ExpandableList } from "@/components/ExpandableList";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
-import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { RouletteModal } from "@/pages/HomePage";
 
@@ -332,8 +335,57 @@ const FAME = 4.5;
 const LOW = 2; // both ≤ 2    → 여긴 패스
 const WAR = 2; // diff ≥ 2    → 입맛 격돌
 
+const CompareRefreshControls = memo(function CompareRefreshControls({
+  refreshAll,
+}: {
+  refreshAll: () => Promise<unknown>;
+}) {
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
+
+  return (
+    <>
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
+      <button
+        type="button"
+        onClick={() => void onManualRefresh()}
+        disabled={manualRefreshing || refreshing}
+        className={`p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
+          justFinished
+            ? "bg-sage-100/70 border-sage-200 text-sage-400"
+            : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
+        }`}
+        aria-label="refresh"
+        title="새로고침 · 刷新"
+      >
+        {justFinished ? (
+          <Check className="w-5 h-5 animate-fade" />
+        ) : (
+          <RefreshCw
+            className={`w-5 h-5 ${
+              manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""
+            }`}
+          />
+        )}
+      </button>
+    </>
+  );
+});
+
 export default function ComparePage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
@@ -355,15 +407,14 @@ export default function ComparePage() {
   // tile falls back to a colored initial bubble).
   const myAvatarUrl = meProfileQuery.data?.avatar_url ?? null;
   const partnerAvatarUrl = partnerProfileQuery.data?.avatar_url ?? null;
-  const refreshAll = useGlobalRefresh();
-  const {
-    pull,
-    refreshing,
-    manualRefreshing,
-    released,
-    justFinished,
-    onManualRefresh,
-  } = useRefreshControls(refreshAll);
+  const refreshAll = useCallback(() => {
+    const opts = { refetchType: "active" as const };
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: ["places"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["profile"], ...opts }),
+    ]);
+  }, [qc]);
   const [, startTransition] = useTransition();
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
@@ -689,29 +740,10 @@ export default function ComparePage() {
 
   return (
     <div>
-      <PullIndicator
-        pull={pull}
-        refreshing={refreshing}
-        released={released}
-        justFinished={justFinished}
-      />
       <PageHeader
         title="우리의 취향 지도 · 我们的口味地图"
         subtitle="서로의 입맛을 한눈에 · 一秒看懂咱俩的口味"
-        right={
-          <button
-            type="button"
-            onClick={() => void onManualRefresh()}
-            disabled={manualRefreshing || refreshing}
-            className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
-            aria-label="refresh"
-            title="새로고침 · 刷新"
-          >
-            <RefreshCw
-              className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
-            />
-          </button>
-        }
+        right={<CompareRefreshControls refreshAll={refreshAll} />}
       />
 
       <div className="px-5 pt-2">

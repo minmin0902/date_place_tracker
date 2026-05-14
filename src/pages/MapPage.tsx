@@ -1,5 +1,5 @@
 /// <reference types="google.maps" />
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   APIProvider,
@@ -9,14 +9,13 @@ import {
   useApiIsLoaded,
 } from "@vis.gl/react-google-maps";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
-import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { supabase } from "@/lib/supabase";
 
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
@@ -24,6 +23,12 @@ const MAP_ID = "date-place-map";
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // Seoul fallback
 
 type LatLng = { lat: number; lng: number };
+type MapBreakdown = {
+  total: number;
+  onMap: number;
+  backfillable: number;
+  noAddress: number;
+};
 
 // House-shaped pin for the couple's home address. Stands out from the
 // food markers via a different gradient + roof silhouette so users can
@@ -308,17 +313,13 @@ function GeocodeBackfill({ places }: { places: PlaceWithFoods[] }) {
   return null;
 }
 
-export default function MapPage() {
-  const { data: couple } = useCouple();
-  const { data: places } = usePlaces(couple?.id);
-  const { data: wishlist } = useWishlist(couple?.id);
-  // selectedId can identify either a place ("place:<id>") or a
-  // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
-  // to look up. Plain id was unambiguous when only places existed.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Same shared refresh callback HomePage uses — keeps "what counts
-  // as a refresh" consistent across every tab.
-  const refreshAll = useGlobalRefresh();
+const MapRefreshControls = memo(function MapRefreshControls({
+  breakdown,
+  refreshAll,
+}: {
+  breakdown: MapBreakdown;
+  refreshAll: () => Promise<unknown>;
+}) {
   const {
     pull,
     refreshing,
@@ -327,6 +328,76 @@ export default function MapPage() {
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
+
+  return (
+    <>
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
+      <div className="flex items-center gap-1.5">
+        {/* MAP N/N counter rides up here (instead of below the
+            legend) so the legend row owns its full width and can
+            fit 다녀온/또 갈래/우리집 without truncating on a
+            360px phone. */}
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 border text-[10px] font-bold flex-shrink-0 ${
+            breakdown.onMap === breakdown.total && breakdown.total > 0
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-amber-50 border-amber-200 text-amber-700"
+          }`}
+        >
+          <span className="tracking-wider">MAP</span>
+          <span className="font-number">
+            {breakdown.onMap}/{breakdown.total}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void onManualRefresh()}
+          disabled={manualRefreshing || refreshing}
+          className={`p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
+            justFinished
+              ? "bg-sage-100/70 border-sage-200 text-sage-400"
+              : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
+          }`}
+          aria-label="refresh"
+          title="새로고침 · 刷新"
+        >
+          {justFinished ? (
+            <Check className="w-5 h-5 animate-fade" />
+          ) : (
+            <RefreshCw
+              className={`w-5 h-5 ${
+                manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""
+              }`}
+            />
+          )}
+        </button>
+      </div>
+    </>
+  );
+});
+
+export default function MapPage() {
+  const { data: couple } = useCouple();
+  const qc = useQueryClient();
+  const { data: places } = usePlaces(couple?.id);
+  const { data: wishlist } = useWishlist(couple?.id);
+  // selectedId can identify either a place ("place:<id>") or a
+  // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
+  // to look up. Plain id was unambiguous when only places existed.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const refreshAll = useCallback(() => {
+    const opts = { refetchType: "active" as const };
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: ["places"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["couple"], ...opts }),
+    ]);
+  }, [qc]);
 
   // Breakdown for the debug panel: how many places are on the map vs
   // how many are stuck without coordinates and why.
@@ -424,45 +495,10 @@ export default function MapPage() {
 
   return (
     <div className="h-[calc(100dvh-5rem)] flex flex-col">
-      <PullIndicator
-        pull={pull}
-        refreshing={refreshing}
-        released={released}
-        justFinished={justFinished}
-      />
       <PageHeader
         title="우리의 맛집 지도 · 咱俩的美食宝藏图"
         right={
-          <div className="flex items-center gap-1.5">
-            {/* MAP N/N counter rides up here (instead of below the
-                legend) so the legend row owns its full width and can
-                fit 다녀온/또 갈래/우리집 without truncating on a
-                360px phone. */}
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 border text-[10px] font-bold flex-shrink-0 ${
-                breakdown.onMap === breakdown.total && breakdown.total > 0
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                  : "bg-amber-50 border-amber-200 text-amber-700"
-              }`}
-            >
-              <span className="tracking-wider">MAP</span>
-              <span className="font-number">
-                {breakdown.onMap}/{breakdown.total}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => void onManualRefresh()}
-              disabled={manualRefreshing || refreshing}
-              className="p-3 bg-cream-100/70 rounded-full text-ink-700 hover:bg-cream-200 transition border border-cream-200/50 disabled:opacity-60 disabled:cursor-not-allowed"
-              aria-label="refresh"
-              title="새로고침 · 刷新"
-            >
-              <RefreshCw
-                className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
-              />
-            </button>
-          </div>
+          <MapRefreshControls breakdown={breakdown} refreshAll={refreshAll} />
         }
       />
       {/* Legend + counter graduated out of the map canvas — sit above
