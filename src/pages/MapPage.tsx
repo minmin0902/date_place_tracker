@@ -49,6 +49,7 @@ type WishlistMapMarker = Pick<
   "id" | "name" | "address" | "latitude" | "longitude"
 >;
 type HomeLocation = LatLng | null;
+type MapType = "roadmap" | "satellite";
 
 function useStableBySignature<T>(value: T, signature: string): T {
   const ref = useRef<{ signature: string; value: T }>({ signature, value });
@@ -439,7 +440,7 @@ const MapRefreshControls = memo(function MapRefreshControls({
           type="button"
           onClick={() => void onManualRefresh()}
           disabled={manualRefreshing || refreshing}
-          className={`p-2.5 sm:p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
+          className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
             justFinished
               ? "bg-sage-100/70 border-sage-200 text-sage-400"
               : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
@@ -472,6 +473,7 @@ export default function MapPage() {
   // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
   // to look up. Plain id was unambiguous when only places existed.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapType, setMapType] = useState<MapType>("roadmap");
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
   const refreshLocation = useCallback(
@@ -505,9 +507,8 @@ export default function MapPage() {
       qc.invalidateQueries({ queryKey: ["places"], ...opts }),
       qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
       qc.invalidateQueries({ queryKey: ["couple"], ...opts }),
-      refreshLocation(),
     ]);
-  }, [qc, refreshLocation]);
+  }, [qc]);
 
   // Breakdown for the debug panel: how many places are on the map vs
   // how many are stuck without coordinates and why.
@@ -661,6 +662,8 @@ export default function MapPage() {
           // link in particular bloats the bottom chrome.
           disableDefaultUI={false}
           controlSize={24}
+          mapTypeControl={false}
+          mapTypeId={mapType}
           fullscreenControl={false}
           keyboardShortcuts={false}
         >
@@ -769,6 +772,7 @@ export default function MapPage() {
     markers,
     mapsLocale.language,
     mapsLocale.region,
+    mapType,
     selectedPlace,
     selectedWish,
     userLoc,
@@ -848,7 +852,34 @@ export default function MapPage() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
+      <div
+        className="flex-1 min-h-0 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative"
+        data-no-pull-refresh
+      >
+        <div className="absolute top-3 left-3 z-10 inline-flex overflow-hidden rounded-xl bg-white border border-cream-200 shadow-soft">
+          <button
+            type="button"
+            onClick={() => setMapType("roadmap")}
+            className={`px-3 py-2 text-[12px] font-bold transition ${
+              mapType === "roadmap"
+                ? "bg-white text-ink-900"
+                : "bg-cream-50 text-ink-500"
+            }`}
+          >
+            지도
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapType("satellite")}
+            className={`px-3 py-2 text-[12px] font-bold transition border-l border-cream-200 ${
+              mapType === "satellite"
+                ? "bg-white text-ink-900"
+                : "bg-cream-50 text-ink-500"
+            }`}
+          >
+            위성
+          </button>
+        </div>
         {mapCanvas}
       </div>
     </div>

@@ -85,7 +85,12 @@ export function useRefreshControls(refreshAll: () => Promise<unknown>) {
 
   useEffect(() => {
     function onTouchStart(e: TouchEvent) {
-      if (window.scrollY > 0 || e.touches.length !== 1) {
+      const target = e.target as Element | null;
+      if (
+        window.scrollY > 0 ||
+        e.touches.length !== 1 ||
+        target?.closest("[data-no-pull-refresh]")
+      ) {
         startY.current = null;
         tracking.current = false;
         return;
