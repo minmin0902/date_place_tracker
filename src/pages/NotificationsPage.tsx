@@ -380,7 +380,7 @@ function displayRowKey(row: DisplayRow) {
 function estimateDisplayRowSize(row: DisplayRow | undefined) {
   if (!row) return 92;
   if (row.kind === "date-header") return 28;
-  if (row.kind === "reaction-bundle") return 76;
+  if (row.kind === "reaction-bundle") return 96;
   if (row.kind === "single") {
     return row.item.kind === "memo_reply" ? 104 : 88;
   }
@@ -1021,6 +1021,10 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
   const actorLead =
     actorCount > 1 ? `${name} 외 ${actorCount - 1}명` : name;
   const emojiText = bundle.emojis.length ? bundle.emojis.join(" ") : "이모지";
+  const reactedText =
+    (bundle.memoId ? rowCtx.memoTextOf(bundle.memoId) : null) ??
+    (bundle.foodId ? rowCtx.foodMemoOf(bundle.foodId) : null) ??
+    (effectivePlaceId ? rowCtx.placeMemoOf(effectivePlaceId) : null);
   const initial = Array.from(name)[0] ?? "·";
 
   function onTap() {
@@ -1033,7 +1037,7 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
       <button
         type="button"
         onClick={onTap}
-        className={`relative w-full text-left flex items-center gap-2.5 p-2.5 rounded-2xl border active:scale-[0.99] transition-colors ${
+        className={`relative w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl border active:scale-[0.99] transition-colors ${
           isUnread
             ? "bg-white border-rose-200/70 shadow-card"
             : "bg-white border-cream-200 hover:bg-cream-50"
@@ -1074,6 +1078,11 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
               · {bundle.items.length}개 · {stamp}
             </span>
           </p>
+          {reactedText && (
+            <p className="text-[11px] leading-snug text-ink-500 mt-0.5 line-clamp-1 break-keep">
+              ↪ {quoteText(reactedText, 52)}
+            </p>
+          )}
         </div>
         <NotificationThumb src={thumbSrc} label={targetName} />
       </button>
@@ -1150,15 +1159,24 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
           : bundle.ratings.length > 0
             ? "rating"
             : "revisit";
+  // Bundle 안에 종류가 하나뿐이면 그 kind 의 specific verb 노출
+  // (별점만 모인 카드는 "별점 · 打分", 메뉴만이면 "메뉴 추가 · 添加菜品"
+  // 등). 여러 종류가 섞이면 catch-all "새 기록 · 新记录". placeEvent
+  // 가 있는 카드는 항상 "새 장소" 로 잡힘.
+  // 리액션은 ReactionBundle 로 따로 빠져있으므로 여기서 안 셈.
+  const kindCount =
+    (bundle.foods.length > 0 ? 1 : 0) +
+    (bundle.memos.length + bundle.replies.length > 0 ? 1 : 0) +
+    (bundle.ratings.length > 0 ? 1 : 0) +
+    (bundle.revisit ? 1 : 0);
   const headerVerb = bundle.placeEvent
-    ? {
-        label: "새 장소 · 新地点",
-        color: "text-emerald-600",
-      }
-    : {
-        label: "새 기록 · 新记录",
-        color: "text-ink-700",
-      };
+    ? { label: "새 장소 · 新地点", color: "text-emerald-600" }
+    : kindCount === 1
+      ? (() => {
+          const spec = kindSpec(primaryKind);
+          return { label: spec.verb, color: spec.textColor };
+        })()
+      : { label: "새 기록 · 新记录", color: "text-ink-700" };
 
   // Build the body — one sub-row per non-empty kind. Order matches
   // the rough sequence of a recording session, but comments/replies
@@ -1256,13 +1274,20 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
             aria-hidden
           />
         )}
-        <button
-          type="button"
-          onClick={onHeaderTap}
-          className="w-full text-left flex items-start gap-2.5 p-2.5 pr-6 rounded-2xl active:scale-[0.99] transition-colors hover:bg-cream-50/40"
-        >
-          <div className="relative flex-shrink-0">
-            <div
+        {/* 헤더 button 이 avatar + verb 전체 폭을 덮을 때, avatar 가
+            36px 인데 verb 한 줄은 ~16px 라 avatar 아래쪽에 dead space
+            ~20px 가 남고 sub-row 가 그 아래에 떨어져서 시각적으로
+            "verb 와 sub-row 사이에 큰 빈공간" 으로 보였음. 구조를
+            바꿔서 avatar 를 왼쪽 컬럼으로 두고 verb + sub-row + stamp
+            를 오른쪽 컬럼 안에 sibling 으로 흐르게 함. dead space 사라짐. */}
+        <div className="flex items-start gap-2.5 p-2.5 pr-6">
+          <button
+            type="button"
+            onClick={onHeaderTap}
+            className="relative flex-shrink-0 rounded-full active:scale-95 transition-transform"
+            aria-label="open place"
+          >
+            <span
               className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-black text-[13px] border border-cream-200 ${avatarUrl ? "" : toneCls}`}
             >
               {avatarUrl ? (
@@ -1274,69 +1299,69 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
               ) : (
                 <span>{initial}</span>
               )}
-            </div>
+            </span>
             <KindBadge kind={primaryKind} />
-          </div>
+          </button>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] leading-snug">
-              <span className="font-bold text-ink-900">{name}</span>
-              <span className="text-ink-400 mx-1">·</span>
-              <span className={`font-bold ${headerVerb.color}`}>
-                {headerVerb.label}
-              </span>
-            </p>
-            {/* 새 장소 추가 bundle 에 한해서만 place 이름을 한 줄로 추가.
-                나머지 (메뉴/메모/리액션 등) 는 이전에 사용자가 복잡해서
-                숨긴 거라 그대로 유지. */}
-            {bundle.placeEvent && placeName && (
-              <p className="text-[12px] text-ink-800 font-bold mt-0.5 line-clamp-1 break-keep">
-                {placeName}
+            <button
+              type="button"
+              onClick={onHeaderTap}
+              className="w-full text-left rounded-md -mx-1 px-1 py-0.5 active:scale-[0.99] transition-colors hover:bg-cream-50/40"
+            >
+              <p className="text-[12px] leading-snug">
+                <span className="font-bold text-ink-900">{name}</span>
+                <span className="text-ink-400 mx-1">·</span>
+                <span className={`font-bold ${headerVerb.color}`}>
+                  {headerVerb.label}
+                </span>
               </p>
+              {/* 새 장소 추가 bundle 만 place 이름 노출. 나머지 종류는
+                  이전에 너무 복잡해서 숨긴 거라 그대로 유지. */}
+              {bundle.placeEvent && placeName && (
+                <p className="text-[12px] text-ink-800 font-bold mt-0.5 line-clamp-1 break-keep">
+                  {placeName}
+                </p>
+              )}
+            </button>
+
+            {subRows.length > 0 && (
+              <ul className="mt-1 space-y-0.5 border-l-2 border-cream-200 pl-2">
+                {subRows.map((s) => {
+                  const Icon = s.Icon;
+                  return (
+                    <li key={s.key}>
+                      <button
+                        type="button"
+                        onClick={s.onTap}
+                        className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition-colors hover:bg-cream-100/60"
+                      >
+                        <Icon
+                          className={`w-3 h-3 mt-0.5 flex-shrink-0 ${s.color}`}
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className={`font-bold ${s.color}`}>
+                            {s.label}
+                          </span>
+                          {s.preview && (
+                            <>
+                              <span className="text-ink-400"> · </span>
+                              <span className="text-ink-700">{s.preview}</span>
+                            </>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
+
+            <p className="text-[10px] text-ink-400 font-medium font-number mt-1">
+              {stamp}
+            </p>
           </div>
           <NotificationThumb src={thumbSrc} label={placeName} />
-        </button>
-
-        {/* Each sub-row is its own click target — same layout as the
-            old presentational list, just wrapped in a button so taps
-            navigate to the anchor for that specific stream. The
-            connector line sits to the left so the indent reads as
-            "under the header" visually. */}
-        {subRows.length > 0 && (
-          <ul className="mx-2.5 mb-2.5 ml-[3.25rem] space-y-0.5 border-l-2 border-cream-200 pl-2 -mt-0.5">
-            {subRows.map((s) => {
-              const Icon = s.Icon;
-              return (
-                <div key={s.key}>
-                  <button
-                    type="button"
-                    onClick={s.onTap}
-                    className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition-colors hover:bg-cream-100/60"
-                  >
-                    <Icon
-                      className={`w-3 h-3 mt-0.5 flex-shrink-0 ${s.color}`}
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className={`font-bold ${s.color}`}>
-                        {s.label}
-                      </span>
-                      {s.preview && (
-                        <>
-                          <span className="text-ink-400"> · </span>
-                          <span className="text-ink-700">{s.preview}</span>
-                        </>
-                      )}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </ul>
-        )}
-
-        <p className="text-[10px] text-ink-400 font-medium font-number px-2.5 pb-2 ml-[3.25rem] -mt-1">
-          {stamp}
-        </p>
+        </div>
 
         {isUnread && (
           <span
