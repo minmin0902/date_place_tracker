@@ -747,7 +747,7 @@ export default function ComparePage() {
       />
 
       <div className="px-5 pt-2">
-        <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
+        <div className="grid grid-cols-3 gap-1 bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
           <DiningSegment
             active={diningFilter === "all"}
             onClick={() => startTransition(() => setDiningFilter("all"))}
@@ -2419,7 +2419,7 @@ function DiningSegment({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all min-w-0 truncate ${
+      className={`w-full min-w-0 px-1.5 py-2 text-[11px] sm:text-[12px] font-bold rounded-lg transition-all truncate ${
         active
           ? `bg-white shadow-sm border ${activeText} ${activeBorder}`
           : "text-ink-500 hover:text-ink-700"

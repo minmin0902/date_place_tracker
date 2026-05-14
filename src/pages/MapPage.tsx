@@ -337,13 +337,13 @@ const MapRefreshControls = memo(function MapRefreshControls({
         released={released}
         justFinished={justFinished}
       />
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5 flex-shrink-0">
         {/* MAP N/N counter rides up here (instead of below the
             legend) so the legend row owns its full width and can
             fit 다녀온/또 갈래/우리집 without truncating on a
             360px phone. */}
         <span
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 border text-[10px] font-bold flex-shrink-0 ${
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-1.5 border text-[10px] font-bold flex-shrink-0 ${
             breakdown.onMap === breakdown.total && breakdown.total > 0
               ? "bg-emerald-50 border-emerald-200 text-emerald-700"
               : "bg-amber-50 border-amber-200 text-amber-700"
@@ -358,7 +358,7 @@ const MapRefreshControls = memo(function MapRefreshControls({
           type="button"
           onClick={() => void onManualRefresh()}
           disabled={manualRefreshing || refreshing}
-          className={`p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
+          className={`p-2.5 sm:p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
             justFinished
               ? "bg-sage-100/70 border-sage-200 text-sage-400"
               : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
@@ -494,7 +494,12 @@ export default function MapPage() {
   }
 
   return (
-    <div className="h-[calc(100dvh-5rem)] flex flex-col">
+    <div
+      className="flex flex-col min-h-0 overflow-hidden"
+      style={{
+        height: "calc(100dvh - env(safe-area-inset-bottom, 0px) - 5.5rem)",
+      }}
+    >
       <PageHeader
         title="우리의 맛집 지도 · 咱俩的美食宝藏图"
         right={
@@ -509,11 +514,11 @@ export default function MapPage() {
       {/* Legend chip — owns the full row so 다녀온 / 또 갈래 / 우리집
           all stay readable. The MAP counter moved up to the header
           right slot so this row never has to share width. */}
-      <div className="px-5 mb-2">
-        <div className="inline-flex items-center gap-3 bg-white rounded-xl px-3 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 max-w-full overflow-x-auto hide-scrollbar">
+      <div className="px-5 mb-2 flex-shrink-0">
+        <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 bg-white rounded-xl px-2.5 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden">
           <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
             <span className="text-sm leading-none">📍</span>
-            다녀온 곳 · 去过
+            다녀온 · 去过
           </span>
           {/* Mini RevisitPin — same SVG shapes as the actual map
               marker, just shrunk to fit the legend so the icon
@@ -531,13 +536,13 @@ export default function MapPage() {
           {couple?.home_latitude != null && couple?.home_longitude != null && (
             <span className="inline-flex items-center gap-1.5 break-keep flex-shrink-0">
               <HomePinMini />
-              우리집 · 我们家
+              우리집 · 我家
             </span>
           )}
         </div>
       </div>
       {(breakdown.backfillable > 0 || breakdown.noAddress > 0) && (
-        <div className="px-5 mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-bold text-amber-700 break-keep">
+        <div className="px-5 mb-2 flex flex-wrap flex-shrink-0 gap-x-3 gap-y-0.5 text-[10px] font-bold text-amber-700 break-keep">
           {breakdown.backfillable > 0 && (
             <span>좌표 채우는 중 · {breakdown.backfillable}곳</span>
           )}
@@ -547,7 +552,7 @@ export default function MapPage() {
         </div>
       )}
 
-      <div className="flex-1 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
+      <div className="flex-1 min-h-0 mx-5 mb-4 rounded-2xl overflow-hidden card !p-0 relative">
         {initialCenter ? (
           <APIProvider apiKey={KEY}>
             <GeocodeBackfill places={places ?? []} />
