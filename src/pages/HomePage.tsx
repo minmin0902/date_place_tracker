@@ -3,7 +3,6 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,10 +61,8 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SmoothLink } from "@/components/SmoothLink";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import {
-  FORCE_SCROLL_SAVE_EVENT,
-  type ForceScrollSaveDetail,
+  consumeHomeNavReselect,
   HOME_NAV_RESELECT_EVENT,
-  HOME_RETURN_ANCHOR_KEY,
 } from "@/lib/navEvents";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 
@@ -179,69 +176,6 @@ function saveFilters(filters: StoredFilters) {
   } catch {
     // sessionStorage can throw if quota is exceeded or in private mode
     // — silently swallow. Filter persistence is a nice-to-have.
-  }
-}
-
-type HomeReturnAnchor = {
-  targetId: string;
-  top: number;
-  at: number;
-};
-
-function readHomeReturnAnchor(): HomeReturnAnchor | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(HOME_RETURN_ANCHOR_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<HomeReturnAnchor>;
-    if (!parsed.targetId || typeof parsed.top !== "number") return null;
-    return {
-      targetId: parsed.targetId,
-      top: parsed.top,
-      at: typeof parsed.at === "number" ? parsed.at : 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function clearHomeReturnAnchor() {
-  try {
-    window.sessionStorage.removeItem(HOME_RETURN_ANCHOR_KEY);
-  } catch {
-    // Non-critical. A stale anchor expires on read/restore.
-  }
-}
-
-function selectorForHomeReturnAnchor(targetId: string) {
-  const escaped =
-    typeof CSS !== "undefined" && typeof CSS.escape === "function"
-      ? CSS.escape(targetId)
-      : targetId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `[data-home-return-id="${escaped}"]`;
-}
-
-function rememberHomeReturnAnchor(el: HTMLElement, targetId: string) {
-  if (typeof window === "undefined") return;
-  const rect = el.getBoundingClientRect();
-  const routeKey = `${window.location.pathname}${window.location.search}`;
-  const y = window.scrollY || window.pageYOffset || 0;
-  try {
-    window.sessionStorage.setItem(
-      HOME_RETURN_ANCHOR_KEY,
-      JSON.stringify({
-        targetId,
-        top: Math.max(0, Math.round(rect.top)),
-        at: Date.now(),
-      } satisfies HomeReturnAnchor)
-    );
-    window.dispatchEvent(
-      new CustomEvent<ForceScrollSaveDetail>(FORCE_SCROLL_SAVE_EVENT, {
-        detail: { key: routeKey, y },
-      })
-    );
-  } catch {
-    // Exact return is nice-to-have; normal route scroll restore still works.
   }
 }
 
@@ -397,6 +331,9 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
     };
     const onHomeReselect = () => scrollTopAndRefresh();
     window.addEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
+    if (consumeHomeNavReselect()) {
+      requestAnimationFrame(scrollTopAndRefresh);
+    }
     return () => {
       window.removeEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
     };
@@ -960,80 +897,6 @@ export default function HomePage() {
     filteredMenus,
     progressiveMenuKey
   );
-
-  useLayoutEffect(() => {
-    if (tab !== "timeline") return;
-    const anchor = readHomeReturnAnchor();
-    if (!anchor) return;
-    if (Date.now() - anchor.at > 10 * 60_000) {
-      clearHomeReturnAnchor();
-      return;
-    }
-
-    const targetStillExists = anchor.targetId.startsWith("menu:")
-      ? filteredMenus.some((m) => `menu:${m.food.id}` === anchor.targetId)
-      : filteredPlaces.some((p) => `place:${p.id}` === anchor.targetId);
-    if (!targetStillExists) {
-      if ((places ?? []).length === 0) return;
-      clearHomeReturnAnchor();
-      return;
-    }
-
-    let cancelled = false;
-    let raf = 0;
-    const stopAt = Date.now() + 1800;
-    const selector = selectorForHomeReturnAnchor(anchor.targetId);
-    const targetTop = Math.max(0, Math.min(anchor.top, window.innerHeight - 96));
-    const bail = () => {
-      cancelled = true;
-      clearHomeReturnAnchor();
-      if (raf) window.cancelAnimationFrame(raf);
-    };
-    const align = () => {
-      if (cancelled) return;
-      const el = document.querySelector<HTMLElement>(selector);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        const nextY = Math.max(0, window.scrollY + rect.top - targetTop);
-        if (Math.abs(nextY - window.scrollY) > 1) {
-          window.scrollTo(0, nextY);
-        }
-        const settled = Math.abs(el.getBoundingClientRect().top - targetTop) <= 2;
-        if (settled || Date.now() > stopAt) {
-          clearHomeReturnAnchor();
-          return;
-        }
-      } else if (Date.now() > stopAt) {
-        clearHomeReturnAnchor();
-        return;
-      }
-      raf = window.requestAnimationFrame(align);
-    };
-
-    window.addEventListener("wheel", bail, { passive: true, once: true });
-    window.addEventListener("touchstart", bail, {
-      passive: true,
-      once: true,
-    });
-    window.addEventListener("keydown", bail, { once: true });
-    raf = window.requestAnimationFrame(() => {
-      raf = window.requestAnimationFrame(align);
-    });
-    return () => {
-      cancelled = true;
-      if (raf) window.cancelAnimationFrame(raf);
-      window.removeEventListener("wheel", bail);
-      window.removeEventListener("touchstart", bail);
-      window.removeEventListener("keydown", bail);
-    };
-  }, [
-    filteredMenus,
-    filteredPlaces,
-    places,
-    progressiveMenus.visibleItems.length,
-    progressivePlaces.visibleItems.length,
-    tab,
-  ]);
 
   const stats = useMemo(() => {
     if (!places || places.length === 0) {
@@ -2037,10 +1900,6 @@ function TimelineItemImpl({
       <SmoothLink
         to={`/places/${place.id}`}
         preloadImages={previewImagesForPlace(place)}
-        data-home-return-id={`place:${place.id}`}
-        onClick={(event) =>
-          rememberHomeReturnAnchor(event.currentTarget, `place:${place.id}`)
-        }
         className={`block rounded-2xl p-4 ml-2 border shadow-soft active:scale-[0.98] transition ${theme.card} ${theme.cardBorder}`}
       >
         <div className="flex gap-4">
@@ -2240,10 +2099,6 @@ function MenuRowImpl({
     <SmoothLink
       to={`/places/${place.id}`}
       preloadImages={previewImagesForPlace(place)}
-      data-home-return-id={`menu:${food.id}`}
-      onClick={(event) =>
-        rememberHomeReturnAnchor(event.currentTarget, `menu:${food.id}`)
-      }
       className={`render-smooth-card flex gap-3 items-center rounded-2xl p-3 border shadow-soft active:scale-[0.99] transition ${theme.card} ${theme.cardBorder}`}
     >
       <div
@@ -2375,10 +2230,6 @@ function TimelineGridItemImpl({
     <SmoothLink
       to={`/places/${place.id}`}
       preloadImages={previewImagesForPlace(place)}
-      data-home-return-id={`place:${place.id}`}
-      onClick={(event) =>
-        rememberHomeReturnAnchor(event.currentTarget, `place:${place.id}`)
-      }
       className="render-smooth-card block rounded-2xl overflow-hidden bg-white border border-cream-200/70 shadow-soft active:scale-[0.97] transition"
     >
       {/* Square photo well (Instagram-style hero). Photo fills the

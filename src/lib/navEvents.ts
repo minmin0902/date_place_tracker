@@ -1,11 +1,27 @@
 export const HOME_NAV_RESELECT_EVENT = "ourtable:home-nav-reselect";
-export const HOME_RETURN_ANCHOR_KEY = "home:return-anchor:v1";
-export const FORCE_SCROLL_SAVE_EVENT = "ourtable:force-scroll-save";
+const HOME_NAV_RESELECT_KEY = "ourtable:home-nav-reselect:v1";
 
-export type ForceScrollSaveDetail = {
-  key: string;
-  y: number;
-};
+export function queueHomeNavReselect() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(HOME_NAV_RESELECT_KEY, String(Date.now()));
+  } catch {
+    // Non-critical. The live event still handles the already-mounted
+    // home page; this only bridges a tap from another route.
+  }
+}
+
+export function consumeHomeNavReselect() {
+  if (typeof window === "undefined") return false;
+  try {
+    const queued = window.sessionStorage.getItem(HOME_NAV_RESELECT_KEY);
+    if (!queued) return false;
+    window.sessionStorage.removeItem(HOME_NAV_RESELECT_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function notifyHomeNavReselect() {
   if (typeof window === "undefined") return;
