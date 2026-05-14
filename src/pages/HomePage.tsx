@@ -269,6 +269,57 @@ function viewerOnlyEater(
   return viewerIsCreator ? "partner" : "me";
 }
 
+const HomeRefreshControls = memo(function HomeRefreshControls({
+  refreshAll,
+}: {
+  refreshAll: () => Promise<unknown>;
+}) {
+  const {
+    pull,
+    refreshing,
+    manualRefreshing,
+    released,
+    justFinished,
+    onManualRefresh,
+  } = useRefreshControls(refreshAll);
+
+  return (
+    <>
+      <PullIndicator
+        pull={pull}
+        refreshing={refreshing}
+        released={released}
+        justFinished={justFinished}
+      />
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <NotificationBell />
+        <button
+          type="button"
+          onClick={() => void onManualRefresh()}
+          disabled={manualRefreshing || refreshing}
+          className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
+            justFinished
+              ? "bg-sage-100/70 border-sage-200 text-sage-400"
+              : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
+          }`}
+          aria-label="refresh"
+          title="새로고침 · 刷新"
+        >
+          {justFinished ? (
+            <Check className="w-5 h-5 animate-fade" />
+          ) : (
+            <RefreshCw
+              className={`w-5 h-5 ${
+                manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""
+              }`}
+            />
+          )}
+        </button>
+      </div>
+    </>
+  );
+});
+
 export default function HomePage() {
   const { i18n, t } = useTranslation();
   const qc = useQueryClient();
@@ -299,23 +350,13 @@ export default function HomePage() {
     return Promise.all([
       qc.invalidateQueries({ queryKey: ["places"], ...opts }),
       qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
-      qc.invalidateQueries({ queryKey: ["couple"], ...opts }),
       qc.invalidateQueries({ queryKey: ["profile"], ...opts }),
-      qc.invalidateQueries({ queryKey: ["notifications", userId], ...opts }),
       qc.invalidateQueries({
         queryKey: ["notifications", "unread-count", userId],
         ...opts,
       }),
     ]);
   }, [qc, user?.id]);
-  const {
-    pull,
-    refreshing,
-    manualRefreshing,
-    released,
-    justFinished,
-    onManualRefresh,
-  } = useRefreshControls(refreshAll);
   const [, startTransition] = useTransition();
 
   // Hydrate filters from sessionStorage exactly once. useRef so the
@@ -775,12 +816,6 @@ export default function HomePage() {
 
   return (
     <div className="relative">
-      <PullIndicator
-        pull={pull}
-        refreshing={refreshing}
-        released={released}
-        justFinished={justFinished}
-      />
       {/* sticky header: bg-cream-50 (matches AppShell page bg) instead
           of bg-white/80 + backdrop-blur-md. The blur was the most
           expensive piece on this page — every scroll frame on a long
@@ -802,29 +837,7 @@ export default function HomePage() {
               actions (알림 / 새로고침) live here so the gradient
               wordmark gets full breathing room. Search graduated down
               to the filter row alongside "상세 필터". */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <NotificationBell />
-            <button
-              type="button"
-              onClick={() => void onManualRefresh()}
-              disabled={manualRefreshing || refreshing}
-              className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
-                justFinished
-                  ? "bg-sage-100/70 border-sage-200 text-sage-400"
-                  : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
-              }`}
-              aria-label="refresh"
-              title="새로고침 · 刷新"
-            >
-              {justFinished ? (
-                <Check className="w-5 h-5 animate-fade" />
-              ) : (
-                <RefreshCw
-                  className={`w-5 h-5 ${manualRefreshing || refreshing ? "animate-spin text-rose-400" : ""}`}
-                />
-              )}
-            </button>
-          </div>
+          <HomeRefreshControls refreshAll={refreshAll} />
         </div>
 
         {showSearch && (
