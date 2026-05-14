@@ -7,9 +7,9 @@ import {
   useRef,
   useState,
   useTransition,
+  type RefObject,
 } from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { ExpandableList } from "@/components/ExpandableList";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -92,6 +92,10 @@ type ListFilter =
 // but the row is one card per food instead of per place.
 type ListLayout = "list" | "grid" | "menu";
 
+const HOME_INITIAL_VISIBLE = 10;
+const HOME_LOAD_BATCH = 10;
+const HOME_PROGRESSIVE_KEY_PREFIX = "home:progressive-limit:v1";
+
 // Persist filter state across navigation in this tab session — so
 // "내 별점 안 줬어요" + "외식" + "별점 높은순" is preserved when the
 // user dives into a place to rate, then comes back via the bottom tab
@@ -138,6 +142,32 @@ function loadFilters(): StoredFilters {
   } catch {
     return {};
   }
+}
+
+function readProgressiveLimit(key: string) {
+  if (typeof window === "undefined") return HOME_INITIAL_VISIBLE;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    const n = raw ? Number(raw) : HOME_INITIAL_VISIBLE;
+    return Number.isFinite(n) && n > 0 ? n : HOME_INITIAL_VISIBLE;
+  } catch {
+    return HOME_INITIAL_VISIBLE;
+  }
+}
+
+function writeProgressiveLimit(key: string, limit: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, String(limit));
+  } catch {
+    // Non-critical. The visible count can reset without data loss.
+  }
+}
+
+function progressiveKey(parts: readonly unknown[]) {
+  return `${HOME_PROGRESSIVE_KEY_PREFIX}:${parts
+    .map((p) => (Array.isArray(p) ? p.join(",") : String(p ?? "")))
+    .join("|")}`;
 }
 
 function saveFilters(filters: StoredFilters) {
@@ -817,6 +847,57 @@ export default function HomePage() {
     );
   }, [wishlist, deferredQuery]);
 
+  const progressiveListKey = useMemo(
+    () =>
+      progressiveKey([
+        "places",
+        listLayout,
+        deferredQuery,
+        deferredListFilter,
+        deferredDiningFilter,
+        deferredViewMode,
+        deferredCategoryFilter,
+        deferredSelectedCities,
+        deferredFoodCategoryFilter,
+      ]),
+    [
+      deferredCategoryFilter,
+      deferredDiningFilter,
+      deferredFoodCategoryFilter,
+      deferredListFilter,
+      deferredQuery,
+      deferredSelectedCities,
+      deferredViewMode,
+      listLayout,
+    ]
+  );
+  const progressiveMenuKey = useMemo(
+    () =>
+      progressiveKey([
+        "menus",
+        deferredQuery,
+        deferredListFilter,
+        deferredDiningFilter,
+        deferredViewMode,
+        deferredFoodCategoryFilter,
+      ]),
+    [
+      deferredDiningFilter,
+      deferredFoodCategoryFilter,
+      deferredListFilter,
+      deferredQuery,
+      deferredViewMode,
+    ]
+  );
+  const progressivePlaces = useProgressiveItems(
+    filteredPlaces,
+    progressiveListKey
+  );
+  const progressiveMenus = useProgressiveItems(
+    filteredMenus,
+    progressiveMenuKey
+  );
+
   const stats = useMemo(() => {
     if (!places || places.length === 0) {
       return { total: 0, topCategory: null as string | null, topCount: 0 };
@@ -1215,30 +1296,30 @@ export default function HomePage() {
               );
             })()}
 
-            {/* Three layout strategies tuned by row weight:
-                - grid + menu: ExpandableList caps the initial mount
-                  at 20 and surfaces "더보기" for the rest. Their rows
-                  are light enough that virtualization would be
-                  overkill, but unbounded N×TimelineGridItem still
-                  hurt initial paint with no cap.
-                - timeline: window virtualizer. Rows are the heaviest
-                  on the page (connector line + photo + chips + memo
-                  preview) and the list can grow to hundreds for
-                  long-running couples. Virtualizing keeps DOM mount
-                  ≈ viewport + overscan regardless of total count. */}
+            {/* Progressive home feed:
+                render 10 rows first, then auto-open 10 more as the
+                user nears the bottom. The visible count is persisted
+                per filter/layout so back-navigation can restore the
+                exact scroll position without the page shrinking. */}
             {listLayout === "grid" ? (
-              <div className="mt-2 grid grid-cols-2 gap-3">
-                <ExpandableList items={filteredPlaces} initial={20}>
-                  {(p) => (
+              <>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  {progressivePlaces.visibleItems.map((p) => (
                     <TimelineGridItem
                       key={p.id}
                       place={p}
                       locale={i18n.language}
                       viewerId={user?.id}
                     />
-                  )}
-                </ExpandableList>
-              </div>
+                  ))}
+                </div>
+                <ProgressiveLoadSentinel
+                  sentinelRef={progressivePlaces.sentinelRef}
+                  hasMore={progressivePlaces.hasMore}
+                  visible={progressivePlaces.visibleItems.length}
+                  total={filteredPlaces.length}
+                />
+              </>
             ) : listLayout === "menu" ? (
               filteredMenus.length === 0 ? (
                 <EmptyState
@@ -1246,9 +1327,9 @@ export default function HomePage() {
                   text="조건에 맞는 메뉴가 없어요 · 没有符合的菜"
                 />
               ) : (
-                <div className="mt-2 space-y-2.5">
-                  <ExpandableList items={filteredMenus} initial={20}>
-                    {(m) => (
+                <>
+                  <div className="mt-2 space-y-2.5">
+                    {progressiveMenus.visibleItems.map((m) => (
                       <MenuRow
                         key={`${m.place.id}-${m.food.id}`}
                         food={m.food}
@@ -1258,16 +1339,31 @@ export default function HomePage() {
                         myDisplay={myDisplay}
                         partnerDisplay={partnerDisplay}
                       />
-                    )}
-                  </ExpandableList>
-                </div>
+                    ))}
+                  </div>
+                  <ProgressiveLoadSentinel
+                    sentinelRef={progressiveMenus.sentinelRef}
+                    hasMore={progressiveMenus.hasMore}
+                    visible={progressiveMenus.visibleItems.length}
+                    total={filteredMenus.length}
+                  />
+                </>
               )
             ) : (
-              <VirtualTimeline
-                places={filteredPlaces}
-                locale={i18n.language}
-                viewerId={user?.id}
-              />
+              <>
+                <VirtualTimeline
+                  places={progressivePlaces.visibleItems}
+                  totalCount={filteredPlaces.length}
+                  locale={i18n.language}
+                  viewerId={user?.id}
+                />
+                <ProgressiveLoadSentinel
+                  sentinelRef={progressivePlaces.sentinelRef}
+                  hasMore={progressivePlaces.hasMore}
+                  visible={progressivePlaces.visibleItems.length}
+                  total={filteredPlaces.length}
+                />
+              </>
             )}
           </>
         )}
@@ -1541,6 +1637,86 @@ function previewImagesForPlace(place: PlaceWithFoods) {
   return out;
 }
 
+function useProgressiveItems<T>(items: T[], storageKey: string) {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [limit, setLimit] = useState(() => readProgressiveLimit(storageKey));
+
+  useEffect(() => {
+    setLimit(Math.max(HOME_INITIAL_VISIBLE, readProgressiveLimit(storageKey)));
+  }, [storageKey]);
+
+  useEffect(() => {
+    writeProgressiveLimit(storageKey, limit);
+  }, [limit, storageKey]);
+
+  useEffect(() => {
+    if (limit >= items.length) return;
+
+    const loadMore = () => {
+      setLimit((n) => Math.min(items.length, n + HOME_LOAD_BATCH));
+    };
+
+    if (typeof IntersectionObserver === "undefined") {
+      const onScroll = () => {
+        const doc = document.documentElement;
+        const nearBottom =
+          window.scrollY + window.innerHeight >= doc.scrollHeight - 900;
+        if (nearBottom) loadMore();
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+      return () => window.removeEventListener("scroll", onScroll);
+    }
+
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { rootMargin: "900px 0px 1200px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [items.length, limit]);
+
+  const visibleItems = useMemo(
+    () => items.slice(0, Math.min(limit, items.length)),
+    [items, limit]
+  );
+
+  return {
+    visibleItems,
+    hasMore: limit < items.length,
+    sentinelRef,
+  };
+}
+
+function ProgressiveLoadSentinel({
+  sentinelRef,
+  hasMore,
+  visible,
+  total,
+}: {
+  sentinelRef: RefObject<HTMLDivElement | null>;
+  hasMore: boolean;
+  visible: number;
+  total: number;
+}) {
+  if (!hasMore) return null;
+  return (
+    <div ref={sentinelRef} className="py-5 flex justify-center">
+      <span className="inline-flex items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-400 shadow-sm">
+        <span className="h-3 w-3 rounded-full border-2 border-peach-200 border-t-peach-400 animate-spin" />
+        더 불러오는 중 · 加载更多
+        <span className="font-number text-ink-300">
+          {visible}/{total}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 // Memoized so pull-to-refresh (60Hz pull state updates) + sibling
 // state changes don't re-render every row in a long timeline. All
 // props are stable refs from react-query cache or scalars, so default
@@ -1573,10 +1749,12 @@ const TimelineItem = memo(TimelineItemImpl);
 //   last item even when it's offscreen / unmounted.
 function VirtualTimeline({
   places,
+  totalCount,
   locale,
   viewerId,
 }: {
   places: PlaceWithFoods[];
+  totalCount: number;
   locale: string;
   viewerId: string | undefined;
 }) {
@@ -1646,7 +1824,7 @@ function VirtualTimeline({
             <TimelineItem
               place={place}
               locale={locale}
-              isLast={v.index === places.length - 1}
+              isLast={v.index === totalCount - 1}
               viewerId={viewerId}
             />
           </div>
