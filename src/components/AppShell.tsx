@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAppBadge } from "@/hooks/useAppBadge";
 import { preloadAppRoutes, preloadRouteForPath } from "@/lib/routePreload";
+import { notifyHomeNavReselect, queueHomeNavReselect } from "@/lib/navEvents";
 
 // Scroll behavior across route changes:
 //   - PUSH / REPLACE (forward nav): scroll to top, otherwise the new
@@ -229,11 +230,21 @@ function NavItem({
   icon: typeof Home;
   label: string;
 }) {
+  const { pathname } = useLocation();
   const warmRoute = () => preloadRouteForPath(to);
   return (
     <NavLink
       to={to}
       end
+      onClick={(event) => {
+        if (to !== "/") return;
+        if (pathname === "/") {
+          event.preventDefault();
+          notifyHomeNavReselect();
+          return;
+        }
+        queueHomeNavReselect();
+      }}
       onFocus={warmRoute}
       onPointerEnter={warmRoute}
       onTouchStart={warmRoute}
