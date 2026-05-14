@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { NotificationRow } from "@/lib/database.types";
 import { useAuth } from "./useAuth";
@@ -16,6 +21,9 @@ export function useNotifications() {
   return useQuery({
     queryKey: ["notifications", user?.id],
     enabled: !!user && !ALLOW_NO_AUTH,
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+    gcTime: 5 * 60_000,
     queryFn: async (): Promise<NotificationRow[]> => {
       const since = new Date(
         Date.now() - INBOX_DAYS * 24 * 60 * 60 * 1000

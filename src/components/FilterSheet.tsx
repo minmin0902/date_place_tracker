@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, RotateCcw, X } from "lucide-react";
 import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 // One unified bottom-sheet that hosts all three timeline filters
 // (정렬 / 도시 / 카테고리). Replaces the previous 3-trigger grid where
@@ -96,14 +98,7 @@ export function FilterSheet({
   }, [open]);
   // Lock body scroll while open so swiping inside the sheet doesn't
   // accidentally scroll the timeline behind it.
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   function toggleCity(city: string) {
     if (selectedCities.includes(city)) {
@@ -160,7 +155,7 @@ export function FilterSheet({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     // Same iOS-friendly modal pattern we landed on for GroupedMultiSelect:
     // outer flex container sized to dvh + items-center across breakpoints,
     // card max-h capped by svh so the bottom action bar (저장) stays
@@ -472,7 +467,8 @@ export function FilterSheet({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

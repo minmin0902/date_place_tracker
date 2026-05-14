@@ -30,6 +30,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useSessionState } from "@/hooks/useSessionState";
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -561,8 +562,14 @@ export default function NotificationsPage() {
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
-  const [filter, setFilter] = useState<FilterKey>("all");
-  const [mode, setMode] = useState<InboxMode>("all");
+  const [filter, setFilter] = useSessionState<FilterKey>(
+    "route-ui:notifications:filter:v1",
+    "all"
+  );
+  const [mode, setMode] = useSessionState<InboxMode>(
+    "route-ui:notifications:mode:v1",
+    "all"
+  );
   // Filter chip taps re-bucket displayRows (Map-heavy useMemo) and
   // remount every row underneath. Marking the setFilter as a
   // transition lets React 18 yield to user input first, so the
@@ -860,7 +867,7 @@ export default function NotificationsPage() {
               type="button"
               onClick={() => void onManualRefresh()}
               disabled={manualRefreshing || refreshing}
-              className={`btn-ghost !p-2.5 active:scale-90 transition-transform ${
+              className={`btn-ghost smooth-touch !p-2.5 ${
                 justFinished ? "text-sage-400" : ""
               }`}
               aria-label="refresh"
@@ -879,7 +886,7 @@ export default function NotificationsPage() {
                 type="button"
                 onClick={() => void markAll.mutateAsync()}
                 disabled={markAll.isPending}
-                className="btn-ghost !p-2.5 text-peach-500 disabled:opacity-50 active:scale-90 transition-transform"
+                className="btn-ghost smooth-touch !p-2.5 text-peach-500 disabled:opacity-50"
                 aria-label="mark all read"
                 title="전부 읽음 · 全部已读"
               >

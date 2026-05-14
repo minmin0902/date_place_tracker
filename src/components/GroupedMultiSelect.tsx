@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 
 // Grouped multi-select with clickable group headers.
@@ -190,7 +191,8 @@ export function GroupedMultiSelect({
         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
       </button>
 
-      {open && (
+      {open &&
+        createPortal(
         // Compact centered card with svh-based max-height. svh ("small
         // viewport height") is always the SMALLEST possible visible
         // area — i.e. URL bar visible + home indicator visible —
@@ -333,7 +335,8 @@ export function GroupedMultiSelect({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

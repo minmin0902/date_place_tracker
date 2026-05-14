@@ -41,7 +41,9 @@ import { useCoupleProfiles } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
 import { ExpandableList } from "@/components/ExpandableList";
+import { SmoothLink } from "@/components/SmoothLink";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useSessionState } from "@/hooks/useSessionState";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { RouletteModal } from "@/pages/HomePage";
 
@@ -92,8 +94,17 @@ const CARD_META: Record<
 const LEGACY_CARD_IDS = new Set(["sync", "battle", "bti"]);
 
 const CARD_CONFIG_KEY = "compare:cardConfig:v1";
+const COMPARE_UI_STATE_KEY = "route-ui:compare:v1";
 
 type CardConfig = { order: CardId[]; hidden: CardId[] };
+type CompareUiState = {
+  diningFilter?: DiningFilter;
+  activeTab?: TabId;
+  fameView?: "menu" | "restaurant" | "home" | "booze";
+  clashView?: "menu" | "restaurant";
+  passView?: "menu" | "restaurant";
+  activeCardIdx?: number;
+};
 
 const DEFAULT_CONFIG: CardConfig = {
   order: DEFAULT_CARD_ORDER,
@@ -361,7 +372,7 @@ const CompareRefreshControls = memo(function CompareRefreshControls({
         type="button"
         onClick={() => void onManualRefresh()}
         disabled={manualRefreshing || refreshing}
-        className={`p-3 rounded-full transition border active:scale-90 disabled:opacity-60 disabled:cursor-not-allowed ${
+        className={`smooth-touch p-3 rounded-full border ${
           justFinished
             ? "bg-sage-100/70 border-sage-200 text-sage-400"
             : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
@@ -417,8 +428,16 @@ export default function ComparePage() {
   }, [qc]);
   const [, startTransition] = useTransition();
 
-  const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
-  const [activeTab, setActiveTab] = useState<TabId>("fame");
+  const [savedUi, setSavedUi] = useSessionState<CompareUiState>(
+    COMPARE_UI_STATE_KEY,
+    {}
+  );
+  const [diningFilter, setDiningFilter] = useState<DiningFilter>(
+    savedUi.diningFilter ?? "all"
+  );
+  const [activeTab, setActiveTab] = useState<TabId>(
+    savedUi.activeTab ?? "fame"
+  );
   const deferredDiningFilter = useDeferredValue(diningFilter);
   const deferredActiveTab = useDeferredValue(activeTab);
   // Sub-toggle inside each list tab: 식당 (place-level aggregate) vs
@@ -430,17 +449,23 @@ export default function ComparePage() {
   // getting averaged into restaurant slots.
   const [fameView, setFameView] = useState<
     "menu" | "restaurant" | "home" | "booze"
-  >("restaurant");
-  const [clashView, setClashView] = useState<"menu" | "restaurant">("restaurant");
-  const [passView, setPassView] = useState<"menu" | "restaurant">("restaurant");
+  >(savedUi.fameView ?? "restaurant");
+  const [clashView, setClashView] = useState<"menu" | "restaurant">(
+    savedUi.clashView ?? "restaurant"
+  );
+  const [passView, setPassView] = useState<"menu" | "restaurant">(
+    savedUi.passView ?? "restaurant"
+  );
   const [cardConfig, setCardConfig] = useState<CardConfig>(loadCardConfig);
   const [cardEditorOpen, setCardEditorOpen] = useState(false);
   // Tracks the carousel card the user is currently centered on so the
   // dot-pagination indicator below knows which dot to fill. We don't
   // ever read this from the cards themselves — it's purely an indicator.
   const carouselRef = useRef<HTMLDivElement>(null);
-  const [activeCardIdx, setActiveCardIdx] = useState(0);
-  const activeCardIdxRef = useRef(0);
+  const [activeCardIdx, setActiveCardIdx] = useState(
+    savedUi.activeCardIdx ?? 0
+  );
+  const activeCardIdxRef = useRef(activeCardIdx);
   const carouselScrollRaf = useRef<number | null>(null);
   // Roulette modal lives here (instead of HomePage) because the
   // entry-point card sits in this carousel. Definition is still in
@@ -454,6 +479,41 @@ export default function ComparePage() {
         cancelAnimationFrame(carouselScrollRaf.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    setSavedUi({
+      diningFilter,
+      activeTab,
+      fameView,
+      clashView,
+      passView,
+      activeCardIdx,
+    });
+  }, [
+    activeCardIdx,
+    activeTab,
+    clashView,
+    diningFilter,
+    fameView,
+    passView,
+    setSavedUi,
+  ]);
+
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el || activeCardIdx <= 0) return;
+    const frame = requestAnimationFrame(() => {
+      const cards = el.querySelectorAll<HTMLDivElement>(":scope > div");
+      cards[activeCardIdx]?.scrollIntoView({
+        block: "nearest",
+        inline: "center",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Restore only on the first paint of this route. Live scrolling
+    // continues to be owned by the user's gesture + onCarouselScroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateCardConfig = (next: CardConfig) => {
@@ -1795,7 +1855,7 @@ function TasteDiagnosisCard({
 // place detail.
 function ContributingFoodRow({ r }: { r: Row }) {
   return (
-    <Link
+    <SmoothLink
       to={`/places/${r.placeId}`}
       className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-cream-50 hover:bg-cream-100 border border-cream-200/60 text-[11px] transition"
     >
@@ -1808,7 +1868,7 @@ function ContributingFoodRow({ r }: { r: Row }) {
         <span className="text-ink-300">/</span>
         <span className="text-rose-500">{r.partner.toFixed(1)}</span>
       </div>
-    </Link>
+    </SmoothLink>
   );
 }
 
@@ -2636,7 +2696,7 @@ function FoodCard({
   const cornerBadge = !yyds && badge;
   const cornerBadgeCls = "bg-ink-900 text-white";
   return (
-    <Link
+    <SmoothLink
       to={`/places/${r.placeId}`}
       className={`render-smooth-card block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
     >
@@ -2712,7 +2772,7 @@ function FoodCard({
           />
         </div>
       )}
-    </Link>
+    </SmoothLink>
   );
 }
 
@@ -2751,7 +2811,7 @@ function PlaceFameCard({
     ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
     : "bg-white border-cream-200 shadow-soft";
   return (
-    <Link
+    <SmoothLink
       to={`/places/${p.placeId}`}
       className={`render-smooth-card block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
     >
@@ -2802,7 +2862,7 @@ function PlaceFameCard({
           leading={p.avgPartner >= p.avgMine}
         />
       </div>
-    </Link>
+    </SmoothLink>
   );
 }
 

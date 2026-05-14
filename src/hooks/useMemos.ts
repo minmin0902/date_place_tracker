@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import {
   addMemo as addLocalMemo,
@@ -23,6 +28,8 @@ export function useMemos(target: { placeId?: string; foodId?: string }) {
   return useQuery({
     queryKey: memoKey(target),
     enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
     queryFn: async (): Promise<Memo[]> => {
       if (ALLOW_NO_AUTH) {
         return getLocalMemos(target);

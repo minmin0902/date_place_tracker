@@ -75,11 +75,11 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
            bg-peach-400 text-white font-medium shadow-soft
-           active:scale-95 transition disabled:opacity-50;
+           active:scale-95 transition duration-150 ease-out disabled:opacity-50;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl
-           text-ink-700 hover:bg-cream-100 active:scale-95 transition;
+           text-ink-700 hover:bg-cream-100 active:scale-95 transition duration-150 ease-out;
   }
   .input-base {
     @apply w-full px-4 py-3 rounded-xl bg-white border border-cream-200
@@ -141,6 +141,16 @@
       opacity: 1;
     }
   }
+  @keyframes ourtable-sheet-up {
+    from {
+      transform: translateY(24px);
+      opacity: 0.92;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
   .animate-fade-up {
     animation: ourtable-fade-up 180ms ease-out both;
   }
@@ -149,6 +159,12 @@
   }
   .animate-slide-up {
     animation: ourtable-slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .animate-sheet-up {
+    animation: ourtable-sheet-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .smooth-touch {
+    @apply transition-transform duration-150 ease-out active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed;
   }
   /* Used by horizontally scrollable filter rows on the timeline so the
      overflow arrow doesn't peek out under the chips on iOS / desktop. */
@@ -165,10 +181,52 @@
   .render-smooth-card {
     content-visibility: auto;
     contain-intrinsic-size: auto 160px;
+    will-change: transform;
+    transform: translateZ(0);
   }
   .render-smooth-panel {
     content-visibility: auto;
     contain-intrinsic-size: auto 320px;
+  }
+}
+
+@keyframes ourtable-vt-old {
+  to {
+    opacity: 0.9;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes ourtable-vt-new {
+  from {
+    opacity: 0.76;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+.route-view-transition::view-transition-old(root) {
+  animation: ourtable-vt-old 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.route-view-transition::view-transition-new(root) {
+  animation: ourtable-vt-new 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+
+  .animate-sheet-up,
+  .animate-slide-up,
+  .animate-fade-up,
+  .animate-fade {
+    animation: none !important;
   }
 }
 

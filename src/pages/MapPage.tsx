@@ -16,6 +16,7 @@ import { useCouple } from "@/hooks/useCouple";
 import { usePlaces, type PlaceWithFoods } from "@/hooks/usePlaces";
 import { useWishlist } from "@/hooks/useWishlist";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
+import { useSessionState } from "@/hooks/useSessionState";
 import { supabase } from "@/lib/supabase";
 import type { WishlistPlace } from "@/lib/database.types";
 
@@ -440,7 +441,7 @@ const MapRefreshControls = memo(function MapRefreshControls({
           type="button"
           onClick={() => void onManualRefresh()}
           disabled={manualRefreshing || refreshing}
-          className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
+          className={`smooth-touch p-3 rounded-full border ${
             justFinished
               ? "bg-sage-100/70 border-sage-200 text-sage-400"
               : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
@@ -469,11 +470,29 @@ export default function MapPage() {
   const { data: places } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
   const mapsLocale = useMemo(() => googleMapsLocale(), []);
+  const mapTypeLabels = useMemo(() => {
+    if (mapsLocale.language.startsWith("zh")) {
+      return { roadmap: "地图", satellite: "卫星" };
+    }
+    if (mapsLocale.language.startsWith("ko")) {
+      return { roadmap: "지도", satellite: "위성" };
+    }
+    if (mapsLocale.language.startsWith("ja")) {
+      return { roadmap: "地図", satellite: "航空写真" };
+    }
+    return { roadmap: "Map", satellite: "Satellite" };
+  }, [mapsLocale.language]);
   // selectedId can identify either a place ("place:<id>") or a
   // wishlist entry ("wish:<id>") so the InfoWindow knows which dataset
   // to look up. Plain id was unambiguous when only places existed.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mapType, setMapType] = useState<MapType>("roadmap");
+  const [selectedId, setSelectedId] = useSessionState<string | null>(
+    "route-ui:map:selected:v1",
+    null
+  );
+  const [mapType, setMapType] = useSessionState<MapType>(
+    "route-ui:map:type:v1",
+    "roadmap"
+  );
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
   const refreshLocation = useCallback(
@@ -662,6 +681,7 @@ export default function MapPage() {
           // link in particular bloats the bottom chrome.
           disableDefaultUI={false}
           controlSize={24}
+          reuseMaps
           mapTypeControl={false}
           mapTypeId={mapType}
           fullscreenControl={false}
@@ -860,7 +880,7 @@ export default function MapPage() {
                 : "bg-cream-50 text-ink-500"
             }`}
           >
-            지도
+            {mapTypeLabels.roadmap}
           </button>
           <button
             type="button"
@@ -871,7 +891,7 @@ export default function MapPage() {
                 : "bg-cream-50 text-ink-500"
             }`}
           >
-            위성
+            {mapTypeLabels.satellite}
           </button>
         </div>
         {mapCanvas}

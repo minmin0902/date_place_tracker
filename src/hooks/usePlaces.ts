@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { supabase, PHOTO_BUCKET } from "@/lib/supabase";
 import type { Food, Place } from "@/lib/database.types";
 import {
@@ -19,6 +24,9 @@ export function usePlaces(coupleId: string | undefined) {
   return useQuery({
     queryKey: ["places", coupleId],
     enabled: !!coupleId,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
     queryFn: async (): Promise<PlaceWithFoods[]> => {
       if (ALLOW_NO_AUTH) {
         const places = getLocalPlaces(coupleId!);
@@ -47,6 +55,9 @@ export function usePlace(id: string | undefined) {
   return useQuery({
     queryKey: ["place", id],
     enabled: !!id,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
     queryFn: async (): Promise<PlaceWithFoods | null> => {
       if (ALLOW_NO_AUTH) {
         const p = getLocalPlace(id!);
@@ -117,9 +128,14 @@ export function useUpsertPlace() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["places"] });
-      qc.invalidateQueries({ queryKey: ["place"] });
+    onSuccess: (_place, input) => {
+      qc.invalidateQueries({ queryKey: ["places"], refetchType: "active" });
+      if (input.id) {
+        qc.invalidateQueries({
+          queryKey: ["place", input.id],
+          refetchType: "active",
+        });
+      }
     },
   });
 }
@@ -132,7 +148,8 @@ export function useDeletePlace() {
       const { error } = await supabase.from("places").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["places"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["places"], refetchType: "active" }),
   });
 }
 
@@ -181,9 +198,12 @@ export function useUpsertFood() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["place"] });
-      qc.invalidateQueries({ queryKey: ["places"] });
+    onSuccess: (_food, input) => {
+      qc.invalidateQueries({
+        queryKey: ["place", input.place_id],
+        refetchType: "active",
+      });
+      qc.invalidateQueries({ queryKey: ["places"], refetchType: "active" });
     },
   });
 }

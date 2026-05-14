@@ -58,6 +58,7 @@ import { MediaThumb } from "@/components/MediaThumb";
 import { MemoCommentInline } from "@/components/MemoComment";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SmoothLink } from "@/components/SmoothLink";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 
@@ -297,7 +298,7 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
           type="button"
           onClick={() => void onManualRefresh()}
           disabled={manualRefreshing || refreshing}
-          className={`p-3 rounded-full transition border active:scale-90 disabled:cursor-not-allowed ${
+          className={`smooth-touch p-3 rounded-full border ${
             justFinished
               ? "bg-sage-100/70 border-sage-200 text-sage-400"
               : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
@@ -1506,6 +1507,15 @@ function timelineTheme(isHomeCooked: boolean) {
       };
 }
 
+function previewImagesForPlace(place: PlaceWithFoods) {
+  const out: (string | null | undefined)[] = [place.photo_urls?.[0]];
+  for (const f of place.foods ?? []) {
+    out.push(f.photo_urls?.[0] ?? f.photo_url);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 // Memoized so pull-to-refresh (60Hz pull state updates) + sibling
 // state changes don't re-render every row in a long timeline. All
 // props are stable refs from react-query cache or scalars, so default
@@ -1684,8 +1694,9 @@ function TimelineItemImpl({
         </span>
       </div>
 
-      <Link
+      <SmoothLink
         to={`/places/${place.id}`}
+        preloadImages={previewImagesForPlace(place)}
         className={`block rounded-2xl p-4 ml-2 border shadow-soft active:scale-[0.98] transition ${theme.card} ${theme.cardBorder}`}
       >
         <div className="flex gap-4">
@@ -1788,7 +1799,7 @@ function TimelineItemImpl({
             </div>
           </div>
         </div>
-      </Link>
+      </SmoothLink>
     </div>
   );
 }
@@ -1881,8 +1892,9 @@ function MenuRowImpl({
   const photo = food.photo_urls?.[0] ?? food.photo_url ?? null;
   const foodCats = getCategories(food);
   return (
-    <Link
+    <SmoothLink
       to={`/places/${place.id}`}
+      preloadImages={previewImagesForPlace(place)}
       className={`render-smooth-card flex gap-3 items-center rounded-2xl p-3 border shadow-soft active:scale-[0.99] transition ${theme.card} ${theme.cardBorder}`}
     >
       <div
@@ -1976,7 +1988,7 @@ function MenuRowImpl({
           <span className="text-[10px] text-ink-400 font-number">-</span>
         )}
       </div>
-    </Link>
+    </SmoothLink>
   );
 }
 
@@ -2010,8 +2022,9 @@ function TimelineGridItemImpl({
   }).length;
 
   return (
-    <Link
+    <SmoothLink
       to={`/places/${place.id}`}
+      preloadImages={previewImagesForPlace(place)}
       className="render-smooth-card block rounded-2xl overflow-hidden bg-white border border-cream-200/70 shadow-soft active:scale-[0.97] transition"
     >
       {/* Square photo well (Instagram-style hero). Photo fills the
@@ -2084,7 +2097,7 @@ function TimelineGridItemImpl({
           {formatDate(place.date_visited, locale)}
         </p>
       </div>
-    </Link>
+    </SmoothLink>
   );
 }
 

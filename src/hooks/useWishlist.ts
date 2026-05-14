@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { WishlistKind, WishlistPlace } from "@/lib/database.types";
 import { useAuth } from "./useAuth";
@@ -15,6 +20,9 @@ export function useWishlist(coupleId: string | undefined) {
   return useQuery({
     queryKey: ["wishlist", coupleId],
     enabled: !!coupleId,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
     queryFn: async (): Promise<WishlistPlace[]> => {
       if (ALLOW_NO_AUTH) return getLocalWishlist(coupleId!);
       const { data, error } = await supabase

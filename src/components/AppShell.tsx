@@ -51,7 +51,13 @@ function routeScrollKey(pathname: string, search: string) {
 }
 
 function isListReturnRoute(key: string) {
-  return key === "/" || key.startsWith("/?") || key === "/notifications";
+  return (
+    key === "/" ||
+    key.startsWith("/?") ||
+    key === "/notifications" ||
+    key === "/map" ||
+    key === "/compare"
+  );
 }
 
 function isDetailRoute(key: string) {
