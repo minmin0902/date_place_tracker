@@ -1,17 +1,22 @@
 import {
   createContext,
   memo,
+  useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
   MessageCircle,
   MapPin,
+  Play,
   Utensils,
   CheckCheck,
   Heart,
@@ -22,21 +27,21 @@ import {
   Smile,
   CornerDownRight,
 } from "lucide-react";
-import { MediaThumb } from "@/components/MediaThumb";
 import { PageHeader } from "@/components/PageHeader";
 import { PullIndicator } from "@/components/PullIndicator";
-import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useNotifications,
+  useUnreadCount,
 } from "@/hooks/useNotifications";
 import { useActorDisplay } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { supabase } from "@/lib/supabase";
+import { isVideoUrl } from "@/lib/utils";
 import type { Memo as MemoRow, NotificationRow } from "@/lib/database.types";
 
 // Resolver for "what does this notification belong to?". Built once
@@ -120,6 +125,16 @@ function useNotificationMemoLookup(items: NotificationRow[] | undefined) {
     },
     staleTime: 30_000,
   });
+}
+
+function markReadAfterNavigation(
+  markRead: ReturnType<typeof useMarkNotificationRead>,
+  ids: string[]
+) {
+  if (ids.length === 0 || markRead.isPending) return;
+  window.setTimeout(() => {
+    void markRead.mutateAsync(ids);
+  }, 0);
 }
 
 // Per-kind visual spec — drives both the avatar-corner badge and the
@@ -236,14 +251,24 @@ function NotificationThumb({
       </span>
     );
   }
+  if (isVideoUrl(src)) {
+    return (
+      <span
+        className="w-12 h-12 rounded-xl bg-ink-900/80 border border-cream-200 flex items-center justify-center text-white flex-shrink-0"
+        aria-label={label ?? "video"}
+      >
+        <Play className="w-4 h-4 fill-current" />
+      </span>
+    );
+  }
   return (
     <span className="w-12 h-12 rounded-xl overflow-hidden border border-cream-200 bg-cream-100 flex-shrink-0">
-      <MediaThumb
+      <img
         src={src}
         alt={label ?? ""}
         className="w-full h-full object-cover"
-        showPlayBadge
-        clickable={false}
+        loading="lazy"
+        decoding="async"
       />
     </span>
   );
@@ -345,6 +370,23 @@ type DisplayRow =
   | ReactionBundle
   | ActivityBundle;
 
+function displayRowKey(row: DisplayRow) {
+  if (row.kind === "date-header") return `hdr-${row.key}`;
+  if (row.kind === "single") return row.item.id;
+  if (row.kind === "reaction-bundle") return row.key;
+  return `bundle-${row.latest.id}`;
+}
+
+function estimateDisplayRowSize(row: DisplayRow | undefined) {
+  if (!row) return 92;
+  if (row.kind === "date-header") return 28;
+  if (row.kind === "reaction-bundle") return 76;
+  if (row.kind === "single") {
+    return row.item.kind === "memo_reply" ? 104 : 88;
+  }
+  return 104 + row.allItems.length * 24;
+}
+
 // Resolve a date into a friendly day label. "오늘"/"어제" for the
 // last two days (most-frequent case in a couple's inbox), absolute
 // "M월 D일 · M月D日" for anything older. Uses local time so the
@@ -387,9 +429,28 @@ function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolea
 // a row marks it read and deep-links to the source content. A "전부
 // 읽음" footer button clears the badge in one shot.
 export default function NotificationsPage() {
+  const qc = useQueryClient();
   const { data: items, isLoading } = useNotifications();
+  useUnreadCount();
   const markAll = useMarkAllNotificationsRead();
-  const refreshAll = useGlobalRefresh();
+  const { user } = useAuth();
+  const refreshAll = useCallback(() => {
+    const opts = { refetchType: "active" as const };
+    const userId = user?.id;
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: ["notifications", userId], ...opts }),
+      qc.invalidateQueries({
+        queryKey: ["notifications", "unread-count", userId],
+        ...opts,
+      }),
+      qc.invalidateQueries({
+        queryKey: ["notifications", "memo-lookup"],
+        ...opts,
+      }),
+      qc.invalidateQueries({ queryKey: ["places"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["profile"], ...opts }),
+    ]);
+  }, [qc, user?.id]);
   const {
     pull,
     refreshing,
@@ -412,7 +473,6 @@ export default function NotificationsPage() {
   // page's usePlaces call so this is free for any user who's already
   // visited home this session. Cached → memoized maps keep per-row
   // lookups O(1).
-  useAuth();
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const { data: memoLookup } = useNotificationMemoLookup(items);
@@ -636,6 +696,35 @@ export default function NotificationsPage() {
     return out;
   }, [visibleItems, filter, rowContext]);
 
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [listTop, setListTop] = useState(0);
+  useLayoutEffect(() => {
+    const measureTop = () => {
+      const el = listRef.current;
+      if (!el) return;
+      setListTop(el.getBoundingClientRect().top + window.scrollY);
+    };
+    measureTop();
+    window.addEventListener("resize", measureTop);
+    return () => window.removeEventListener("resize", measureTop);
+  }, [displayRows.length, filter, mode]);
+
+  const getVirtualKey = useCallback(
+    (index: number) => {
+      const row = displayRows[index];
+      return row ? displayRowKey(row) : index;
+    },
+    [displayRows]
+  );
+  const rowVirtualizer = useWindowVirtualizer({
+    count: displayRows.length,
+    estimateSize: (index) => estimateDisplayRowSize(displayRows[index]),
+    overscan: 8,
+    scrollMargin: listTop,
+    getItemKey: getVirtualKey,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
   return (
     <RowContext.Provider value={rowContext}>
     <div className="relative">
@@ -796,28 +885,48 @@ export default function NotificationsPage() {
             <FilteredEmptyState unreadMode={mode === "unread"} />
         )}
         {!isLoading && displayRows.length > 0 && (
-          <ul className="space-y-1.5">
-            {displayRows.map((row) => {
+          <div
+            ref={listRef}
+            role="list"
+            className="relative"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const row = displayRows[virtualRow.index];
+              if (!row) return null;
+              const top = virtualRow.start - rowVirtualizer.options.scrollMargin;
+              const content = (() => {
               if (row.kind === "date-header") {
                 return (
                   <DateSectionHeader
-                    key={`hdr-${row.key}`}
                     ko={row.ko}
                     zh={row.zh}
                   />
                 );
               }
               if (row.kind === "single") {
-                return <NotificationItem key={row.item.id} item={row.item} />;
+                return <NotificationItem item={row.item} />;
               }
               if (row.kind === "reaction-bundle") {
-                return <ReactionBundleItem key={row.key} bundle={row} />;
+                return <ReactionBundleItem bundle={row} />;
               }
               return (
-                <ActivityBundleItem key={row.latest.id} bundle={row} />
+                <ActivityBundleItem bundle={row} />
+              );
+              })();
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="absolute inset-x-0 pb-1.5"
+                  style={{ transform: `translateY(${top}px)` }}
+                >
+                  {content}
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -915,14 +1024,12 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
   const initial = Array.from(name)[0] ?? "·";
 
   function onTap() {
-    if (unreadIds.length && !markRead.isPending) {
-      for (const id of unreadIds) void markRead.mutateAsync(id);
-    }
     if (linkTo) navigate(linkTo);
+    markReadAfterNavigation(markRead, unreadIds);
   }
 
   return (
-    <li>
+    <div role="listitem">
       <button
         type="button"
         onClick={onTap}
@@ -970,7 +1077,7 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
         </div>
         <NotificationThumb src={thumbSrc} label={targetName} />
       </button>
-    </li>
+    </div>
   );
 }
 
@@ -1014,10 +1121,8 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   // Header tap: mark every member in the bundle read, navigate to
   // the place (no anchor — the user wants the whole place context).
   function onHeaderTap() {
-    if (unreadIds.length && !markRead.isPending) {
-      for (const id of unreadIds) void markRead.mutateAsync(id);
-    }
     navigate(`/places/${bundle.placeId}`);
+    markReadAfterNavigation(markRead, unreadIds);
   }
 
   // Sub-row tap: mark JUST that sub-bucket's members read, and
@@ -1026,10 +1131,8 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   // they're bundled inside one card.
   function navigateScoped(target: string, items: NotificationRow[]) {
     const unread = items.filter((i) => !i.read_at).map((i) => i.id);
-    if (unread.length && !markRead.isPending) {
-      for (const id of unread) void markRead.mutateAsync(id);
-    }
     navigate(target);
+    markReadAfterNavigation(markRead, unread);
   }
 
   const stamp = relativeKo(bundle.latest.created_at);
@@ -1133,7 +1236,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   }
 
   return (
-    <li>
+    <div role="listitem">
       {/* The card is an <article> rather than one big <button> so we
           can host MULTIPLE independent click targets inside it —
           one for the header (navigate to place + mark all read) and
@@ -1182,6 +1285,14 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
                 {headerVerb.label}
               </span>
             </p>
+            {/* 새 장소 추가 bundle 에 한해서만 place 이름을 한 줄로 추가.
+                나머지 (메뉴/메모/리액션 등) 는 이전에 사용자가 복잡해서
+                숨긴 거라 그대로 유지. */}
+            {bundle.placeEvent && placeName && (
+              <p className="text-[12px] text-ink-800 font-bold mt-0.5 line-clamp-1 break-keep">
+                {placeName}
+              </p>
+            )}
           </div>
           <NotificationThumb src={thumbSrc} label={placeName} />
         </button>
@@ -1196,7 +1307,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
             {subRows.map((s) => {
               const Icon = s.Icon;
               return (
-                <li key={s.key}>
+                <div key={s.key}>
                   <button
                     type="button"
                     onClick={s.onTap}
@@ -1217,7 +1328,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
                       )}
                     </span>
                   </button>
-                </li>
+                </div>
               );
             })}
           </ul>
@@ -1234,24 +1345,26 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
           />
         )}
       </article>
-    </li>
+    </div>
   );
 }
 
 // Day-bucket section header. Sits between groups of notifications
 // in the feed so the user can scan "오늘 · 어제 · 5월 12일" without
-// hunting through timestamps. Plain <li> so it integrates with the
-// surrounding <ul> stacking without breaking the bullet-list semantics.
+// hunting through timestamps.
 function DateSectionHeader({ ko, zh }: { ko: string; zh: string }) {
   return (
-    <li className="pt-3 first:pt-0 pb-0.5 px-1 select-none">
+    <div
+      role="listitem"
+      className="pt-3 first:pt-0 pb-0.5 px-1 select-none"
+    >
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-bold text-ink-400 tracking-wide">
           {ko} <span className="text-ink-300 font-medium">· {zh}</span>
         </span>
         <div className="h-px flex-1 bg-cream-100" />
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -1303,10 +1416,8 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   // before the network round-trip finishes. Guard against rapid taps
   // firing the mutation twice while the first round-trip is in flight.
   function onTap() {
-    if (!item.read_at && !markRead.isPending) {
-      void markRead.mutateAsync(item.id);
-    }
     if (linkTo) navigate(linkTo);
+    markReadAfterNavigation(markRead, item.read_at ? [] : [item.id]);
   }
 
   const isUnread = !item.read_at;
@@ -1369,6 +1480,9 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
     }
     if (item.kind === "food") return item.preview ? clipText(item.preview) : null;
     if (item.kind === "reaction") return item.preview ?? null;
+    // 새 장소만 장소 이름을 본문으로 노출 — 다른 종류는 이전에 사용자가
+    // 일부러 뺀 거라 그대로 두고 새 장소 케이스만 부활.
+    if (item.kind === "place") return item.preview ?? null;
     return null;
   })();
   const initial = Array.from(name)[0] ?? "·";
@@ -1378,7 +1492,7 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   const toneCls = "bg-rose-100 text-rose-500";
 
   return (
-    <li>
+    <div role="listitem">
       <button
         type="button"
         onClick={onTap}
@@ -1440,7 +1554,7 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
           />
         )}
       </button>
-    </li>
+    </div>
   );
 }
 

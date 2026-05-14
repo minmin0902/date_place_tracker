@@ -68,14 +68,19 @@ export function useMarkNotificationRead() {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
+    mutationFn: async (input: string | string[]) => {
+      const ids = Array.isArray(input) ? input : [input];
+      if (ids.length === 0) return;
+      const q = supabase
         .from("notifications")
-        .update({ read_at: new Date().toISOString() })
-        .eq("id", id);
+        .update({ read_at: new Date().toISOString() });
+      const { error } =
+        ids.length === 1 ? await q.eq("id", ids[0]) : await q.in("id", ids);
       if (error) throw error;
     },
-    onMutate: async (id) => {
+    onMutate: async (input) => {
+      const ids = Array.isArray(input) ? input : [input];
+      const idSet = new Set(ids);
       const key = ["notifications", user?.id] as const;
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<NotificationRow[]>(key);
@@ -84,7 +89,7 @@ export function useMarkNotificationRead() {
         qc.setQueryData<NotificationRow[]>(
           key,
           prev.map((n) =>
-            n.id === id && !n.read_at ? { ...n, read_at: now } : n
+            idSet.has(n.id) && !n.read_at ? { ...n, read_at: now } : n
           )
         );
       }
