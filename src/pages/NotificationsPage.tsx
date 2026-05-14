@@ -3,12 +3,14 @@ import {
   memo,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useTransition,
 } from "react";
+import type { RefObject } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useNavigate } from "react-router-dom";
@@ -469,6 +471,11 @@ type DisplayRow =
   | ReactionBundle
   | ActivityBundle;
 
+const NOTIFICATION_INITIAL_ROW_COUNT = 10;
+const NOTIFICATION_ROW_BATCH = 10;
+const NOTIFICATION_ROW_LIMIT_KEY_PREFIX =
+  "route-ui:notifications:visible-row-limit:v1";
+
 function displayRowKey(row: DisplayRow) {
   if (row.kind === "date-header") return `hdr-${row.key}`;
   if (row.kind === "single") return row.item.id;
@@ -522,6 +529,95 @@ function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolea
   if (filter === "rating") return kind === "rating";
   if (filter === "revisit") return kind === "revisit";
   return true;
+}
+
+function notificationRowLimitStorageKey(mode: InboxMode, filter: FilterKey) {
+  return `${NOTIFICATION_ROW_LIMIT_KEY_PREFIX}:${mode}:${filter}`;
+}
+
+function readNotificationRowLimit(storageKey: string) {
+  if (typeof window === "undefined") return NOTIFICATION_INITIAL_ROW_COUNT;
+  const raw = window.sessionStorage.getItem(storageKey);
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  if (!Number.isFinite(parsed)) return NOTIFICATION_INITIAL_ROW_COUNT;
+  return Math.max(NOTIFICATION_INITIAL_ROW_COUNT, parsed);
+}
+
+function writeNotificationRowLimit(storageKey: string, limit: number) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(
+    storageKey,
+    String(Math.max(NOTIFICATION_INITIAL_ROW_COUNT, limit))
+  );
+}
+
+function useProgressiveNotificationRows(
+  rows: DisplayRow[],
+  storageKey: string
+) {
+  const [rowLimit, setRowLimit] = useState(() =>
+    readNotificationRowLimit(storageKey)
+  );
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setRowLimit(readNotificationRowLimit(storageKey));
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const maxLimit = Math.max(rows.length, NOTIFICATION_INITIAL_ROW_COUNT);
+    writeNotificationRowLimit(storageKey, Math.min(rowLimit, maxLimit));
+  }, [rowLimit, rows.length, storageKey]);
+
+  const revealMore = useCallback(() => {
+    setRowLimit((current) =>
+      Math.min(
+        rows.length,
+        Math.max(current, NOTIFICATION_INITIAL_ROW_COUNT) +
+          NOTIFICATION_ROW_BATCH
+      )
+    );
+  }, [rows.length]);
+
+  useEffect(() => {
+    if (rowLimit >= rows.length) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    if (typeof IntersectionObserver === "undefined") {
+      const onScroll = () => {
+        const remaining =
+          document.documentElement.scrollHeight -
+          (window.scrollY + window.innerHeight);
+        if (remaining < 900) revealMore();
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+      return () => window.removeEventListener("scroll", onScroll);
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) revealMore();
+      },
+      { rootMargin: "800px 0px 1000px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [revealMore, rowLimit, rows.length]);
+
+  const visibleRows = useMemo(
+    () => rows.slice(0, Math.min(rowLimit, rows.length)),
+    [rowLimit, rows]
+  );
+
+  return {
+    visibleRows,
+    visibleCount: visibleRows.length,
+    hasMore: rowLimit < rows.length,
+    sentinelRef,
+  };
 }
 
 // Inbox: every notification triggered for the current user. Tapping
@@ -812,6 +908,15 @@ export default function NotificationsPage() {
     return out;
   }, [visibleItems, filter, rowContext]);
 
+  const rowLimitStorageKey = useMemo(
+    () => notificationRowLimitStorageKey(mode, filter),
+    [mode, filter]
+  );
+  const progressiveRows = useProgressiveNotificationRows(
+    displayRows,
+    rowLimitStorageKey
+  );
+  const visibleDisplayRows = progressiveRows.visibleRows;
   const listRef = useRef<HTMLDivElement | null>(null);
   const [listTop, setListTop] = useState(0);
   useLayoutEffect(() => {
@@ -823,18 +928,18 @@ export default function NotificationsPage() {
     measureTop();
     window.addEventListener("resize", measureTop);
     return () => window.removeEventListener("resize", measureTop);
-  }, [displayRows.length, filter, mode]);
+  }, [visibleDisplayRows.length, filter, mode]);
 
   const getVirtualKey = useCallback(
     (index: number) => {
-      const row = displayRows[index];
+      const row = visibleDisplayRows[index];
       return row ? displayRowKey(row) : index;
     },
-    [displayRows]
+    [visibleDisplayRows]
   );
   const rowVirtualizer = useWindowVirtualizer({
-    count: displayRows.length,
-    estimateSize: (index) => estimateDisplayRowSize(displayRows[index]),
+    count: visibleDisplayRows.length,
+    estimateSize: (index) => estimateDisplayRowSize(visibleDisplayRows[index]),
     overscan: 8,
     scrollMargin: listTop,
     getItemKey: getVirtualKey,
@@ -1008,7 +1113,7 @@ export default function NotificationsPage() {
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {virtualRows.map((virtualRow) => {
-              const row = displayRows[virtualRow.index];
+              const row = visibleDisplayRows[virtualRow.index];
               if (!row) return null;
               const top = virtualRow.start - rowVirtualizer.options.scrollMargin;
               const content = (() => {
@@ -1044,9 +1149,40 @@ export default function NotificationsPage() {
             })}
           </div>
         )}
+        {!isLoading && displayRows.length > 0 && (
+          <NotificationLoadMoreSentinel
+            sentinelRef={progressiveRows.sentinelRef}
+            hasMore={progressiveRows.hasMore}
+            visibleCount={progressiveRows.visibleCount}
+            totalCount={displayRows.length}
+          />
+        )}
       </div>
     </div>
     </RowContext.Provider>
+  );
+}
+
+function NotificationLoadMoreSentinel({
+  sentinelRef,
+  hasMore,
+  visibleCount,
+  totalCount,
+}: {
+  sentinelRef: RefObject<HTMLDivElement | null>;
+  hasMore: boolean;
+  visibleCount: number;
+  totalCount: number;
+}) {
+  if (!hasMore) return null;
+  return (
+    <div
+      ref={sentinelRef}
+      className="h-16 flex items-center justify-center"
+      aria-label={`loading more notifications ${visibleCount} of ${totalCount}`}
+    >
+      <span className="w-5 h-5 rounded-full border-2 border-cream-200 border-t-peach-400 animate-spin" />
+    </div>
   );
 }
 
