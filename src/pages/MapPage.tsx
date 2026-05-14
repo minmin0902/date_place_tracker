@@ -807,30 +807,30 @@ export default function MapPage() {
         }
       />
       {/* Legend chip — one line, no wrap, no overflow. Bilingual
-          labels stayed before but 4 chips × bilingual didn't fit on a
-          360px phone and the row wrapped to two lines. Single language
-          (Korean) keeps every chip readable AND fits even with all 4
-          chips visible. Icons still carry the meaning at a glance. */}
+          labels didn't fit 4 chips on a 360px phone so the row was
+          wrapping. Single language (Chinese — shorter glyphs than
+          Korean for these terms) gets it under one line with room
+          to spare. Icons carry the rest. */}
       <div className="px-5 mb-2 flex-shrink-0">
         <div className="flex w-full items-center justify-around gap-1 bg-white rounded-xl px-2 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden whitespace-nowrap">
           <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
             <span className="text-[11px] leading-none flex-shrink-0">📍</span>
-            <span className="truncate">다녀온</span>
+            <span className="truncate">去过</span>
           </span>
           <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
             <RevisitPinMini />
-            <span className="truncate">또 갈래</span>
+            <span className="truncate">二刷</span>
           </span>
           {wishlistMarkers.length > 0 && (
             <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
               <WishlistPinMini />
-              <span className="truncate">가고싶은</span>
+              <span className="truncate">想去</span>
             </span>
           )}
           {couple?.home_latitude != null && couple?.home_longitude != null && (
             <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
               <HomePinMini />
-              <span className="truncate">우리집</span>
+              <span className="truncate">我家</span>
             </span>
           )}
         </div>
