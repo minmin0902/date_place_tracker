@@ -65,6 +65,17 @@ function isDetailRoute(key: string) {
   return key.startsWith("/places/");
 }
 
+function leavingScrollY(existing: number, current: number) {
+  // During route changes Safari/React Router can reset window.scrollY
+  // to 0 before our layout effect gets a chance to persist the page
+  // we're leaving. If we write that transient 0, every back navigation
+  // lands at the top. Scroll/click/touch handlers keep `existing`
+  // up-to-date while the user is actually on the page, so preserve it
+  // whenever the route-change read suddenly reports top.
+  if (current <= 2 && existing > 2) return existing;
+  return current;
+}
+
 function ScrollManager() {
   const { pathname, search } = useLocation();
   const navType = useNavigationType();
@@ -152,16 +163,8 @@ function ScrollManager() {
     // move the window on the incoming detail page.
     const previous = prevKey.current;
     if (previous && previous !== routeKey) {
-      // Browser/React Router can reset scrollY to 0 before this route
-      // effect runs on list -> detail navigation. The click/touch/scroll
-      // handlers above already captured the real list position, so do
-      // not let this late 0 overwrite it.
       const existing = getScrollMap()[previous] ?? 0;
-      const y =
-        isListReturnRoute(previous) && isDetailRoute(routeKey)
-          ? Math.max(existing, window.scrollY)
-          : window.scrollY;
-      saveScroll(previous, y, true);
+      saveScroll(previous, leavingScrollY(existing, window.scrollY), true);
     }
     currentKey.current = routeKey;
 
