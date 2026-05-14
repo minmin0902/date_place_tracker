@@ -1,7 +1,7 @@
 const imageDecodeCache = new Set<string>();
 
 function isImageLike(url: string) {
-  return !/\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
+  return !/\.(mp4|m4v|mov|webm|ogg|ogv|mkv)(\?|#|$)/i.test(url);
 }
 
 export function preloadImage(url: string | null | undefined) {

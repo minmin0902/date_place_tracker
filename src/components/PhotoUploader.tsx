@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Camera, X, AlertCircle, Play } from "lucide-react";
 import { uploadPhoto } from "@/hooks/usePlaces";
-import { isVideoUrl } from "@/lib/utils";
+import { isVideoUrl, videoPreviewUrl } from "@/lib/utils";
 import { assertVideoUnderLimit } from "@/lib/media-validation";
 
 export function PhotoUploader({
@@ -55,14 +55,12 @@ export function PhotoUploader({
             <div key={url} className="relative w-20 h-20">
               {isVideo ? (
                 <>
-                  {/* preload="metadata" so the first frame paints
-                      without downloading the whole clip. muted +
-                      playsInline keep iOS Safari from auto-fullscreen
-                      on tap. */}
+                  {/* #t=0.001 + preload="auto" makes mobile browsers paint
+                      an actual video thumbnail instead of a blank box. */}
                   <video
-                    src={url}
+                    src={videoPreviewUrl(url)}
                     className="w-full h-full object-cover rounded-xl bg-ink-900"
-                    preload="metadata"
+                    preload="auto"
                     muted
                     playsInline
                   />

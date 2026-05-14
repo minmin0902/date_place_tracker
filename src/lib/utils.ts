@@ -109,9 +109,16 @@ export function formatDate(date: string | Date, locale: string) {
 //
 // Also matches `data:video/...` URLs produced by localDb mode, where
 // uploads are stored as base64 data URLs and have no file extension.
-const VIDEO_EXT = /\.(mp4|m4v|mov|webm|ogg|ogv|mkv)(\?|$)/i;
+const VIDEO_EXT = /\.(mp4|m4v|mov|webm|ogg|ogv|mkv)(\?|#|$)/i;
 export function isVideoUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (url.startsWith("data:video/")) return true;
   return VIDEO_EXT.test(url);
+}
+
+export function videoPreviewUrl(url: string): string {
+  if (!isVideoUrl(url)) return url;
+  if (url.startsWith("data:") || url.startsWith("blob:")) return url;
+  if (url.includes("#t=")) return url;
+  return `${url}#t=0.001`;
 }

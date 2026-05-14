@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
-import { isVideoUrl } from "@/lib/utils";
+import { isVideoUrl, videoPreviewUrl } from "@/lib/utils";
 import { MediaLightbox } from "./MediaLightbox";
 
 // Drop-in replacement for `<img>` that flips to a `<video>` when the
@@ -29,6 +29,7 @@ export function MediaThumb({
   clickable = true,
   gallery,
   index,
+  loading = "lazy",
 }: {
   src: string;
   alt?: string;
@@ -43,6 +44,7 @@ export function MediaThumb({
   clickable?: boolean;
   gallery?: string[];
   index?: number;
+  loading?: "lazy" | "eager";
 }) {
   const [open, setOpen] = useState(false);
   const isVideo = isVideoUrl(src);
@@ -54,16 +56,13 @@ export function MediaThumb({
 
   const inner = isVideo ? (
     <span className="relative inline-block w-full h-full">
-      {/* preload="metadata" gives us the first frame as a poster
-          without downloading the whole clip; muted + playsInline
-          keep iOS Safari from auto-fullscreen on tap and let the
-          preview render inline. preload is already the de-facto
-          "lazy" knob for video — only the first frame downloads
-          until the user actually plays. */}
+      {/* #t=0.001 + preload="auto" nudges mobile Safari/Chrome to paint
+          a real first-frame preview instead of a blank video box. muted
+          + playsInline keep iOS from auto-fullscreening the thumbnail. */}
       <video
-        src={src}
+        src={videoPreviewUrl(src)}
         className={className}
-        preload="metadata"
+        preload="auto"
         muted
         playsInline
         controls={inlineControls}
@@ -88,7 +87,7 @@ export function MediaThumb({
       src={src}
       alt={alt ?? ""}
       className={className}
-      loading="lazy"
+      loading={loading}
       decoding="async"
     />
   );

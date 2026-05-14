@@ -1,5 +1,4 @@
 import {
-  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -17,7 +16,12 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAppBadge } from "@/hooks/useAppBadge";
 import { preloadAppRoutes, preloadRouteForPath } from "@/lib/routePreload";
-import { notifyHomeNavReselect, queueHomeNavReselect } from "@/lib/navEvents";
+import {
+  FORCE_SCROLL_SAVE_EVENT,
+  type ForceScrollSaveDetail,
+  HOME_RETURN_ANCHOR_KEY,
+  notifyHomeNavReselect,
+} from "@/lib/navEvents";
 
 // Scroll behavior across route changes:
 //   - PUSH / REPLACE (forward nav): scroll to top, otherwise the new
@@ -68,8 +72,17 @@ function isListReturnRoute(key: string) {
   );
 }
 
-function isDetailRoute(key: string) {
-  return key.startsWith("/places/");
+function isHomeRoute(key: string) {
+  return key === "/" || key.startsWith("/?");
+}
+
+function hasHomeReturnAnchor() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(HOME_RETURN_ANCHOR_KEY) != null;
+  } catch {
+    return false;
+  }
 }
 
 function leavingScrollY(existing: number, current: number) {
@@ -143,9 +156,15 @@ function ScrollManager() {
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") saveCurrent();
     };
+    const onForceScrollSave = (event: Event) => {
+      const detail = (event as CustomEvent<ForceScrollSaveDetail>).detail;
+      if (!detail?.key || typeof detail.y !== "number") return;
+      saveScroll(detail.key, detail.y, true);
+    };
     const touchOpts = { passive: true, capture: true } as const;
 
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(FORCE_SCROLL_SAVE_EVENT, onForceScrollSave);
     window.addEventListener("pagehide", saveCurrent);
     window.addEventListener("beforeunload", saveCurrent);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -154,6 +173,7 @@ function ScrollManager() {
     return () => {
       saveCurrent();
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener(FORCE_SCROLL_SAVE_EVENT, onForceScrollSave);
       window.removeEventListener("pagehide", saveCurrent);
       window.removeEventListener("beforeunload", saveCurrent);
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -178,10 +198,7 @@ function ScrollManager() {
     const target = getScrollMap()[routeKey] ?? 0;
     const shouldRestore =
       navType === "POP" ||
-      (target > 0 &&
-        !!previous &&
-        isDetailRoute(previous) &&
-        isListReturnRoute(routeKey));
+      (target > 0 && !!previous && isListReturnRoute(routeKey));
 
     if (shouldRestore) {
       // Restore. Single-shot scrollTo isn't robust when the
@@ -196,6 +213,15 @@ function ScrollManager() {
       // fight their gesture.
       if (target === 0) {
         window.scrollTo(0, 0);
+        prevKey.current = routeKey;
+        return;
+      }
+      if (isHomeRoute(routeKey) && hasHomeReturnAnchor()) {
+        // Home has a more precise card-anchor restore that runs after
+        // the virtualized row is back in the DOM. Do one coarse jump
+        // here so the right slice can mount, then let HomePage do the
+        // final alignment instead of running two retry loops.
+        window.scrollTo(0, target);
         prevKey.current = routeKey;
         return;
       }
@@ -260,9 +286,7 @@ function NavItem({
         if (pathname === "/") {
           event.preventDefault();
           notifyHomeNavReselect();
-          return;
         }
-        queueHomeNavReselect();
       }}
       onFocus={warmRoute}
       onPointerEnter={warmRoute}
@@ -283,6 +307,7 @@ function NavItem({
 export function AppShell() {
   const { t } = useTranslation();
   const { pathname, search } = useLocation();
+  const navType = useNavigationType();
   const routeKey = `${pathname}${search}`;
   const [routeSettling, setRouteSettling] = useState(false);
   // Sync the OS home-screen icon badge with the unread count so the
@@ -292,6 +317,13 @@ export function AppShell() {
     preloadAppRoutes();
   }, []);
   useEffect(() => {
+    // Back/forward should feel like returning to the exact same
+    // surface, not a fresh page fade. The fade is kept for normal
+    // forward taps only.
+    if (navType === "POP") {
+      setRouteSettling(false);
+      return;
+    }
     if (
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -301,7 +333,7 @@ export function AppShell() {
     setRouteSettling(true);
     const timer = window.setTimeout(() => setRouteSettling(false), 170);
     return () => window.clearTimeout(timer);
-  }, [routeKey]);
+  }, [navType, routeKey]);
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
       <ScrollManager />
@@ -350,15 +382,10 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
-  const [state, setState] = useState({
-    visible: false,
-    active: false,
-    thumbHeight: 0,
-    thumbY: 0,
-  });
 
   const update = useCallback((active = false) => {
     const track = trackRef.current;
+    if (!track) return;
     const doc = document.documentElement;
     const body = document.body;
     const viewportHeight = window.innerHeight || doc.clientHeight || 0;
@@ -382,23 +409,10 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
       ? Math.max(0, Math.min(1, progress)) * (trackHeight - thumbHeight)
       : 0;
 
-    setState((prev) => {
-      const next = {
-        visible,
-        active: visible && (active || prev.active),
-        thumbHeight,
-        thumbY,
-      };
-      if (
-        prev.visible === next.visible &&
-        prev.active === next.active &&
-        Math.abs(prev.thumbHeight - next.thumbHeight) < 0.5 &&
-        Math.abs(prev.thumbY - next.thumbY) < 0.5
-      ) {
-        return prev;
-      }
-      return next;
-    });
+    track.dataset.visible = visible ? "true" : "false";
+    if (active && visible) track.dataset.active = "true";
+    track.style.setProperty("--app-scroll-thumb-height", `${thumbHeight}px`);
+    track.style.setProperty("--app-scroll-thumb-y", `${thumbY}px`);
   }, []);
 
   const scheduleUpdate = useCallback(
@@ -409,7 +423,8 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
         }
         idleTimerRef.current = window.setTimeout(() => {
           idleTimerRef.current = null;
-          setState((prev) => ({ ...prev, active: false }));
+          const track = trackRef.current;
+          if (track) track.dataset.active = "false";
         }, 700);
       }
       if (rafRef.current !== null) return;
@@ -452,15 +467,9 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
     <div
       ref={trackRef}
       className="app-scroll-indicator"
-      data-visible={state.visible}
-      data-active={state.active}
+      data-visible="false"
+      data-active="false"
       aria-hidden="true"
-      style={
-        {
-          "--app-scroll-thumb-height": `${state.thumbHeight}px`,
-          "--app-scroll-thumb-y": `${state.thumbY}px`,
-        } as CSSProperties
-      }
     >
       <div className="app-scroll-indicator__thumb" />
     </div>
