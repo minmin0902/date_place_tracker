@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   NavLink,
   Outlet,
@@ -318,6 +325,7 @@ export function AppShell() {
             don't need the explicit key. */}
         <Outlet />
       </main>
+      <AppScrollIndicator routeKey={routeKey} />
       {/* z-20 sits ABOVE the timeline dots (z-[1]) so they don't peek
           through the nav, and BELOW the floating dice/add cluster
           (z-30) so the FAB still floats above the nav.
@@ -334,6 +342,127 @@ export function AppShell() {
           <NavItem to="/settings" icon={Settings} label={t("nav.settings")} />
         </div>
       </nav>
+    </div>
+  );
+}
+
+function AppScrollIndicator({ routeKey }: { routeKey: string }) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<number | null>(null);
+  const [state, setState] = useState({
+    visible: false,
+    active: false,
+    thumbHeight: 0,
+    thumbY: 0,
+  });
+
+  const update = useCallback((active = false) => {
+    const track = trackRef.current;
+    const doc = document.documentElement;
+    const body = document.body;
+    const viewportHeight = window.innerHeight || doc.clientHeight || 0;
+    const scrollHeight = Math.max(
+      doc.scrollHeight,
+      body?.scrollHeight ?? 0,
+      viewportHeight
+    );
+    const maxScroll = Math.max(0, scrollHeight - viewportHeight);
+    const trackHeight = track?.clientHeight ?? 0;
+    const visible = maxScroll > 6 && trackHeight > 40;
+    const minThumb = Math.min(72, Math.max(36, trackHeight * 0.18));
+    const rawThumb = visible
+      ? (viewportHeight / scrollHeight) * trackHeight
+      : 0;
+    const thumbHeight = visible
+      ? Math.min(trackHeight, Math.max(minThumb, rawThumb))
+      : 0;
+    const progress = maxScroll > 0 ? window.scrollY / maxScroll : 0;
+    const thumbY = visible
+      ? Math.max(0, Math.min(1, progress)) * (trackHeight - thumbHeight)
+      : 0;
+
+    setState((prev) => {
+      const next = {
+        visible,
+        active: visible && (active || prev.active),
+        thumbHeight,
+        thumbY,
+      };
+      if (
+        prev.visible === next.visible &&
+        prev.active === next.active &&
+        Math.abs(prev.thumbHeight - next.thumbHeight) < 0.5 &&
+        Math.abs(prev.thumbY - next.thumbY) < 0.5
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const scheduleUpdate = useCallback(
+    (active = false) => {
+      if (active) {
+        if (idleTimerRef.current !== null) {
+          window.clearTimeout(idleTimerRef.current);
+        }
+        idleTimerRef.current = window.setTimeout(() => {
+          idleTimerRef.current = null;
+          setState((prev) => ({ ...prev, active: false }));
+        }, 700);
+      }
+      if (rafRef.current !== null) return;
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = null;
+        update(active);
+      });
+    },
+    [update]
+  );
+
+  useEffect(() => {
+    const onScroll = () => scheduleUpdate(true);
+    const onResize = () => scheduleUpdate(false);
+    let resizeObserver: ResizeObserver | null = null;
+
+    scheduleUpdate(false);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => scheduleUpdate(false));
+      resizeObserver.observe(document.documentElement);
+      resizeObserver.observe(document.body);
+    }
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      resizeObserver?.disconnect();
+      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, [routeKey, scheduleUpdate]);
+
+  return (
+    <div
+      ref={trackRef}
+      className="app-scroll-indicator"
+      data-visible={state.visible}
+      data-active={state.active}
+      aria-hidden="true"
+      style={
+        {
+          "--app-scroll-thumb-height": `${state.thumbHeight}px`,
+          "--app-scroll-thumb-y": `${state.thumbY}px`,
+        } as CSSProperties
+      }
+    >
+      <div className="app-scroll-indicator__thumb" />
     </div>
   );
 }

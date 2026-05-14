@@ -25,6 +25,16 @@
     -webkit-text-size-adjust: 100%;
     /* Stop the iOS rubber-band bounce on scroll and on the web page shell. */
     overscroll-behavior-y: none;
+    /* The real scroll container is still window/document because route
+       restore, pull refresh, and virtualization all share it. Hide the
+       browser rail; AppShell paints a scoped scrollbar inside the app frame. */
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
   body {
     @apply bg-cream-50 text-ink-900 antialiased;
@@ -40,6 +50,7 @@
       Roboto, sans-serif;
     font-feature-settings: "ss01", "ss02";
     overscroll-behavior-y: none;
+    scrollbar-width: none;
     ::selection {
       background: #fde2e4;
     }
@@ -176,6 +187,36 @@
   }
   .route-soft-settle {
     animation: ourtable-route-soft-settle 150ms ease-out both;
+  }
+  .app-scroll-indicator {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.4rem);
+    right: calc((100vw - min(100vw, 28rem)) / 2 + 0.35rem);
+    z-index: 30;
+    width: 3px;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms ease-out;
+  }
+  .app-scroll-indicator[data-visible="true"] {
+    opacity: 0.32;
+  }
+  .app-scroll-indicator[data-active="true"] {
+    opacity: 0.82;
+  }
+  .app-scroll-indicator__thumb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 100%;
+    height: var(--app-scroll-thumb-height, 0px);
+    transform: translate3d(0, var(--app-scroll-thumb-y, 0px), 0);
+    border-radius: inherit;
+    background: rgba(248, 149, 112, 0.9);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.42);
+    will-change: transform;
   }
   .route-link-pressed .render-smooth-card {
     filter: saturate(1.02);
