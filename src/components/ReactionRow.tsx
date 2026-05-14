@@ -3,7 +3,8 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  REACTION_PALETTE_SECTIONS,
+  EXTRA_REACTION_PALETTE_SECTIONS,
+  QUICK_REACTIONS,
   summarize,
   useReactions,
   useToggleReaction,
@@ -83,7 +84,11 @@ function ReactionRowImpl({
   const pillBase = isSm
     ? "px-1.5 py-0.5 text-[11px] gap-1"
     : "px-2 py-0.5 text-[12px] gap-1";
+  const quickButton = isSm ? "w-7 h-7 text-base" : "w-8 h-8 text-lg";
+  const plusButton = isSm ? "w-7 h-7" : "w-8 h-8";
   const justify = align === "end" ? "justify-end" : "justify-start";
+  const quickSet = new Set<string>(QUICK_REACTIONS);
+  const extraSummary = summary.filter((s) => !quickSet.has(s.emoji));
 
   function onTapEmoji(emoji: string, existingId: string | null) {
     if (!couple || !user) return;
@@ -102,8 +107,87 @@ function ReactionRowImpl({
   }
 
   return (
-    <div className={`flex flex-wrap items-center gap-1 ${justify}`}>
-      {summary.map((s) => {
+    <div className={`flex flex-wrap items-center gap-1.5 ${justify}`}>
+      <div className="inline-flex items-center gap-0.5 rounded-full border border-cream-200 bg-white shadow-sm p-1">
+        {QUICK_REACTIONS.map((emoji) => {
+          const cur = summary.find((s) => s.emoji === emoji);
+          const mineId = cur?.mineId ?? null;
+          const mine = !!mineId;
+          return (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => onTapEmoji(emoji, mineId)}
+              disabled={toggle.isPending}
+              className={`relative ${quickButton} rounded-full flex items-center justify-center transition active:scale-90 ${
+                mine ? "bg-peach-100" : "hover:bg-cream-50"
+              }`}
+              aria-label={`${emoji} ${cur?.count ?? 0}`}
+              aria-pressed={mine}
+            >
+              <span className="leading-none">{emoji}</span>
+              {cur && cur.count > 0 && (
+                <span className="absolute -right-0.5 -bottom-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-ink-900 text-white text-[9px] font-number font-bold leading-none flex items-center justify-center border border-white">
+                  {cur.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        <div className="relative" ref={paletteAnchorRef}>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen((v) => !v)}
+            disabled={toggle.isPending}
+            className={`${plusButton} rounded-full flex items-center justify-center text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95`}
+            aria-label="add reaction"
+            aria-expanded={paletteOpen}
+          >
+            <Plus className={isSm ? "w-4 h-4" : "w-5 h-5"} />
+          </button>
+          {paletteOpen && (
+            <div
+              ref={paletteRef}
+              className={`absolute z-30 mt-2 ${
+                align === "end" ? "right-0" : "left-0"
+              } w-[min(18rem,calc(100vw-2rem))] max-h-64 overflow-y-auto hide-scrollbar bg-white border border-cream-200 rounded-2xl shadow-lg p-2`}
+            >
+              {EXTRA_REACTION_PALETTE_SECTIONS.map((section, sectionIdx) => (
+                <div
+                  key={sectionIdx}
+                  className={`grid grid-cols-7 gap-1 ${
+                    sectionIdx > 0
+                      ? "mt-1 border-t border-cream-100 pt-1"
+                      : ""
+                  }`}
+                >
+                  {section.map((emoji) => {
+                    const cur = summary.find((s) => s.emoji === emoji);
+                    const mineId = cur?.mineId ?? null;
+                    const mine = !!mineId;
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => onTapEmoji(emoji, mineId)}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition active:scale-90 ${
+                          mine ? "bg-peach-100" : "hover:bg-cream-50"
+                        }`}
+                        aria-label={emoji}
+                        aria-pressed={mine}
+                      >
+                        <span className="leading-none">{emoji}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {extraSummary.map((s) => {
         const mine = !!s.mineId;
         return (
           <button
@@ -124,59 +208,6 @@ function ReactionRowImpl({
           </button>
         );
       })}
-      <div className="relative" ref={paletteAnchorRef}>
-        <button
-          type="button"
-          onClick={() => setPaletteOpen((v) => !v)}
-          disabled={toggle.isPending}
-          className={`inline-flex items-center rounded-full border border-cream-200 bg-white text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95 ${
-            isSm ? "px-1.5 py-0.5" : "px-2 py-0.5"
-          }`}
-          aria-label="add reaction"
-          aria-expanded={paletteOpen}
-        >
-          <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
-        </button>
-        {paletteOpen && (
-          <div
-            ref={paletteRef}
-            className={`absolute z-30 mt-1 ${
-              align === "end" ? "right-0" : "left-0"
-            } w-[min(18rem,calc(100vw-2rem))] max-h-64 overflow-y-auto hide-scrollbar bg-white border border-cream-200 rounded-2xl shadow-lg p-2`}
-          >
-            {REACTION_PALETTE_SECTIONS.map((section, sectionIdx) => (
-              <div
-                key={sectionIdx}
-                className={`grid grid-cols-7 gap-1 ${
-                  sectionIdx > 0
-                    ? "mt-1 border-t border-cream-100 pt-1"
-                    : ""
-                }`}
-              >
-                {section.map((emoji) => {
-                  const cur = summary.find((s) => s.emoji === emoji);
-                  const mineId = cur?.mineId ?? null;
-                  const mine = !!mineId;
-                  return (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => onTapEmoji(emoji, mineId)}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition active:scale-90 ${
-                        mine ? "bg-peach-100" : "hover:bg-cream-50"
-                      }`}
-                      aria-label={emoji}
-                      aria-pressed={mine}
-                    >
-                      <span className="leading-none">{emoji}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

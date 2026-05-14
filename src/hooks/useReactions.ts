@@ -32,8 +32,7 @@ const FOOD_REACTION_EMOJIS = Array.from(
   new Set(Object.values(CATEGORY_EMOJI))
 );
 
-export const REACTION_PALETTE_SECTIONS: readonly (readonly string[])[] = [
-  QUICK_REACTIONS,
+export const EXTRA_REACTION_PALETTE_SECTIONS: readonly (readonly string[])[] = [
   ["😍", "🥰", "😂", "😭", "😮", "🤯", "👏", "🙏", "✨", "💯"],
   FOOD_REACTION_EMOJIS,
 ];
