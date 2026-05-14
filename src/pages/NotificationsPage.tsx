@@ -638,7 +638,8 @@ export default function NotificationsPage() {
       if (
         n.kind === "memo" ||
         n.kind === "memo_thread" ||
-        n.kind === "memo_reply"
+        n.kind === "memo_reply" ||
+        n.kind === "rating"
       ) {
         out.push({ kind: "single", item: n });
         continue;
@@ -678,9 +679,6 @@ export default function NotificationsPage() {
           break;
         case "food":
           b.foods.push(n);
-          break;
-        case "rating":
-          b.ratings.push(n);
           break;
         case "revisit":
           b.revisit = n;

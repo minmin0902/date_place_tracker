@@ -128,7 +128,7 @@ function MemoCommentImpl({
         </p>
         {photoUrls && photoUrls.length > 0 && (
           <div className="flex gap-1.5 mt-1.5">
-            {photoUrls.map((url) => (
+            {photoUrls.map((url, i) => (
               <div
                 key={url}
                 className={`${isSm ? "w-14 h-14" : "w-20 h-20"} rounded-xl overflow-hidden border border-cream-200 bg-ink-900 flex-shrink-0`}
@@ -138,6 +138,8 @@ function MemoCommentImpl({
                   className="w-full h-full object-cover"
                   showPlayBadge
                   controls
+                  gallery={photoUrls ?? undefined}
+                  index={i}
                 />
               </div>
             ))}

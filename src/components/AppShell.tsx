@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import {
   NavLink,
   Outlet,
@@ -46,10 +46,58 @@ function writeMap(map: ScrollMap) {
   }
 }
 
+function routeScrollKey(pathname: string, search: string) {
+  return `${pathname}${search}`;
+}
+
+function isListReturnRoute(key: string) {
+  return key === "/" || key.startsWith("/?") || key === "/notifications";
+}
+
+function isDetailRoute(key: string) {
+  return key.startsWith("/places/");
+}
+
 function ScrollManager() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navType = useNavigationType();
-  const prevPath = useRef<string | null>(null);
+  const routeKey = routeScrollKey(pathname, search);
+  const prevKey = useRef<string | null>(null);
+  const currentKey = useRef(routeKey);
+  const scrollMap = useRef<ScrollMap | null>(null);
+  const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRaf = useRef<number | null>(null);
+
+  const getScrollMap = useCallback(() => {
+    if (!scrollMap.current) scrollMap.current = readMap();
+    return scrollMap.current;
+  }, []);
+
+  const flushScrollMap = useCallback(() => {
+    if (writeTimer.current) {
+      clearTimeout(writeTimer.current);
+      writeTimer.current = null;
+    }
+    writeMap(getScrollMap());
+  }, [getScrollMap]);
+
+  const saveScroll = useCallback(
+    (key: string, y = window.scrollY, flush = false) => {
+      const map = getScrollMap();
+      map[key] = Math.max(0, Math.round(y));
+      if (flush) {
+        flushScrollMap();
+        return;
+      }
+      if (!writeTimer.current) {
+        writeTimer.current = setTimeout(() => {
+          writeTimer.current = null;
+          writeMap(getScrollMap());
+        }, 120);
+      }
+    },
+    [flushScrollMap, getScrollMap]
+  );
 
   // Take over scroll restoration once on mount. Default 'auto' lets
   // the browser race us; 'manual' lets us schedule the restore after
@@ -58,19 +106,58 @@ function ScrollManager() {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
-  }, []);
+    const saveCurrent = () =>
+      saveScroll(currentKey.current, window.scrollY, true);
+    const onScroll = () => {
+      if (scrollRaf.current !== null) return;
+      scrollRaf.current = requestAnimationFrame(() => {
+        scrollRaf.current = null;
+        saveScroll(currentKey.current, window.scrollY);
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") saveCurrent();
+    };
+    const touchOpts = { passive: true, capture: true } as const;
 
-  useEffect(() => {
-    // Snapshot the OUTGOING route's scrollY so a future POP can
-    // bring us back here. Skip the first effect run (no previous
-    // path to snapshot).
-    if (prevPath.current && prevPath.current !== pathname) {
-      const map = readMap();
-      map[prevPath.current] = window.scrollY;
-      writeMap(map);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", saveCurrent);
+    window.addEventListener("beforeunload", saveCurrent);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    document.addEventListener("click", saveCurrent, true);
+    document.addEventListener("touchstart", saveCurrent, touchOpts);
+    return () => {
+      saveCurrent();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", saveCurrent);
+      window.removeEventListener("beforeunload", saveCurrent);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("click", saveCurrent, true);
+      document.removeEventListener("touchstart", saveCurrent, touchOpts);
+      if (scrollRaf.current !== null) cancelAnimationFrame(scrollRaf.current);
+      flushScrollMap();
+    };
+  }, [flushScrollMap, saveScroll]);
+
+  useLayoutEffect(() => {
+    // Layout effect runs before PlaceDetailPage's hash scroll effect,
+    // so the outgoing list route is saved before #food/#memo anchors
+    // move the window on the incoming detail page.
+    const previous = prevKey.current;
+    if (previous && previous !== routeKey) {
+      saveScroll(previous, window.scrollY, true);
     }
+    currentKey.current = routeKey;
 
-    if (navType === "POP") {
+    const target = getScrollMap()[routeKey] ?? 0;
+    const shouldRestore =
+      navType === "POP" ||
+      (target > 0 &&
+        !!previous &&
+        isDetailRoute(previous) &&
+        isListReturnRoute(routeKey));
+
+    if (shouldRestore) {
       // Restore. Single-shot scrollTo isn't robust when the
       // destination is data-driven: react-query may render cached
       // data immediately, but late effects (avatar loads, image
@@ -78,18 +165,16 @@ function ScrollManager() {
       // growing for tens to hundreds of ms after mount. Without
       // retry we scroll to N but then content reflows and we end
       // up at min(N, scrollHeight). Solution: keep nudging the
-      // scroll back to target each frame for up to ~500ms, bailing
+      // scroll back to target each frame for up to ~2.5s, bailing
       // immediately if the user starts interacting so we don't
       // fight their gesture.
-      const map = readMap();
-      const target = map[pathname] ?? 0;
       if (target === 0) {
         window.scrollTo(0, 0);
-        prevPath.current = pathname;
+        prevKey.current = routeKey;
         return;
       }
       let cancelled = false;
-      const stopAt = Date.now() + 600;
+      const stopAt = Date.now() + 2500;
       const bail = () => {
         cancelled = true;
       };
@@ -105,7 +190,7 @@ function ScrollManager() {
         if (cancelled) return;
         window.scrollTo(0, target);
         // Within a few pixels of target → done.
-        if (Math.abs(window.scrollY - target) <= 2) return;
+        if (Math.abs(window.scrollY - target) <= 3) return;
         if (Date.now() > stopAt) return;
         requestAnimationFrame(tick);
       };
@@ -117,13 +202,14 @@ function ScrollManager() {
         window.removeEventListener("touchstart", bail);
         window.removeEventListener("keydown", bail);
       };
-      prevPath.current = pathname;
+      prevKey.current = routeKey;
       return cleanup;
     }
     // PUSH / REPLACE → go to top of the new route.
     window.scrollTo(0, 0);
-    prevPath.current = pathname;
-  }, [pathname, navType]);
+    saveScroll(routeKey, 0);
+    prevKey.current = routeKey;
+  }, [getScrollMap, navType, routeKey, saveScroll]);
 
   return null;
 }

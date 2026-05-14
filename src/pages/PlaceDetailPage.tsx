@@ -326,10 +326,11 @@ export default function PlaceDetailPage() {
             <span>집밥 · 在家做的</span>
           </div>
         )}
-        {/* Photos / videos — videos auto-render via MediaThumb. */}
+        {/* Photos / videos — videos auto-render via MediaThumb.
+            gallery + index lets the lightbox swipe between siblings. */}
         {place.photo_urls && place.photo_urls.length > 0 && (
           <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1">
-            {place.photo_urls.map((url) => (
+            {place.photo_urls.map((url, i) => (
               <div
                 key={url}
                 className="h-40 w-40 rounded-2xl overflow-hidden flex-shrink-0 bg-ink-900"
@@ -339,6 +340,8 @@ export default function PlaceDetailPage() {
                   className="w-full h-full object-cover"
                   showPlayBadge
                   controls
+                  gallery={place.photo_urls ?? undefined}
+                  index={i}
                 />
               </div>
             ))}
@@ -749,7 +752,7 @@ function FoodCard({
 
       {photos.length > 0 && (
         <div className="flex gap-2 overflow-x-auto -mx-4 px-4 mb-3 pb-1">
-          {photos.map((url) => (
+          {photos.map((url, i) => (
             <div
               key={url}
               className="h-24 w-24 rounded-xl overflow-hidden flex-shrink-0 border border-cream-100 bg-ink-900"
@@ -759,6 +762,8 @@ function FoodCard({
                 className="w-full h-full object-cover"
                 showPlayBadge
                 controls
+                gallery={photos}
+                index={i}
               />
             </div>
           ))}
@@ -828,7 +833,7 @@ function FoodCard({
           )}
           {food.recipe_photo_urls && food.recipe_photo_urls.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {food.recipe_photo_urls.map((url) => (
+              {food.recipe_photo_urls.map((url, i) => (
                 <div
                   key={url}
                   className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 border border-cream-200 bg-ink-900"
@@ -837,6 +842,8 @@ function FoodCard({
                     src={url}
                     className="w-full h-full object-cover"
                     showPlayBadge
+                    gallery={food.recipe_photo_urls ?? undefined}
+                    index={i}
                   />
                 </div>
               ))}

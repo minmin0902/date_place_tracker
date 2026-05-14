@@ -16,6 +16,10 @@ import { MediaLightbox } from "./MediaLightbox";
 //   clickable: when true (default) the thumb opens a fullscreen
 //     lightbox on tap. Pass false for non-display contexts (uploader
 //     previews, avatars) where zoom-in doesn't make sense.
+//   gallery: optional list of sibling media URLs (e.g. all place
+//     photos). When provided, opening the lightbox lets the user
+//     swipe between them. Caller also passes `index` for the
+//     starting position.
 export function MediaThumb({
   src,
   alt,
@@ -23,6 +27,8 @@ export function MediaThumb({
   showPlayBadge = false,
   controls = false,
   clickable = true,
+  gallery,
+  index,
 }: {
   src: string;
   alt?: string;
@@ -35,6 +41,8 @@ export function MediaThumb({
   // the lightbox provides controls.
   controls?: boolean;
   clickable?: boolean;
+  gallery?: string[];
+  index?: number;
 }) {
   const [open, setOpen] = useState(false);
   const isVideo = isVideoUrl(src);
@@ -97,7 +105,16 @@ export function MediaThumb({
       >
         {inner}
       </button>
-      {open && <MediaLightbox src={src} onClose={() => setOpen(false)} />}
+      {open &&
+        (gallery && gallery.length > 1 ? (
+          <MediaLightbox
+            srcs={gallery}
+            initial={index ?? gallery.indexOf(src)}
+            onClose={() => setOpen(false)}
+          />
+        ) : (
+          <MediaLightbox src={src} onClose={() => setOpen(false)} />
+        ))}
     </>
   );
 }
