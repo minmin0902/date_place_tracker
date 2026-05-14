@@ -1,5 +1,6 @@
 import {
   memo,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -11,8 +12,8 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ExpandableList } from "@/components/ExpandableList";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
-import { useGlobalRefresh } from "@/hooks/useGlobalRefresh";
 import { PullIndicator } from "@/components/PullIndicator";
 import {
   BookmarkPlus,
@@ -270,6 +271,7 @@ function viewerOnlyEater(
 
 export default function HomePage() {
   const { i18n, t } = useTranslation();
+  const qc = useQueryClient();
   const { user } = useAuth();
   const { data: couple } = useCouple();
   const { data: places, isLoading: placesLoading } = usePlaces(couple?.id);
@@ -287,10 +289,25 @@ export default function HomePage() {
     meProfileQuery.data?.partner_nickname?.trim() ||
     partnerProfileQuery.data?.nickname?.trim() ||
     "짝꿍";
-  // Single shared refresh covering every user-data query (places /
-  // wishlist / couple / memos / profile / notifications). Pull
-  // gesture and the header bell button drive the same callback.
-  const refreshAll = useGlobalRefresh();
+  // Home refresh should feel like Notifications refresh: update only
+  // the data this screen actually renders. The old global refresh also
+  // invalidated memos + reactions, which kicked off avoidable refetch /
+  // render waves after a pull or refresh-button tap.
+  const refreshAll = useCallback(() => {
+    const opts = { refetchType: "active" as const };
+    const userId = user?.id;
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: ["places"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["wishlist"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["couple"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["profile"], ...opts }),
+      qc.invalidateQueries({ queryKey: ["notifications", userId], ...opts }),
+      qc.invalidateQueries({
+        queryKey: ["notifications", "unread-count", userId],
+        ...opts,
+      }),
+    ]);
+  }, [qc, user?.id]);
   const {
     pull,
     refreshing,
