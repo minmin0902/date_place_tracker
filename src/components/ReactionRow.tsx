@@ -1,4 +1,16 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type CompositionEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
@@ -137,11 +149,58 @@ function ReactionRowImpl({
     return Array.from(trimmed).find(isEmojiSegment) ?? null;
   }
 
-  function onKeyboardEmojiChange(value: string) {
-    const emoji = firstEmojiGrapheme(value);
-    if (!emoji) return;
+  function onKeyboardEmojiBeforeInput(e: FormEvent<HTMLInputElement>) {
+    const inputEvent = e.nativeEvent as InputEvent;
+    const data = inputEvent.data;
+    if (data && !firstEmojiGrapheme(data)) e.preventDefault();
+  }
+
+  function onKeyboardEmojiChange(input: HTMLInputElement) {
+    const emoji = firstEmojiGrapheme(input.value);
+    if (!emoji) {
+      input.value = "";
+      return;
+    }
+    input.value = "";
     const cur = summary.find((s) => s.emoji === emoji);
     onTapEmoji(emoji, cur?.mineId ?? null);
+  }
+
+  function onKeyboardEmojiPaste(e: ClipboardEvent<HTMLInputElement>) {
+    const emoji = firstEmojiGrapheme(e.clipboardData.getData("text"));
+    if (!emoji) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    const cur = summary.find((s) => s.emoji === emoji);
+    onTapEmoji(emoji, cur?.mineId ?? null);
+  }
+
+  function onKeyboardEmojiCompositionEnd(
+    e: CompositionEvent<HTMLInputElement>
+  ) {
+    onKeyboardEmojiChange(e.currentTarget);
+  }
+
+  function onKeyboardEmojiInput(e: ChangeEvent<HTMLInputElement>) {
+    onKeyboardEmojiChange(e.currentTarget);
+  }
+
+  function onKeyboardEmojiDrop(e: DragEvent<HTMLInputElement>) {
+    e.preventDefault();
+  }
+
+  function onKeyboardEmojiKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (
+      e.key.length === 1 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !firstEmojiGrapheme(e.key)
+    ) {
+      e.preventDefault();
+    }
   }
 
   function openKeyboardEmojiInput() {
@@ -227,9 +286,16 @@ function ReactionRowImpl({
             </div>
             <input
               ref={keyboardEmojiInputRef}
-              onChange={(e) => onKeyboardEmojiChange(e.currentTarget.value)}
+              onBeforeInput={onKeyboardEmojiBeforeInput}
+              onChange={onKeyboardEmojiInput}
+              onCompositionEnd={onKeyboardEmojiCompositionEnd}
+              onPaste={onKeyboardEmojiPaste}
+              onDrop={onKeyboardEmojiDrop}
+              onKeyDown={onKeyboardEmojiKeyDown}
               inputMode="text"
+              maxLength={16}
               autoCapitalize="none"
+              autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
               aria-label="emoji reaction input"

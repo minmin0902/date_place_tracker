@@ -42,7 +42,11 @@ import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { supabase } from "@/lib/supabase";
 import { isVideoUrl } from "@/lib/utils";
-import type { Memo as MemoRow, NotificationRow } from "@/lib/database.types";
+import type {
+  Memo as MemoRow,
+  NotificationRow,
+  Reaction,
+} from "@/lib/database.types";
 
 // Resolver for "what does this notification belong to?". Built once
 // from the places list at the top of the page and made available to
@@ -124,6 +128,100 @@ function useNotificationMemoLookup(items: NotificationRow[] | undefined) {
       return new Map([...rows, ...parents].map((m) => [m.id, m]));
     },
     staleTime: 30_000,
+  });
+}
+
+type ReactionLookupRow = Pick<
+  Reaction,
+  "user_id" | "emoji" | "memo_id" | "food_id" | "place_id"
+>;
+
+function reactionNotificationKey(n: NotificationRow): string | null {
+  if (n.kind !== "reaction" || !n.preview) return null;
+  if (n.memo_id) return `memo:${n.memo_id}|${n.actor_id}|${n.preview}`;
+  if (n.food_id) return `food:${n.food_id}|${n.actor_id}|${n.preview}`;
+  if (n.place_id) return `place:${n.place_id}|${n.actor_id}|${n.preview}`;
+  return null;
+}
+
+function liveReactionKey(r: ReactionLookupRow): string | null {
+  if (r.memo_id) return `memo:${r.memo_id}|${r.user_id}|${r.emoji}`;
+  if (r.food_id) return `food:${r.food_id}|${r.user_id}|${r.emoji}`;
+  if (r.place_id) return `place:${r.place_id}|${r.user_id}|${r.emoji}`;
+  return null;
+}
+
+function uniq<T>(items: T[]) {
+  return Array.from(new Set(items));
+}
+
+function useLiveReactionLookup(items: NotificationRow[] | undefined) {
+  const reactionItems = useMemo(
+    () => (items ?? []).filter((n) => n.kind === "reaction"),
+    [items]
+  );
+  const lookupKeys = useMemo(
+    () =>
+      reactionItems
+        .map(reactionNotificationKey)
+        .filter((k): k is string => !!k)
+        .sort(),
+    [reactionItems]
+  );
+
+  return useQuery({
+    queryKey: ["notifications", "live-reactions", lookupKeys],
+    enabled: lookupKeys.length > 0,
+    queryFn: async (): Promise<Set<string>> => {
+      const memoIds = uniq(
+        reactionItems
+          .map((n) => n.memo_id)
+          .filter((id): id is string => !!id)
+      );
+      const foodIds = uniq(
+        reactionItems
+          .filter((n) => !n.memo_id)
+          .map((n) => n.food_id)
+          .filter((id): id is string => !!id)
+      );
+      const placeIds = uniq(
+        reactionItems
+          .filter((n) => !n.memo_id && !n.food_id)
+          .map((n) => n.place_id)
+          .filter((id): id is string => !!id)
+      );
+
+      const rows: ReactionLookupRow[] = [];
+      if (memoIds.length > 0) {
+        const { data, error } = await supabase
+          .from("reactions")
+          .select("user_id,emoji,memo_id,food_id,place_id")
+          .in("memo_id", memoIds);
+        if (error) throw error;
+        rows.push(...((data ?? []) as ReactionLookupRow[]));
+      }
+      if (foodIds.length > 0) {
+        const { data, error } = await supabase
+          .from("reactions")
+          .select("user_id,emoji,memo_id,food_id,place_id")
+          .in("food_id", foodIds);
+        if (error) throw error;
+        rows.push(...((data ?? []) as ReactionLookupRow[]));
+      }
+      if (placeIds.length > 0) {
+        const { data, error } = await supabase
+          .from("reactions")
+          .select("user_id,emoji,memo_id,food_id,place_id")
+          .in("place_id", placeIds);
+        if (error) throw error;
+        rows.push(...((data ?? []) as ReactionLookupRow[]));
+      }
+
+      return new Set(
+        rows.map(liveReactionKey).filter((k): k is string => !!k)
+      );
+    },
+    staleTime: 10_000,
   });
 }
 
@@ -447,6 +545,10 @@ export default function NotificationsPage() {
         queryKey: ["notifications", "memo-lookup"],
         ...opts,
       }),
+      qc.invalidateQueries({
+        queryKey: ["notifications", "live-reactions"],
+        ...opts,
+      }),
       qc.invalidateQueries({ queryKey: ["places"], ...opts }),
       qc.invalidateQueries({ queryKey: ["profile"], ...opts }),
     ]);
@@ -476,6 +578,7 @@ export default function NotificationsPage() {
   const { data: couple } = useCouple();
   const { data: places } = usePlaces(couple?.id);
   const { data: memoLookup } = useNotificationMemoLookup(items);
+  const { data: liveReactionKeys } = useLiveReactionLookup(items);
   const rowContext = useMemo<ContextResolver>(() => {
     const placeNameById = new Map<string, string>();
     const foodNameById = new Map<string, string>();
@@ -531,7 +634,15 @@ export default function NotificationsPage() {
     };
   }, [places, memoLookup]);
 
-  const allItems = items ?? [];
+  const allItems = useMemo(() => {
+    const raw = items ?? [];
+    if (!liveReactionKeys) return raw;
+    return raw.filter((n) => {
+      if (n.kind !== "reaction") return true;
+      const key = reactionNotificationKey(n);
+      return key ? liveReactionKeys.has(key) : false;
+    });
+  }, [items, liveReactionKeys]);
   const unreadItems = useMemo(
     () => allItems.filter((n) => !n.read_at),
     [allItems]
