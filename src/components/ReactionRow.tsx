@@ -1,9 +1,4 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import EmojiPicker, {
-  EmojiStyle,
-  Theme,
-  type EmojiClickData,
-} from "emoji-picker-react";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
@@ -53,13 +48,13 @@ function ReactionRowImpl({
   const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [fullPickerOpen, setFullPickerOpen] = useState(false);
   // Anchor + palette refs. paletteAnchorRef is the wrapper around the
   // "+" button; paletteRef is the popover itself. Used by the
   // outside-tap effect to dismiss the picker when the user taps
   // anywhere else (most users won't pointer-leave on touch).
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const paletteRef = useRef<HTMLDivElement | null>(null);
+  const keyboardEmojiInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -72,7 +67,6 @@ function ReactionRowImpl({
         return;
       }
       setPaletteOpen(false);
-      setFullPickerOpen(false);
     }
     // pointerdown over click — fires before the next tap can register
     // anything else (e.g. a thread memo button below). Capture phase
@@ -95,7 +89,6 @@ function ReactionRowImpl({
 
   function closePalette() {
     setPaletteOpen(false);
-    setFullPickerOpen(false);
   }
 
   function onTapEmoji(emoji: string, existingId: string | null) {
@@ -114,11 +107,48 @@ function ReactionRowImpl({
     });
   }
 
-  function onFullEmojiPick(emojiData: EmojiClickData) {
-    const emoji = emojiData.emoji;
+  function isEmojiSegment(segment: string) {
+    return /[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Regional_Indicator}]|\p{Emoji}\uFE0F/u.test(
+      segment
+    );
+  }
+
+  function firstEmojiGrapheme(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const segmenter = (
+      Intl as typeof Intl & {
+        Segmenter?: new (
+          locale?: string,
+          options?: { granularity: "grapheme" }
+        ) => {
+          segment(input: string): Iterable<{ segment: string }>;
+        };
+      }
+    ).Segmenter;
+    if (segmenter) {
+      for (const { segment } of new segmenter(undefined, {
+        granularity: "grapheme",
+      }).segment(trimmed)) {
+        if (isEmojiSegment(segment)) return segment;
+      }
+      return null;
+    }
+    return Array.from(trimmed).find(isEmojiSegment) ?? null;
+  }
+
+  function onKeyboardEmojiChange(value: string) {
+    const emoji = firstEmojiGrapheme(value);
     if (!emoji) return;
     const cur = summary.find((s) => s.emoji === emoji);
     onTapEmoji(emoji, cur?.mineId ?? null);
+  }
+
+  function openKeyboardEmojiInput() {
+    const input = keyboardEmojiInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.focus({ preventScroll: true });
   }
 
   return (
@@ -149,7 +179,6 @@ function ReactionRowImpl({
           type="button"
           onClick={() => {
             setPaletteOpen((v) => !v);
-            setFullPickerOpen(false);
           }}
           disabled={toggle.isPending}
           className={`inline-flex items-center rounded-full border border-cream-200 bg-white text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95 ${
@@ -165,11 +194,7 @@ function ReactionRowImpl({
             ref={paletteRef}
             className={`absolute z-30 mt-1 ${
               align === "end" ? "right-0" : "left-0"
-            } bg-white border border-cream-200 shadow-lg ${
-              fullPickerOpen
-                ? "w-[min(21rem,calc(100vw-2rem))] rounded-2xl p-2"
-                : "rounded-full p-1"
-            }`}
+            } rounded-full bg-white border border-cream-200 p-1 shadow-lg`}
           >
             <div className="flex items-center gap-0.5">
               {QUICK_REACTIONS.map((emoji) => {
@@ -193,32 +218,25 @@ function ReactionRowImpl({
               })}
               <button
                 type="button"
-                onClick={() => setFullPickerOpen((v) => !v)}
-                className={`${quickButton} rounded-full flex items-center justify-center transition active:scale-90 ${
-                  fullPickerOpen
-                    ? "bg-peach-100 text-peach-600"
-                    : "text-ink-400 hover:text-peach-500 hover:bg-cream-50"
-                }`}
-                aria-label="all emoji"
-                aria-expanded={fullPickerOpen}
+                onClick={openKeyboardEmojiInput}
+                className={`${quickButton} rounded-full flex items-center justify-center text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-90`}
+                aria-label="keyboard emoji"
               >
                 <Plus className={isSm ? "w-4 h-4" : "w-5 h-5"} />
               </button>
             </div>
-            {fullPickerOpen && (
-              <div className="mt-2 overflow-hidden rounded-2xl border border-cream-100 bg-white">
-                <EmojiPicker
-                  width="100%"
-                  height={320}
-                  lazyLoadEmojis
-                  emojiStyle={EmojiStyle.NATIVE}
-                  theme={Theme.LIGHT}
-                  searchPlaceholder="Emoji"
-                  previewConfig={{ showPreview: false }}
-                  onEmojiClick={onFullEmojiPick}
-                />
-              </div>
-            )}
+            <input
+              ref={keyboardEmojiInputRef}
+              onChange={(e) => onKeyboardEmojiChange(e.currentTarget.value)}
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-label="emoji reaction input"
+              className="fixed bottom-0 left-0 h-px w-px opacity-0"
+              style={{ fontSize: 16 }}
+              tabIndex={-1}
+            />
           </div>
         )}
       </div>
