@@ -3,7 +3,6 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
-  EXTRA_REACTION_PALETTE_SECTIONS,
   QUICK_REACTIONS,
   summarize,
   useReactions,
@@ -49,12 +48,15 @@ function ReactionRowImpl({
   const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [customInputOpen, setCustomInputOpen] = useState(false);
+  const [customEmoji, setCustomEmoji] = useState("");
   // Anchor + palette refs. paletteAnchorRef is the wrapper around the
   // "+" button; paletteRef is the popover itself. Used by the
   // outside-tap effect to dismiss the picker when the user taps
   // anywhere else (most users won't pointer-leave on touch).
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const paletteRef = useRef<HTMLDivElement | null>(null);
+  const customInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -67,6 +69,8 @@ function ReactionRowImpl({
         return;
       }
       setPaletteOpen(false);
+      setCustomInputOpen(false);
+      setCustomEmoji("");
     }
     // pointerdown over click — fires before the next tap can register
     // anything else (e.g. a thread memo button below). Capture phase
@@ -74,6 +78,11 @@ function ReactionRowImpl({
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, [paletteOpen]);
+
+  useEffect(() => {
+    if (!paletteOpen || !customInputOpen) return;
+    requestAnimationFrame(() => customInputRef.current?.focus());
+  }, [customInputOpen, paletteOpen]);
 
   const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
   const summary = useMemo(() => summarize(rows, user?.id), [rows, user?.id]);
@@ -85,15 +94,18 @@ function ReactionRowImpl({
     ? "px-1.5 py-0.5 text-[11px] gap-1"
     : "px-2 py-0.5 text-[12px] gap-1";
   const quickButton = isSm ? "w-7 h-7 text-base" : "w-8 h-8 text-lg";
-  const plusButton = isSm ? "w-7 h-7" : "w-8 h-8";
   const justify = align === "end" ? "justify-end" : "justify-start";
-  const quickSet = new Set<string>(QUICK_REACTIONS);
-  const extraSummary = summary.filter((s) => !quickSet.has(s.emoji));
+
+  function closePalette() {
+    setPaletteOpen(false);
+    setCustomInputOpen(false);
+    setCustomEmoji("");
+  }
 
   function onTapEmoji(emoji: string, existingId: string | null) {
     if (!couple || !user) return;
     if (toggle.isPending) return;
-    setPaletteOpen(false);
+    closePalette();
     void toggle.mutateAsync({
       coupleId: couple.id,
       userId: user.id,
@@ -106,88 +118,42 @@ function ReactionRowImpl({
     });
   }
 
-  return (
-    <div className={`flex flex-wrap items-center gap-1.5 ${justify}`}>
-      <div className="inline-flex items-center gap-0.5 rounded-full border border-cream-200 bg-white shadow-sm p-1">
-        {QUICK_REACTIONS.map((emoji) => {
-          const cur = summary.find((s) => s.emoji === emoji);
-          const mineId = cur?.mineId ?? null;
-          const mine = !!mineId;
-          return (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => onTapEmoji(emoji, mineId)}
-              disabled={toggle.isPending}
-              className={`relative ${quickButton} rounded-full flex items-center justify-center transition active:scale-90 ${
-                mine ? "bg-peach-100" : "hover:bg-cream-50"
-              }`}
-              aria-label={`${emoji} ${cur?.count ?? 0}`}
-              aria-pressed={mine}
-            >
-              <span className="leading-none">{emoji}</span>
-              {cur && cur.count > 0 && (
-                <span className="absolute -right-0.5 -bottom-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-ink-900 text-white text-[9px] font-number font-bold leading-none flex items-center justify-center border border-white">
-                  {cur.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-        <div className="relative" ref={paletteAnchorRef}>
-          <button
-            type="button"
-            onClick={() => setPaletteOpen((v) => !v)}
-            disabled={toggle.isPending}
-            className={`${plusButton} rounded-full flex items-center justify-center text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95`}
-            aria-label="add reaction"
-            aria-expanded={paletteOpen}
-          >
-            <Plus className={isSm ? "w-4 h-4" : "w-5 h-5"} />
-          </button>
-          {paletteOpen && (
-            <div
-              ref={paletteRef}
-              className={`absolute z-30 mt-2 ${
-                align === "end" ? "right-0" : "left-0"
-              } w-[min(18rem,calc(100vw-2rem))] max-h-64 overflow-y-auto hide-scrollbar bg-white border border-cream-200 rounded-2xl shadow-lg p-2`}
-            >
-              {EXTRA_REACTION_PALETTE_SECTIONS.map((section, sectionIdx) => (
-                <div
-                  key={sectionIdx}
-                  className={`grid grid-cols-7 gap-1 ${
-                    sectionIdx > 0
-                      ? "mt-1 border-t border-cream-100 pt-1"
-                      : ""
-                  }`}
-                >
-                  {section.map((emoji) => {
-                    const cur = summary.find((s) => s.emoji === emoji);
-                    const mineId = cur?.mineId ?? null;
-                    const mine = !!mineId;
-                    return (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => onTapEmoji(emoji, mineId)}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition active:scale-90 ${
-                          mine ? "bg-peach-100" : "hover:bg-cream-50"
-                        }`}
-                        aria-label={emoji}
-                        aria-pressed={mine}
-                      >
-                        <span className="leading-none">{emoji}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+  function firstGrapheme(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const segmenter = (
+      Intl as typeof Intl & {
+        Segmenter?: new (
+          locale?: string,
+          options?: { granularity: "grapheme" }
+        ) => {
+          segment(input: string): Iterable<{ segment: string }>;
+        };
+      }
+    ).Segmenter;
+    if (segmenter) {
+      const iterator = new segmenter(undefined, {
+        granularity: "grapheme",
+      })
+        .segment(trimmed)
+        [Symbol.iterator]();
+      const first = iterator.next().value?.segment;
+      if (first) return first;
+    }
+    return Array.from(trimmed)[0] ?? null;
+  }
 
-      {extraSummary.map((s) => {
+  function onCustomEmojiChange(value: string) {
+    setCustomEmoji(value);
+    const emoji = firstGrapheme(value);
+    if (!emoji) return;
+    const cur = summary.find((s) => s.emoji === emoji);
+    onTapEmoji(emoji, cur?.mineId ?? null);
+  }
+
+  return (
+    <div className={`flex flex-wrap items-center gap-1 ${justify}`}>
+      {summary.map((s) => {
         const mine = !!s.mineId;
         return (
           <button
@@ -208,6 +174,79 @@ function ReactionRowImpl({
           </button>
         );
       })}
+      <div className="relative" ref={paletteAnchorRef}>
+        <button
+          type="button"
+          onClick={() => {
+            setPaletteOpen((v) => !v);
+            setCustomInputOpen(false);
+            setCustomEmoji("");
+          }}
+          disabled={toggle.isPending}
+          className={`inline-flex items-center rounded-full border border-cream-200 bg-white text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95 ${
+            isSm ? "px-1.5 py-0.5" : "px-2 py-0.5"
+          }`}
+          aria-label="add reaction"
+          aria-expanded={paletteOpen}
+        >
+          <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        </button>
+        {paletteOpen && (
+          <div
+            ref={paletteRef}
+            className={`absolute z-30 mt-1 ${
+              align === "end" ? "right-0" : "left-0"
+            } bg-white border border-cream-200 shadow-lg ${
+              customInputOpen
+                ? "w-[min(18rem,calc(100vw-2rem))] rounded-2xl p-2"
+                : "rounded-full p-1"
+            }`}
+          >
+            <div className="flex items-center gap-0.5">
+              {QUICK_REACTIONS.map((emoji) => {
+                const cur = summary.find((s) => s.emoji === emoji);
+                const mineId = cur?.mineId ?? null;
+                const mine = !!mineId;
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => onTapEmoji(emoji, mineId)}
+                    className={`${quickButton} rounded-full flex items-center justify-center transition active:scale-90 ${
+                      mine ? "bg-peach-100" : "hover:bg-cream-50"
+                    }`}
+                    aria-label={emoji}
+                    aria-pressed={mine}
+                  >
+                    <span className="leading-none">{emoji}</span>
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setCustomInputOpen(true)}
+                className={`${quickButton} rounded-full flex items-center justify-center text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-90`}
+                aria-label="system emoji"
+              >
+                <Plus className={isSm ? "w-4 h-4" : "w-5 h-5"} />
+              </button>
+            </div>
+            {customInputOpen && (
+              <input
+                ref={customInputRef}
+                value={customEmoji}
+                onChange={(e) => onCustomEmojiChange(e.currentTarget.value)}
+                inputMode="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="이모지 · 表情"
+                className="mt-2 w-full h-9 rounded-full bg-cream-50 border border-cream-200 px-3 text-center text-lg focus:outline-none focus:border-peach-300 focus:ring-2 focus:ring-peach-100"
+              />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

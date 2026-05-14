@@ -8,7 +8,6 @@ import {
   getReactions as getLocalReactions,
   toggleReaction as toggleLocalReaction,
 } from "@/lib/localDb";
-import { CATEGORY_EMOJI } from "@/lib/constants";
 import type { Reaction, ReactionTarget } from "@/lib/database.types";
 
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
@@ -27,15 +26,6 @@ export const QUICK_REACTIONS = [
   "🔥",
   "👍",
 ] as const;
-
-const FOOD_REACTION_EMOJIS = Array.from(
-  new Set(Object.values(CATEGORY_EMOJI))
-);
-
-export const EXTRA_REACTION_PALETTE_SECTIONS: readonly (readonly string[])[] = [
-  ["😍", "🥰", "😂", "😭", "😮", "🤯", "👏", "🙏", "✨", "💯"],
-  FOOD_REACTION_EMOJIS,
-];
 
 // Query key scope is the target itself — flat reactions list per
 // (memo|place|food) id, so a successful toggle invalidates exactly
