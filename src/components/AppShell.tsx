@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   NavLink,
   Outlet,
@@ -152,7 +152,16 @@ function ScrollManager() {
     // move the window on the incoming detail page.
     const previous = prevKey.current;
     if (previous && previous !== routeKey) {
-      saveScroll(previous, window.scrollY, true);
+      // Browser/React Router can reset scrollY to 0 before this route
+      // effect runs on list -> detail navigation. The click/touch/scroll
+      // handlers above already captured the real list position, so do
+      // not let this late 0 overwrite it.
+      const existing = getScrollMap()[previous] ?? 0;
+      const y =
+        isListReturnRoute(previous) && isDetailRoute(routeKey)
+          ? Math.max(existing, window.scrollY)
+          : window.scrollY;
+      saveScroll(previous, y, true);
     }
     currentKey.current = routeKey;
 
@@ -263,12 +272,26 @@ function NavItem({
 
 export function AppShell() {
   const { t } = useTranslation();
+  const { pathname, search } = useLocation();
+  const routeKey = `${pathname}${search}`;
+  const [routeSettling, setRouteSettling] = useState(false);
   // Sync the OS home-screen icon badge with the unread count so the
   // red dot clears immediately when the user marks notifications read.
   useAppBadge();
   useEffect(() => {
     preloadAppRoutes();
   }, []);
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    setRouteSettling(true);
+    const timer = window.setTimeout(() => setRouteSettling(false), 170);
+    return () => window.clearTimeout(timer);
+  }, [routeKey]);
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
       <ScrollManager />
@@ -276,7 +299,7 @@ export function AppShell() {
           safe-area inset (~34px on iPhone X+), otherwise the last row gets
           hidden behind the nav. */}
       <main
-        className="flex-1"
+        className={`flex-1 ${routeSettling ? "route-soft-settle" : ""}`}
         style={{
           paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)",
         }}

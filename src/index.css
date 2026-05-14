@@ -128,6 +128,14 @@
       opacity: 1;
     }
   }
+  @keyframes ourtable-route-soft-settle {
+    from {
+      opacity: 0.92;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   /* Local-only slide animations are still useful for tiny inline
      transitions (the comment thread expand drilldown etc.) where the
      animated subtree contains no fixed descendants. Use sparingly. */
@@ -165,6 +173,12 @@
   }
   .smooth-touch {
     @apply transition-transform duration-150 ease-out active:scale-[0.96] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .route-soft-settle {
+    animation: ourtable-route-soft-settle 150ms ease-out both;
+  }
+  .route-link-pressed .render-smooth-card {
+    filter: saturate(1.02);
   }
   /* Used by horizontally scrollable filter rows on the timeline so the
      overflow arrow doesn't peek out under the chips on iOS / desktop. */
