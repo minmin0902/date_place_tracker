@@ -1,4 +1,12 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ExpandableList } from "@/components/ExpandableList";
 import { Link, useNavigate } from "react-router-dom";
@@ -291,6 +299,7 @@ export default function HomePage() {
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
+  const [, startTransition] = useTransition();
 
   // Hydrate filters from sessionStorage exactly once. useRef so the
   // load happens before the first render and isn't re-evaluated on
@@ -329,7 +338,9 @@ export default function HomePage() {
   });
   // Helper: pick a chip if not active, otherwise clear it.
   const toggleListFilter = (next: Exclude<ListFilter, "none">) =>
-    setListFilter((prev) => (prev === next ? "none" : next));
+    startTransition(() =>
+      setListFilter((prev) => (prev === next ? "none" : next))
+    );
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     // Migrate v1 saved "city" mode (when sort + 도시별 lived in the
     // same dropdown) to a plain date sort + leave city filtering to
@@ -387,6 +398,13 @@ export default function HomePage() {
   // dropdown grid that used to clip text and force three separate
   // open-then-close cycles.
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const deferredQuery = useDeferredValue(query);
+  const deferredListFilter = useDeferredValue(listFilter);
+  const deferredViewMode = useDeferredValue(viewMode);
+  const deferredDiningFilter = useDeferredValue(diningFilter);
+  const deferredCategoryFilter = useDeferredValue(categoryFilter);
+  const deferredFoodCategoryFilter = useDeferredValue(foodCategoryFilter);
+  const deferredSelectedCities = useDeferredValue(selectedCities);
 
   // Persist filters every time one changes — picked up on the next
   // mount of HomePage so users return to the same view after diving
@@ -464,11 +482,12 @@ export default function HomePage() {
   const baseList = useMemo(() => {
     if (!places) return [];
     let list = places;
+    const q = deferredQuery.trim().toLowerCase();
     // Single-pick chip group above the diningFilter — only one of the
     // four predicates ever applies.
-    if (listFilter === "revisit") {
+    if (deferredListFilter === "revisit") {
       list = list.filter((p) => p.want_to_revisit);
-    } else if (listFilter === "unrated") {
+    } else if (deferredListFilter === "unrated") {
       // Show only places that still need *my* rating somewhere — at
       // least one food whose viewer-side rating is null AND I'm
       // expected to rate. Foods marked as "partner only" or "creator
@@ -486,28 +505,29 @@ export default function HomePage() {
           return ratingsForViewer(f, user?.id).myRating == null;
         })
       );
-    } else if (listFilter === "myOnly") {
+    } else if (deferredListFilter === "myOnly") {
       list = list.filter((p) =>
         (p.foods ?? []).some(
           (f) => viewerOnlyEater(f, user?.id) === "me"
         )
       );
-    } else if (listFilter === "partnerOnly") {
+    } else if (deferredListFilter === "partnerOnly") {
       list = list.filter((p) =>
         (p.foods ?? []).some(
           (f) => viewerOnlyEater(f, user?.id) === "partner"
         )
       );
     }
-    if (diningFilter === "out") list = list.filter((p) => !p.is_home_cooked);
-    else if (diningFilter === "home")
+    if (deferredDiningFilter === "out")
+      list = list.filter((p) => !p.is_home_cooked);
+    else if (deferredDiningFilter === "home")
       list = list.filter((p) => p.is_home_cooked);
-    if (categoryFilter.length > 0) {
+    if (deferredCategoryFilter.length > 0) {
       // Multi-select OR semantics: a place matches if any of its
       // categories appear in the selection, OR — when "__none__" is in
       // the selection — the place itself has no categories.
-      const wantNone = categoryFilter.includes("__none__");
-      const concrete = categoryFilter.filter((v) => v !== "__none__");
+      const wantNone = deferredCategoryFilter.includes("__none__");
+      const concrete = deferredCategoryFilter.filter((v) => v !== "__none__");
       list = list.filter((p) => {
         if (wantNone && isPlaceUncategorized(p)) return true;
         if (concrete.length === 0) return false;
@@ -515,17 +535,16 @@ export default function HomePage() {
         return concrete.some((c) => cats.includes(c));
       });
     }
-    if (selectedCities.length > 0) {
+    if (deferredSelectedCities.length > 0) {
       // Multi-city OR semantics: show places whose inferred city is in
       // the selection. Mirrors the category filter's array shape.
-      const citySet = new Set(selectedCities);
+      const citySet = new Set(deferredSelectedCities);
       list = list.filter((p) => {
         const city = inferCity(p.address);
         return city != null && citySet.has(city);
       });
     }
-    if (query.trim()) {
-      const q = query.toLowerCase();
+    if (q) {
       list = list.filter((p) => {
         const hay = `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
         const foodHit = (p.foods ?? []).some((f) =>
@@ -537,11 +556,11 @@ export default function HomePage() {
     return list;
   }, [
     places,
-    query,
-    listFilter,
-    diningFilter,
-    categoryFilter,
-    selectedCities,
+    deferredQuery,
+    deferredListFilter,
+    deferredDiningFilter,
+    deferredCategoryFilter,
+    deferredSelectedCities,
     user?.id,
   ]);
 
@@ -556,11 +575,11 @@ export default function HomePage() {
         return a.date_visited < b.date_visited ? 1 : -1;
       return a.created_at < b.created_at ? 1 : -1;
     };
-    if (viewMode === "scoreDesc") {
+    if (deferredViewMode === "scoreDesc") {
       list.sort((a, b) => (avgTotal(b) ?? -1) - (avgTotal(a) ?? -1));
-    } else if (viewMode === "scoreAsc") {
+    } else if (deferredViewMode === "scoreAsc") {
       list.sort((a, b) => (avgTotal(a) ?? Infinity) - (avgTotal(b) ?? Infinity));
-    } else if (viewMode === "dateAsc") {
+    } else if (deferredViewMode === "dateAsc") {
       list.sort((a, b) => -byDateDesc(a, b));
     } else {
       // Default "date" (최근순) and "city" both sort newest-first;
@@ -568,7 +587,7 @@ export default function HomePage() {
       list.sort(byDateDesc);
     }
     return list;
-  }, [baseList, viewMode]);
+  }, [baseList, deferredViewMode]);
 
   // Menu-view dataset — one entry per food across all baseList places.
   // listFilter is re-applied at the menu level so unrated/myOnly/
@@ -581,10 +600,11 @@ export default function HomePage() {
   };
   const filteredMenus = useMemo<MenuEntry[]>(() => {
     if (listLayout !== "menu") return [];
+    const q = deferredQuery.trim().toLowerCase();
     const out: MenuEntry[] = [];
     for (const p of baseList) {
       for (const f of p.foods ?? []) {
-        if (listFilter === "unrated") {
+        if (deferredListFilter === "unrated") {
           const eater = f.eater ?? (f.is_solo ? "creator" : "both");
           if (eater !== "both") {
             const isEater =
@@ -594,19 +614,18 @@ export default function HomePage() {
             if (!isEater) continue;
           }
           if (ratingsForViewer(f, user?.id).myRating != null) continue;
-        } else if (listFilter === "myOnly") {
+        } else if (deferredListFilter === "myOnly") {
           if (viewerOnlyEater(f, user?.id) !== "me") continue;
-        } else if (listFilter === "partnerOnly") {
+        } else if (deferredListFilter === "partnerOnly") {
           if (viewerOnlyEater(f, user?.id) !== "partner") continue;
         }
         // 'revisit' is place-level so baseList already enforced it;
         // every food inside a revisit place qualifies.
-        if (query.trim()) {
+        if (q) {
           // Make sure menu rows still match the search: the place
           // itself might match (name/address/memo) without this food
           // matching. In menu mode we want the matching FOODS only,
           // unless the user typed a place keyword that hits everything.
-          const q = query.toLowerCase();
           const placeHay =
             `${p.name} ${p.address ?? ""} ${p.memo ?? ""}`.toLowerCase();
           const foodHit = f.name.toLowerCase().includes(q);
@@ -616,10 +635,10 @@ export default function HomePage() {
         // is the only path that hits this loop). OR semantics across
         // selected food categories; "__none__" sentinel matches foods
         // with no category set.
-        if (foodCategoryFilter.length > 0) {
+        if (deferredFoodCategoryFilter.length > 0) {
           const cats = getCategories(f);
-          const wantNone = foodCategoryFilter.includes("__none__");
-          const concrete = foodCategoryFilter.filter(
+          const wantNone = deferredFoodCategoryFilter.includes("__none__");
+          const concrete = deferredFoodCategoryFilter.filter(
             (v) => v !== "__none__"
           );
           if (cats.length === 0) {
@@ -632,21 +651,21 @@ export default function HomePage() {
         out.push({ food: f, place: p });
       }
     }
-    if (viewMode === "scoreDesc") {
+    if (deferredViewMode === "scoreDesc") {
       out.sort(
         (a, b) =>
           (b.food.my_rating ?? 0) +
           (b.food.partner_rating ?? 0) -
           ((a.food.my_rating ?? 0) + (a.food.partner_rating ?? 0))
       );
-    } else if (viewMode === "scoreAsc") {
+    } else if (deferredViewMode === "scoreAsc") {
       out.sort(
         (a, b) =>
           (a.food.my_rating ?? 0) +
           (a.food.partner_rating ?? 0) -
           ((b.food.my_rating ?? 0) + (b.food.partner_rating ?? 0))
       );
-    } else if (viewMode === "dateAsc") {
+    } else if (deferredViewMode === "dateAsc") {
       // Same date_visited → fall back to place created_at ASC so
       // earlier-added wins on ties.
       out.sort((a, b) => {
@@ -665,10 +684,10 @@ export default function HomePage() {
   }, [
     baseList,
     listLayout,
-    listFilter,
-    viewMode,
-    query,
-    foodCategoryFilter,
+    deferredListFilter,
+    deferredViewMode,
+    deferredQuery,
+    deferredFoodCategoryFilter,
     user?.id,
   ]);
 
@@ -705,14 +724,14 @@ export default function HomePage() {
 
   const filteredWishlist = useMemo(() => {
     if (!wishlist) return [];
-    if (!query.trim()) return wishlist;
-    const q = query.toLowerCase();
+    const q = deferredQuery.trim().toLowerCase();
+    if (!q) return wishlist;
     return wishlist.filter(
       (w) =>
         w.name.toLowerCase().includes(q) ||
         (w.memo ?? "").toLowerCase().includes(q)
     );
-  }, [wishlist, query]);
+  }, [wishlist, deferredQuery]);
 
   const stats = useMemo(() => {
     if (!places || places.length === 0) {
@@ -808,13 +827,13 @@ export default function HomePage() {
           <TabButton
             active={tab === "timeline"}
             accent="ink"
-            onClick={() => setTab("timeline")}
+            onClick={() => startTransition(() => setTab("timeline"))}
             label="발자취 · 我们的足迹 👣"
           />
           <TabButton
             active={tab === "wishlist"}
             accent="peach"
-            onClick={() => setTab("wishlist")}
+            onClick={() => startTransition(() => setTab("wishlist"))}
             label="위시리스트 · 种草清单 📝"
             count={wishlist?.length}
           />
@@ -841,19 +860,19 @@ export default function HomePage() {
               <div className="flex bg-cream-100/80 p-0.5 rounded-lg border border-cream-200/60">
                 <LayoutToggle
                   active={listLayout === "list"}
-                  onClick={() => setListLayout("list")}
+                  onClick={() => startTransition(() => setListLayout("list"))}
                   icon={<List className="w-4 h-4" />}
                   label="列表"
                 />
                 <LayoutToggle
                   active={listLayout === "grid"}
-                  onClick={() => setListLayout("grid")}
+                  onClick={() => startTransition(() => setListLayout("grid"))}
                   icon={<Grid3x3 className="w-4 h-4" />}
                   label="网格"
                 />
                 <LayoutToggle
                   active={listLayout === "menu"}
-                  onClick={() => setListLayout("menu")}
+                  onClick={() => startTransition(() => setListLayout("menu"))}
                   icon={<Utensils className="w-4 h-4" />}
                   label="菜单"
                 />
@@ -868,21 +887,21 @@ export default function HomePage() {
             <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
               <SegmentButton
                 active={diningFilter === "all"}
-                onClick={() => setDiningFilter("all")}
+                onClick={() => startTransition(() => setDiningFilter("all"))}
                 label="모두 · 全部"
                 activeText="text-ink-900"
                 activeBorder="border-cream-100"
               />
               <SegmentButton
                 active={diningFilter === "out"}
-                onClick={() => setDiningFilter("out")}
+                onClick={() => startTransition(() => setDiningFilter("out"))}
                 label="🍽️ 探店"
                 activeText="text-peach-500"
                 activeBorder="border-peach-100"
               />
               <SegmentButton
                 active={diningFilter === "home"}
-                onClick={() => setDiningFilter("home")}
+                onClick={() => startTransition(() => setDiningFilter("home"))}
                 label="🍳 私房菜"
                 activeText="text-teal-600"
                 activeBorder="border-teal-100"
@@ -1018,7 +1037,9 @@ export default function HomePage() {
                         {sortLabel}
                         <button
                           type="button"
-                          onClick={() => setViewMode("date")}
+                          onClick={() =>
+                            startTransition(() => setViewMode("date"))
+                          }
                           className="hover:text-rose-500"
                           aria-label="reset sort"
                         >
@@ -1036,8 +1057,10 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() =>
-                        setSelectedCities(
-                          selectedCities.filter((x) => x !== c)
+                        startTransition(() =>
+                          setSelectedCities(
+                            selectedCities.filter((x) => x !== c)
+                          )
                         )
                       }
                       className="hover:text-peach-900"
@@ -1063,8 +1086,10 @@ export default function HomePage() {
                       <button
                         type="button"
                         onClick={() =>
-                          setCategoryFilter(
-                            categoryFilter.filter((x) => x !== c)
+                          startTransition(() =>
+                            setCategoryFilter(
+                              categoryFilter.filter((x) => x !== c)
+                            )
                           )
                         }
                         className="hover:text-rose-900"
@@ -1078,9 +1103,11 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setViewMode("date");
-                    setSelectedCities([]);
-                    setCategoryFilter([]);
+                    startTransition(() => {
+                      setViewMode("date");
+                      setSelectedCities([]);
+                      setCategoryFilter([]);
+                    });
                   }}
                   className="text-[11px] text-ink-400 font-bold ml-1 hover:text-ink-600 underline underline-offset-2"
                 >
@@ -1236,12 +1263,18 @@ export default function HomePage() {
         open={filterSheetOpen}
         onClose={() => setFilterSheetOpen(false)}
         viewMode={viewMode}
-        onChangeViewMode={setViewMode}
+        onChangeViewMode={(next) =>
+          startTransition(() => setViewMode(next))
+        }
         allCities={allCities}
         selectedCities={selectedCities}
-        onChangeSelectedCities={setSelectedCities}
+        onChangeSelectedCities={(next) =>
+          startTransition(() => setSelectedCities(next))
+        }
         categoryFilter={categoryFilter}
-        onChangeCategoryFilter={setCategoryFilter}
+        onChangeCategoryFilter={(next) =>
+          startTransition(() => setCategoryFilter(next))
+        }
         customCategoryStrings={customCategoryStrings}
         hasUncategorized={hasUncategorized}
         // Food-category section is meaningful only in menu layout
@@ -1250,7 +1283,9 @@ export default function HomePage() {
         // showFoodCategory.
         showFoodCategory={listLayout === "menu"}
         foodCategoryFilter={foodCategoryFilter}
-        onChangeFoodCategoryFilter={setFoodCategoryFilter}
+        onChangeFoodCategoryFilter={(next) =>
+          startTransition(() => setFoodCategoryFilter(next))
+        }
         // hasAnyActive includes the single-pick top-level chip too
         // so the sheet's "전체 초기화" knows there's something to
         // clear even when the user hasn't touched anything inside the
@@ -1263,11 +1298,13 @@ export default function HomePage() {
           listFilter !== "none"
         }
         onResetAll={() => {
-          setViewMode("date");
-          setSelectedCities([]);
-          setCategoryFilter([]);
-          setFoodCategoryFilter([]);
-          setListFilter("none");
+          startTransition(() => {
+            setViewMode("date");
+            setSelectedCities([]);
+            setCategoryFilter([]);
+            setFoodCategoryFilter([]);
+            setListFilter("none");
+          });
         }}
       />
 
@@ -1816,7 +1853,7 @@ function MenuRowImpl({
   return (
     <Link
       to={`/places/${place.id}`}
-      className={`flex gap-3 items-center rounded-2xl p-3 border shadow-soft active:scale-[0.99] transition ${theme.card} ${theme.cardBorder}`}
+      className={`render-smooth-card flex gap-3 items-center rounded-2xl p-3 border shadow-soft active:scale-[0.99] transition ${theme.card} ${theme.cardBorder}`}
     >
       <div
         className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center text-2xl border ${theme.img}`}
@@ -1945,7 +1982,7 @@ function TimelineGridItemImpl({
   return (
     <Link
       to={`/places/${place.id}`}
-      className="block rounded-2xl overflow-hidden bg-white border border-cream-200/70 shadow-soft active:scale-[0.97] transition"
+      className="render-smooth-card block rounded-2xl overflow-hidden bg-white border border-cream-200/70 shadow-soft active:scale-[0.97] transition"
     >
       {/* Square photo well (Instagram-style hero). Photo fills the
           frame; emoji fallback uses the theme tint so the card still
@@ -2129,7 +2166,7 @@ function WishlistCard({
   // to the legacy `category` scalar for rows not yet migrated.
   const itemCategories = getCategories(item);
   return (
-    <div className="bg-white rounded-2xl p-4 border border-peach-100 shadow-soft relative overflow-hidden">
+    <div className="render-smooth-card bg-white rounded-2xl p-4 border border-peach-100 shadow-soft relative overflow-hidden">
       <button
         type="button"
         onClick={onDelete}
@@ -2674,4 +2711,3 @@ export function RouletteModal({
     </div>
   );
 }
-

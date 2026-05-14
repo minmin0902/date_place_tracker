@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
 // Caps a long list at `initial` items and surfaces a "더보기" button
@@ -26,6 +26,7 @@ export function ExpandableList<T>({
   expandLabelZh?: (hidden: number) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [, startTransition] = useTransition();
   const visible = expanded ? items : items.slice(0, initial);
   const hiddenCount = items.length - initial;
   return (
@@ -34,7 +35,7 @@ export function ExpandableList<T>({
       {hiddenCount > 0 && (
         <button
           type="button"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => startTransition(() => setExpanded((v) => !v))}
           className="w-full mt-2 py-2.5 rounded-2xl border border-cream-200 bg-white text-[12px] font-bold text-ink-700 hover:bg-cream-50 transition flex items-center justify-center gap-1"
         >
           {expanded ? (

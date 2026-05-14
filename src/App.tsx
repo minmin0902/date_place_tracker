@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { AppShell } from "@/components/AppShell";
 import LoginPage from "@/pages/LoginPage";
+import { routeImporters } from "@/lib/routePreload";
 // HomePage stays eager because it's the landing route — every cold
 // start lands here and a Suspense flash on the very first paint feels
 // like the app is loading twice. Every other route is React.lazy so
@@ -13,16 +14,16 @@ import LoginPage from "@/pages/LoginPage";
 // so repeat navigation is still instant.
 import HomePage from "@/pages/HomePage";
 import CoupleSetupPage from "@/pages/CoupleSetupPage";
-const PlaceFormPage = lazy(() => import("@/pages/PlaceFormPage"));
-const PlaceDetailPage = lazy(() => import("@/pages/PlaceDetailPage"));
-const FoodFormPage = lazy(() => import("@/pages/FoodFormPage"));
-const WishlistFormPage = lazy(() => import("@/pages/WishlistFormPage"));
-const RecipesPage = lazy(() => import("@/pages/RecipesPage"));
-const ComparePage = lazy(() => import("@/pages/ComparePage"));
-const MapPage = lazy(() => import("@/pages/MapPage"));
-const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
-const ProfileEditPage = lazy(() => import("@/pages/ProfileEditPage"));
-const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
+const PlaceFormPage = lazy(routeImporters.placeForm);
+const PlaceDetailPage = lazy(routeImporters.placeDetail);
+const FoodFormPage = lazy(routeImporters.foodForm);
+const WishlistFormPage = lazy(routeImporters.wishlistForm);
+const RecipesPage = lazy(routeImporters.recipes);
+const ComparePage = lazy(routeImporters.compare);
+const MapPage = lazy(routeImporters.map);
+const SettingsPage = lazy(routeImporters.settings);
+const ProfileEditPage = lazy(routeImporters.profileEdit);
+const NotificationsPage = lazy(routeImporters.notifications);
 
 const queryClient = new QueryClient({
   defaultOptions: {

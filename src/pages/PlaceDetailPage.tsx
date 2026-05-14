@@ -664,7 +664,10 @@ function FoodCard({
     // (e.g. /places/abc#food-xyz) can scrollIntoView this card. The
     // hash-scroll effect at the top of PlaceDetailPage handles the
     // highlight pulse.
-    <div id={`food-${food.id}`} className="card p-4 relative scroll-mt-24">
+    <div
+      id={`food-${food.id}`}
+      className="render-smooth-panel card p-4 relative scroll-mt-24"
+    >
       <div className="absolute top-3 right-3 flex gap-1">
         <Link
           to={`/places/${placeId}/foods/${food.id}/edit`}
@@ -1018,4 +1021,3 @@ function CoupleBar({ mine, partner }: { mine: number; partner: number }) {
     </div>
   );
 }
-

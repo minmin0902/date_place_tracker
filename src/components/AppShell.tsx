@@ -9,6 +9,7 @@ import { Home, Map, Scale, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAppBadge } from "@/hooks/useAppBadge";
+import { preloadAppRoutes, preloadRouteForPath } from "@/lib/routePreload";
 
 // Scroll behavior across route changes:
 //   - PUSH / REPLACE (forward nav): scroll to top, otherwise the new
@@ -136,10 +137,14 @@ function NavItem({
   icon: typeof Home;
   label: string;
 }) {
+  const warmRoute = () => preloadRouteForPath(to);
   return (
     <NavLink
       to={to}
       end
+      onFocus={warmRoute}
+      onPointerEnter={warmRoute}
+      onTouchStart={warmRoute}
       className={({ isActive }) =>
         cn(
           "flex flex-col items-center justify-center gap-0.5 flex-1 py-2 text-xs",
@@ -158,6 +163,9 @@ export function AppShell() {
   // Sync the OS home-screen icon badge with the unread count so the
   // red dot clears immediately when the user marks notifications read.
   useAppBadge();
+  useEffect(() => {
+    preloadAppRoutes();
+  }, []);
   return (
     <div className="min-h-full flex flex-col bg-cream-50">
       <ScrollManager />

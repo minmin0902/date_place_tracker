@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -357,9 +364,12 @@ export default function ComparePage() {
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
+  const [, startTransition] = useTransition();
 
   const [diningFilter, setDiningFilter] = useState<DiningFilter>("all");
   const [activeTab, setActiveTab] = useState<TabId>("fame");
+  const deferredDiningFilter = useDeferredValue(diningFilter);
+  const deferredActiveTab = useDeferredValue(activeTab);
   // Sub-toggle inside each list tab: 식당 (place-level aggregate) vs
   // 메뉴 (per-food). Same source rows, different reduction. Fame gets
   // an extra '집밥' (home meal) cut so out vs home places are ranked
@@ -379,11 +389,21 @@ export default function ComparePage() {
   // ever read this from the cards themselves — it's purely an indicator.
   const carouselRef = useRef<HTMLDivElement>(null);
   const [activeCardIdx, setActiveCardIdx] = useState(0);
+  const activeCardIdxRef = useRef(0);
+  const carouselScrollRaf = useRef<number | null>(null);
   // Roulette modal lives here (instead of HomePage) because the
   // entry-point card sits in this carousel. Definition is still in
   // HomePage and imported as a named export — see CardId === "roulette"
   // render branch below.
   const [rouletteOpen, setRouletteOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (carouselScrollRaf.current !== null) {
+        cancelAnimationFrame(carouselScrollRaf.current);
+      }
+    };
+  }, []);
 
   const updateCardConfig = (next: CardConfig) => {
     setCardConfig(next);
@@ -394,22 +414,29 @@ export default function ComparePage() {
   // center on every scroll tick. More robust than slot-math because it
   // handles irregular card widths (e.g. when only one card is visible).
   const onCarouselScroll = () => {
-    const el = carouselRef.current;
-    if (!el) return;
-    const cards = el.querySelectorAll<HTMLDivElement>(":scope > div");
-    if (cards.length === 0) return;
-    const center = el.scrollLeft + el.clientWidth / 2;
-    let best = 0;
-    let bestDist = Infinity;
-    cards.forEach((card, i) => {
-      const cardCenter = card.offsetLeft + card.offsetWidth / 2;
-      const dist = Math.abs(cardCenter - center);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = i;
+    if (carouselScrollRaf.current !== null) return;
+    carouselScrollRaf.current = requestAnimationFrame(() => {
+      carouselScrollRaf.current = null;
+      const el = carouselRef.current;
+      if (!el) return;
+      const cards = el.querySelectorAll<HTMLDivElement>(":scope > div");
+      if (cards.length === 0) return;
+      const center = el.scrollLeft + el.clientWidth / 2;
+      let best = 0;
+      let bestDist = Infinity;
+      cards.forEach((card, i) => {
+        const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+        const dist = Math.abs(cardCenter - center);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = i;
+        }
+      });
+      if (best !== activeCardIdxRef.current) {
+        activeCardIdxRef.current = best;
+        setActiveCardIdx(best);
       }
     });
-    setActiveCardIdx(best);
   };
 
   const rows: Row[] = useMemo(() => {
@@ -446,10 +473,12 @@ export default function ComparePage() {
   // Apply the 외식/집밥 segmented filter before bucketing — keeps the
   // badge + stats aligned with whichever subset the user is viewing.
   const filteredRows = useMemo(() => {
-    if (diningFilter === "out") return rows.filter((r) => !r.isHomeCooked);
-    if (diningFilter === "home") return rows.filter((r) => r.isHomeCooked);
+    if (deferredDiningFilter === "out")
+      return rows.filter((r) => !r.isHomeCooked);
+    if (deferredDiningFilter === "home")
+      return rows.filter((r) => r.isHomeCooked);
     return rows;
-  }, [rows, diningFilter]);
+  }, [rows, deferredDiningFilter]);
 
   // Home-cooked subset for the "우리집 미슐랭" card. Lives outside the
   // dining filter so the card still works in "all" mode (since home
@@ -464,10 +493,14 @@ export default function ComparePage() {
   // 4.5+면 술 랭킹에서 1등으로 뜨고 메뉴 트로피에선 빠짐 —
   // CLAUDE.md "Place category vs food category" 룰 그대로 food
   // category 축으로 필터.
-  const fameAll = [...filteredRows]
-    .filter((r) => r.mine >= FAME && r.partner >= FAME)
-    .filter((r) => !r.foodCategories.includes("drink"))
-    .sort((a, b) => b.mine + b.partner - (a.mine + a.partner));
+  const fameAll = useMemo(
+    () =>
+      [...filteredRows]
+        .filter((r) => r.mine >= FAME && r.partner >= FAME)
+        .filter((r) => !r.foodCategories.includes("drink"))
+        .sort((a, b) => b.mine + b.partner - (a.mine + a.partner)),
+    [filteredRows]
+  );
   const fameTop = fameAll.slice(0, 3);
   const fameRest = fameAll.slice(3);
 
@@ -517,20 +550,29 @@ export default function ComparePage() {
   const famePlacesHomeTop = famePlacesHome.slice(0, 3);
   const famePlacesHomeRest = famePlacesHome.slice(3);
 
-  const neverAgain = [...filteredRows]
-    .filter((r) => r.mine <= LOW && r.partner <= LOW)
-    .sort((a, b) => a.mine + a.partner - (b.mine + b.partner));
+  const neverAgain = useMemo(
+    () =>
+      [...filteredRows]
+        .filter((r) => r.mine <= LOW && r.partner <= LOW)
+        .sort((a, b) => a.mine + a.partner - (b.mine + b.partner)),
+    [filteredRows]
+  );
 
-  const tasteWar = [...filteredRows]
-    .filter(
-      (r) =>
-        Math.abs(r.mine - r.partner) >= WAR &&
-        !(r.mine >= FAME && r.partner >= FAME) &&
-        !(r.mine <= LOW && r.partner <= LOW)
-    )
-    .sort(
-      (a, b) => Math.abs(b.mine - b.partner) - Math.abs(a.mine - a.partner)
-    );
+  const tasteWar = useMemo(
+    () =>
+      [...filteredRows]
+        .filter(
+          (r) =>
+            Math.abs(r.mine - r.partner) >= WAR &&
+            !(r.mine >= FAME && r.partner >= FAME) &&
+            !(r.mine <= LOW && r.partner <= LOW)
+        )
+        .sort(
+          (a, b) =>
+            Math.abs(b.mine - b.partner) - Math.abs(a.mine - a.partner)
+        ),
+    [filteredRows]
+  );
 
   // Place-level aggregations for the clash + pass tabs — same shape as
   // famePlaces (FamePlace), built from each row subset. Restaurant view
@@ -616,8 +658,8 @@ export default function ComparePage() {
     if (!places) return [];
     const out: Row[] = [];
     for (const p of places) {
-      if (diningFilter === "out" && p.is_home_cooked) continue;
-      if (diningFilter === "home" && !p.is_home_cooked) continue;
+      if (deferredDiningFilter === "out" && p.is_home_cooked) continue;
+      if (deferredDiningFilter === "home" && !p.is_home_cooked) continue;
       for (const f of p.foods ?? []) {
         const foodCats = getCategories(f);
         if (!foodCats.includes("liquor")) continue;
@@ -641,7 +683,7 @@ export default function ComparePage() {
     return out.sort(
       (a, b) => b.mine + b.partner - (a.mine + a.partner)
     );
-  }, [places, user?.id, diningFilter]);
+  }, [places, user?.id, deferredDiningFilter]);
   const boozeSortedTop = boozeSorted.slice(0, 3);
   const boozeSortedRest = boozeSorted.slice(3);
 
@@ -676,21 +718,21 @@ export default function ComparePage() {
         <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
           <DiningSegment
             active={diningFilter === "all"}
-            onClick={() => setDiningFilter("all")}
+            onClick={() => startTransition(() => setDiningFilter("all"))}
             label="모두 · 全部"
             activeText="text-ink-900"
             activeBorder="border-cream-100"
           />
           <DiningSegment
             active={diningFilter === "out"}
-            onClick={() => setDiningFilter("out")}
+            onClick={() => startTransition(() => setDiningFilter("out"))}
             label="🍽️ 외식 · 探店"
             activeText="text-peach-500"
             activeBorder="border-peach-100"
           />
           <DiningSegment
             active={diningFilter === "home"}
-            onClick={() => setDiningFilter("home")}
+            onClick={() => startTransition(() => setDiningFilter("home"))}
             label="🍳 집밥 · 私房菜"
             activeText="text-teal-600"
             activeBorder="border-teal-100"
@@ -854,7 +896,7 @@ export default function ComparePage() {
         <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 pb-1">
           <SectionTab
             active={activeTab === "fame"}
-            onClick={() => setActiveTab("fame")}
+            onClick={() => startTransition(() => setActiveTab("fame"))}
             icon={<Trophy className="w-3.5 h-3.5" />}
             labelKo="명예의 전당"
             labelZh="封神榜"
@@ -863,7 +905,7 @@ export default function ComparePage() {
           />
           <SectionTab
             active={activeTab === "clash"}
-            onClick={() => setActiveTab("clash")}
+            onClick={() => startTransition(() => setActiveTab("clash"))}
             icon={<Swords className="w-3.5 h-3.5" />}
             labelKo="입맛 격돌"
             labelZh="口味PK"
@@ -872,7 +914,7 @@ export default function ComparePage() {
           />
           <SectionTab
             active={activeTab === "pass"}
-            onClick={() => setActiveTab("pass")}
+            onClick={() => startTransition(() => setActiveTab("pass"))}
             icon={<Frown className="w-3.5 h-3.5" />}
             labelKo="여긴 패스"
             labelZh="踩雷"
@@ -886,7 +928,7 @@ export default function ComparePage() {
             fame tab is not empty even when filteredRows is — let it
             through so the FameViewToggle stays reachable. */}
         {filteredRows.length === 0 &&
-        !(activeTab === "fame" && boozeSorted.length > 0) ? (
+        !(deferredActiveTab === "fame" && boozeSorted.length > 0) ? (
           <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-cream-200">
             <div className="text-5xl mb-3">📭</div>
             <p className="text-sm text-ink-500 font-medium">
@@ -899,7 +941,7 @@ export default function ComparePage() {
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-1 duration-300">
-            {activeTab === "fame" && (
+            {deferredActiveTab === "fame" && (
               <ListPanel
                 titleKo={
                   fameView === "menu"
@@ -943,7 +985,12 @@ export default function ComparePage() {
                     closet 회식집 doesn't crowd out the home cooks
                     on the same trophy shelf. Restaurant on the left,
                     menu drill-down on the right. */}
-                <FameViewToggle view={fameView} onChange={setFameView} />
+                <FameViewToggle
+                  view={fameView}
+                  onChange={(next) =>
+                    startTransition(() => setFameView(next))
+                  }
+                />
 
                 {fameView === "menu" && (
                   <>
@@ -1114,7 +1161,7 @@ export default function ComparePage() {
                 )}
               </ListPanel>
             )}
-            {activeTab === "clash" && (
+            {deferredActiveTab === "clash" && (
               <ListPanel
                 titleKo={
                   clashView === "menu"
@@ -1133,7 +1180,12 @@ export default function ComparePage() {
                 }
                 emptyText="아직 없어요 · 还没有"
               >
-                <ListViewToggle view={clashView} onChange={setClashView} />
+                <ListViewToggle
+                  view={clashView}
+                  onChange={(next) =>
+                    startTransition(() => setClashView(next))
+                  }
+                />
                 {clashView === "menu" && (
                   <ExpandableList items={tasteWar} initial={5}>
                     {(r) => {
@@ -1168,7 +1220,7 @@ export default function ComparePage() {
                 )}
               </ListPanel>
             )}
-            {activeTab === "pass" && (
+            {deferredActiveTab === "pass" && (
               <ListPanel
                 titleKo={
                   passView === "menu"
@@ -1183,7 +1235,12 @@ export default function ComparePage() {
                 }
                 emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
               >
-                <ListViewToggle view={passView} onChange={setPassView} />
+                <ListViewToggle
+                  view={passView}
+                  onChange={(next) =>
+                    startTransition(() => setPassView(next))
+                  }
+                />
                 {passView === "menu" && (
                   <ExpandableList items={neverAgain} initial={5}>
                     {(r) => (
@@ -2549,7 +2606,7 @@ function FoodCard({
   return (
     <Link
       to={`/places/${r.placeId}`}
-      className={`block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
+      className={`render-smooth-card block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
     >
       {cornerBadge && (
         <div
@@ -2664,7 +2721,7 @@ function PlaceFameCard({
   return (
     <Link
       to={`/places/${p.placeId}`}
-      className={`block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
+      className={`render-smooth-card block rounded-2xl p-4 border relative overflow-hidden ${cardCls}`}
     >
       {yyds && (
         <div className="mb-2">
