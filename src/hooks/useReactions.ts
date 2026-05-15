@@ -12,17 +12,13 @@ import type { Reaction, ReactionTarget } from "@/lib/database.types";
 
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
 
-// Quick-react set shown both as inline pill bubbles (when used) and
-// inside the "+" popover. Six is still mobile-friendly (fits ~360px
-// wide phones in a single horizontal row) and now includes 뽀뽀 (😘)
-// which is the most-requested couple reaction. Keep emoji-only (no
-// labels) so it works without translation between Korean + Chinese
-// viewers.
+// Quick-react set shown inline before the "+" emoji picker. Six stays
+// mobile-friendly and keeps the original reaction feel.
 export const QUICK_REACTIONS = [
   "❤️",
   "😘",
-  "😋",
-  "🥹",
+  "😊",
+  "🥺",
   "🔥",
   "👍",
 ] as const;

@@ -13,12 +13,15 @@ import { BottomSheet } from "@/components/BottomSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import {
+  QUICK_REACTIONS,
   summarize,
   useReactions,
   useToggleReaction,
 } from "@/hooks/useReactions";
 import { useReactionBatch } from "@/hooks/useReactionBatch";
 import type { ReactionTarget } from "@/lib/database.types";
+
+const QUICK_REACTION_SET = new Set<string>(QUICK_REACTIONS);
 
 // Instagram-style reaction strip that lives directly under a memo /
 // caption. Shows existing reactions as pill bubbles ("❤️ 2") and a
@@ -60,6 +63,14 @@ function ReactionRowImpl({
 
   const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
   const summary = useMemo(() => summarize(rows, user?.id), [rows, user?.id]);
+  const summaryByEmoji = useMemo(
+    () => new Map(summary.map((s) => [s.emoji, s])),
+    [summary]
+  );
+  const customSummary = useMemo(
+    () => summary.filter((s) => !QUICK_REACTION_SET.has(s.emoji)),
+    [summary]
+  );
 
   if (!user || !couple) return null;
 
@@ -88,13 +99,42 @@ function ReactionRowImpl({
   function onPickerEmoji(emojiData: EmojiClickData) {
     const emoji = emojiData.emoji;
     if (!emoji) return;
-    const cur = summary.find((s) => s.emoji === emoji);
+    const cur = summaryByEmoji.get(emoji);
     onTapEmoji(emoji, cur?.mineId ?? null);
   }
 
   return (
     <div className={`flex flex-wrap items-center gap-1 ${justify}`}>
-      {summary.map((s) => {
+      {QUICK_REACTIONS.map((emoji) => {
+        const s = summaryByEmoji.get(emoji);
+        const mine = !!s?.mineId;
+        const count = s?.count ?? 0;
+        return (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => onTapEmoji(emoji, s?.mineId ?? null)}
+            disabled={toggle.isPending}
+            className={`inline-flex items-center rounded-full border transition active:scale-95 ${pillBase} ${
+              mine
+                ? "bg-peach-50 border-peach-200 text-peach-700"
+                : count > 0
+                  ? "bg-white border-cream-200 text-ink-600 hover:bg-cream-50"
+                  : "bg-white border-cream-200 text-ink-500 hover:text-peach-600 hover:bg-cream-50"
+            }`}
+            aria-pressed={mine}
+            aria-label={
+              count > 0 ? `${emoji} ${count}` : `add ${emoji} reaction`
+            }
+          >
+            <span className="leading-none">{emoji}</span>
+            {count > 0 && (
+              <span className="font-number font-bold">{count}</span>
+            )}
+          </button>
+        );
+      })}
+      {customSummary.map((s) => {
         const mine = !!s.mineId;
         return (
           <button
