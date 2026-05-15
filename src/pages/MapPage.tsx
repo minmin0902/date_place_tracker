@@ -1,5 +1,13 @@
 /// <reference types="google.maps" />
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import {
   APIProvider,
@@ -464,6 +472,23 @@ const MapRefreshControls = memo(function MapRefreshControls({
   );
 });
 
+function MapLegendItem({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cream-50/80 px-2 py-1.5 text-[11px] font-bold leading-none text-ink-700">
+      <span className="grid h-5 w-5 flex-shrink-0 place-items-center leading-none">
+        {icon}
+      </span>
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
 export default function MapPage() {
   const { data: couple } = useCouple();
   const qc = useQueryClient();
@@ -826,42 +851,30 @@ export default function MapPage() {
           <MapRefreshControls breakdown={breakdown} refreshAll={refreshAll} />
         }
       />
-      {/* Legend chip — one line, no wrap, no overflow. Bilingual
-          labels didn't fit 4 chips on a 360px phone so the row was
-          wrapping. Single language (Chinese — shorter glyphs than
-          Korean for these terms) gets it under one line with room
-          to spare. Icons carry the rest. */}
+      {/* Legend chip — Chinese-only labels, equal item sizing, and a
+          fixed icon box so the text + marker glyphs read as one unit. */}
       <div className="px-5 mb-2 flex-shrink-0">
-        <div className="flex w-full items-center justify-around gap-1 bg-white rounded-xl px-2 py-1.5 shadow-soft border border-cream-200 text-[10px] font-bold text-ink-700 overflow-hidden whitespace-nowrap">
-          <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
-            <span className="text-[11px] leading-none flex-shrink-0">📍</span>
-            <span className="truncate">去过</span>
-          </span>
-          <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
-            <RevisitPinMini />
-            <span className="truncate">二刷</span>
-          </span>
+        <div className="flex w-full items-center gap-1.5 overflow-hidden rounded-xl border border-cream-200 bg-white p-1.5 shadow-soft whitespace-nowrap">
+          <MapLegendItem
+            icon={<span className="text-[14px] leading-none">📍</span>}
+            label="去过"
+          />
+          <MapLegendItem icon={<RevisitPinMini />} label="二刷" />
           {wishlistMarkers.length > 0 && (
-            <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
-              <WishlistPinMini />
-              <span className="truncate">想去</span>
-            </span>
+            <MapLegendItem icon={<WishlistPinMini />} label="想去" />
           )}
           {couple?.home_latitude != null && couple?.home_longitude != null && (
-            <span className="inline-flex items-center gap-1 flex-shrink min-w-0 break-keep">
-              <HomePinMini />
-              <span className="truncate">我家</span>
-            </span>
+            <MapLegendItem icon={<HomePinMini />} label="我家" />
           )}
         </div>
       </div>
       {(breakdown.backfillable > 0 || breakdown.noAddress > 0) && (
         <div className="px-5 mb-2 flex flex-wrap flex-shrink-0 gap-x-3 gap-y-0.5 text-[10px] font-bold text-amber-700 break-keep">
           {breakdown.backfillable > 0 && (
-            <span>좌표 채우는 중 · {breakdown.backfillable}곳</span>
+            <span>补坐标中 {breakdown.backfillable}处</span>
           )}
           {breakdown.noAddress > 0 && (
-            <span>주소 없음 · 无地址 {breakdown.noAddress}곳</span>
+            <span>无地址 {breakdown.noAddress}处</span>
           )}
         </div>
       )}
