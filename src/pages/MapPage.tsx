@@ -15,6 +15,7 @@ import {
   AdvancedMarker,
   InfoWindow,
   useApiIsLoaded,
+  useMap,
 } from "@vis.gl/react-google-maps";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, RefreshCw } from "lucide-react";
@@ -59,6 +60,7 @@ type WishlistMapMarker = Pick<
 >;
 type HomeLocation = LatLng | null;
 type MapType = "roadmap" | "satellite";
+type MapFocus = "visited" | "revisit" | "wishlist" | "home";
 
 function useStableBySignature<T>(value: T, signature: string): T {
   const ref = useRef<{ signature: string; value: T }>({ signature, value });
@@ -475,18 +477,87 @@ const MapRefreshControls = memo(function MapRefreshControls({
 function MapLegendItem({
   icon,
   label,
+  active,
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
+  active?: boolean;
+  onClick: () => void;
 }) {
   return (
-    <span className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-cream-50/80 px-2 py-1.5 text-[11px] font-bold leading-none text-ink-700">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`smooth-touch inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-bold leading-none transition ${
+        active
+          ? "bg-peach-100 text-peach-700 shadow-sm"
+          : "bg-cream-50/80 text-ink-700 hover:bg-cream-100"
+      }`}
+      aria-pressed={active}
+    >
       <span className="grid h-5 w-5 flex-shrink-0 place-items-center leading-none">
         {icon}
       </span>
       <span className="truncate">{label}</span>
-    </span>
+    </button>
   );
+}
+
+function MapViewportController({
+  focus,
+  markers,
+  wishlistMarkers,
+  homeLocation,
+}: {
+  focus: MapFocus | null;
+  markers: PlaceMapMarker[];
+  wishlistMarkers: WishlistMapMarker[];
+  homeLocation: HomeLocation;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !focus) return;
+    const positions: LatLng[] = (() => {
+      if (focus === "visited") {
+        return markers
+          .filter((m) => !m.want_to_revisit && !m.is_home_cooked)
+          .map((m) => ({ lat: m.latitude!, lng: m.longitude! }));
+      }
+      if (focus === "revisit") {
+        return markers
+          .filter((m) => m.want_to_revisit)
+          .map((m) => ({ lat: m.latitude!, lng: m.longitude! }));
+      }
+      if (focus === "wishlist") {
+        return wishlistMarkers.map((m) => ({
+          lat: m.latitude!,
+          lng: m.longitude!,
+        }));
+      }
+      const homeCooked = markers
+        .filter((m) => m.is_home_cooked)
+        .map((m) => ({ lat: m.latitude!, lng: m.longitude! }));
+      return homeLocation ? [homeLocation, ...homeCooked] : homeCooked;
+    })();
+    if (positions.length === 0) return;
+    if (positions.length === 1) {
+      map.panTo(positions[0]);
+      map.setZoom(Math.max(map.getZoom() ?? 14, 15));
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    for (const p of positions) bounds.extend(p);
+    map.fitBounds(bounds, {
+      top: 72,
+      right: 48,
+      bottom: 72,
+      left: 48,
+    });
+  }, [focus, homeLocation, map, markers, wishlistMarkers]);
+
+  return null;
 }
 
 export default function MapPage() {
@@ -518,6 +589,7 @@ export default function MapPage() {
     "route-ui:map:type:v1",
     "roadmap"
   );
+  const [mapFocus, setMapFocus] = useState<MapFocus | null>(null);
   // Tri-state: null = asking, LatLng = resolved, "denied" = failed/denied.
   const [userLoc, setUserLoc] = useState<LatLng | "denied" | null>(null);
   const refreshLocation = useCallback(
@@ -712,6 +784,12 @@ export default function MapPage() {
           fullscreenControl={false}
           keyboardShortcuts={false}
         >
+          <MapViewportController
+            focus={mapFocus}
+            markers={markers}
+            wishlistMarkers={wishlistMarkers}
+            homeLocation={homeLocation}
+          />
           {userLoc !== "denied" && userLoc && (
             <AdvancedMarker position={userLoc} title="현재 위치 · 当前位置">
               <div className="relative w-4 h-4">
@@ -818,6 +896,7 @@ export default function MapPage() {
     mapsLocale.language,
     mapsLocale.region,
     mapType,
+    mapFocus,
     selectedPlace,
     selectedWish,
     userLoc,
@@ -858,13 +937,40 @@ export default function MapPage() {
           <MapLegendItem
             icon={<span className="text-[14px] leading-none">📍</span>}
             label="去过"
+            active={mapFocus === "visited"}
+            onClick={() =>
+              setMapFocus((cur) => (cur === "visited" ? null : "visited"))
+            }
           />
-          <MapLegendItem icon={<RevisitPinMini />} label="二刷" />
+          <MapLegendItem
+            icon={<RevisitPinMini />}
+            label="二刷"
+            active={mapFocus === "revisit"}
+            onClick={() =>
+              setMapFocus((cur) => (cur === "revisit" ? null : "revisit"))
+            }
+          />
           {wishlistMarkers.length > 0 && (
-            <MapLegendItem icon={<WishlistPinMini />} label="想去" />
+            <MapLegendItem
+              icon={<WishlistPinMini />}
+              label="想去"
+              active={mapFocus === "wishlist"}
+              onClick={() =>
+                setMapFocus((cur) =>
+                  cur === "wishlist" ? null : "wishlist"
+                )
+              }
+            />
           )}
           {couple?.home_latitude != null && couple?.home_longitude != null && (
-            <MapLegendItem icon={<HomePinMini />} label="我家" />
+            <MapLegendItem
+              icon={<HomePinMini />}
+              label="我家"
+              active={mapFocus === "home"}
+              onClick={() =>
+                setMapFocus((cur) => (cur === "home" ? null : "home"))
+              }
+            />
           )}
         </div>
       </div>

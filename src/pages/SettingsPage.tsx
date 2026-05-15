@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -426,23 +426,21 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div className="card p-4">
-          <p className="text-sm font-bold text-ink-500 mb-1">
-            내 계정 · 我的账号
-          </p>
-          <p className="font-semibold">{user?.email}</p>
+        <div className="card p-4 space-y-3">
+          <SettingsRow
+            label="내 계정 · 我的账号"
+            value={user?.email ?? "-"}
+            icon={<span className="text-base">✉️</span>}
+          />
+          {couple && (
+            <SettingsRow
+              label="연결 코드 · 邀请码"
+              value={couple.invite_code}
+              icon={<span className="text-base">🔗</span>}
+              valueClassName="font-number tracking-[0.18em] text-peach-500 text-lg"
+            />
+          )}
         </div>
-
-        {couple && (
-          <div className="card p-4">
-            <p className="text-sm font-bold text-ink-500 mb-2">
-              우리의 연결 코드 · 咱俩的专属邀请码
-            </p>
-            <p className="font-number font-bold tracking-[0.2em] text-peach-500 text-2xl">
-              {couple.invite_code}
-            </p>
-          </div>
-        )}
 
         {couple && (
           <div className="card p-4 space-y-3">
@@ -580,6 +578,32 @@ export default function SettingsPage() {
           <LogOut className="w-5 h-5" />
           로그아웃 · 退出登录
         </button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsRow({
+  icon,
+  label,
+  value,
+  valueClassName = "text-ink-900",
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-cream-50/70 border border-cream-200/60 px-3 py-2.5">
+      <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-white shadow-sm">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400">
+          {label}
+        </p>
+        <p className={`truncate font-bold ${valueClassName}`}>{value}</p>
       </div>
     </div>
   );
