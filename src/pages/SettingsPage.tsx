@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { PageHeader } from "@/components/PageHeader";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple, useSetCoupleHome } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
@@ -210,7 +211,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="설정 · 偏好设置" />
+      <PageHeader title={t("settings.title")} />
       <div className="px-5 space-y-4 pb-8">
         {/* Dual profile card — two side-by-side avatars with a heart in
             the middle visualizes "we are connected". Each side links to
@@ -428,18 +429,35 @@ export default function SettingsPage() {
 
         <div className="card p-4 space-y-3">
           <SettingsRow
-            label="내 계정 · 我的账号"
+            label={t("settings.account")}
             value={user?.email ?? "-"}
             icon={<span className="text-base">✉️</span>}
           />
           {couple && (
             <SettingsRow
-              label="연결 코드 · 邀请码"
+              label={t("settings.invite")}
               value={couple.invite_code}
               icon={<span className="text-base">🔗</span>}
               valueClassName="font-number tracking-[0.18em] text-peach-500 text-lg"
             />
           )}
+        </div>
+
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-cream-100 text-base">
+              🌐
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink-700">
+                {t("settings.language")}
+              </p>
+              <p className="text-[11px] text-ink-400">
+                {t("settings.ko")} / {t("settings.zh")} / {t("settings.bi")}
+              </p>
+            </div>
+          </div>
+          <LanguageToggle />
         </div>
 
         {couple && (

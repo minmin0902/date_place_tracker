@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   APIProvider,
   Map,
@@ -96,7 +97,9 @@ function markerSignature(
     .join("|");
 }
 
-function googleMapsLocale() {
+function googleMapsLocale(appLanguage?: string) {
+  if (appLanguage === "zh") return { language: "zh-CN", region: "CN" };
+  if (appLanguage === "ko") return { language: "ko", region: "KR" };
   if (typeof navigator === "undefined") {
     return { language: "ko", region: "KR" };
   }
@@ -561,11 +564,15 @@ function MapViewportController({
 }
 
 export default function MapPage() {
+  const { i18n } = useTranslation();
   const { data: couple } = useCouple();
   const qc = useQueryClient();
   const { data: places } = usePlaces(couple?.id);
   const { data: wishlist } = useWishlist(couple?.id);
-  const mapsLocale = useMemo(() => googleMapsLocale(), []);
+  const mapsLocale = useMemo(
+    () => googleMapsLocale(i18n.language),
+    [i18n.language]
+  );
   const mapTypeLabels = useMemo(() => {
     if (mapsLocale.language.startsWith("zh")) {
       return { roadmap: "地图", satellite: "卫星" };

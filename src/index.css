@@ -63,11 +63,12 @@
       "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", -apple-system,
       BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   }
-  /* Explicit CJK-heavy passages (not a whole page, but per-element) can
-     still opt into the system CJK face first. */
-  :lang(zh) {
-    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC",
-      "Microsoft YaHei", "Pretendard Variable", "Pretendard", sans-serif;
+  /* Chinese mode keeps the same app-wide sizing and rhythm as Korean
+     mode. The body font stack already falls back to CJK-safe faces for
+     Chinese glyphs, so avoid a broad :lang(zh) override that changes
+     the whole page's metrics. */
+  html[data-language="zh"] {
+    letter-spacing: 0;
   }
   button {
     @apply select-none;

@@ -123,8 +123,10 @@ export default {
   settings: {
     title: "설정",
     language: "언어",
+    account: "내 계정",
     ko: "한국어",
     zh: "中文",
+    bi: "한중 같이",
     invite: "초대 코드",
     disconnect: "커플 연결 해제",
   },

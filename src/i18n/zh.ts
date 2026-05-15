@@ -123,8 +123,10 @@ export default {
   settings: {
     title: "设置",
     language: "语言",
+    account: "我的账号",
     ko: "한국어",
     zh: "中文",
+    bi: "双语",
     invite: "邀请码",
     disconnect: "解除情侣连接",
   },
