@@ -9,7 +9,6 @@ import {
   useTransition,
   type RefObject,
 } from "react";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1350,7 +1349,7 @@ export default function HomePage() {
               )
             ) : (
               <>
-                <VirtualTimeline
+                <TimelineList
                   places={progressivePlaces.visibleItems}
                   totalCount={filteredPlaces.length}
                   locale={i18n.language}
@@ -1722,31 +1721,13 @@ function ProgressiveLoadSentinel({
 // shallow equality is correct.
 const TimelineItem = memo(TimelineItemImpl);
 
-// Window-virtualized timeline. Replaces the naive `places.map(...)`
-// so only viewport + overscan rows are actually mounted in the DOM.
-// Why this matters: TimelineItem is the heaviest row on the page
-// (photo + connector line + chips + memo preview + multiple Link/
-// onClick handlers), and a long-running couple's timeline can grow
-// into the hundreds. Without virtualization, every entry mounts on
-// initial paint AND reconciles on every parent re-render (pull
-// state changes, filter toggles, etc) — that was the gap between
-// HomePage and ComparePage perceived smoothness.
-//
-// Implementation notes:
-// - useWindowVirtualizer scrolls against `window` (matches our
-//   document-level scroll + pull-to-refresh + ScrollManager).
-// - scrollMargin = container's offset from page top so virtualizer
-//   knows where its slice begins relative to scrollY. Measured
-//   after mount via a layout effect because containerRef is null
-//   on first render.
-// - measureElement attaches a ResizeObserver to each rendered row
-//   so variable heights (photo vs no photo, 1 vs 3 category chips)
-//   get reconciled with the layout offsets. estimateSize is only
-//   used until first measurement lands.
-// - isLast must come from the FULL list length, not the virtualized
-//   subset, so the connector line drops correctly on the actual
-//   last item even when it's offscreen / unmounted.
-function VirtualTimeline({
+// Progressive timeline. We intentionally keep already-loaded cards
+// mounted instead of window-virtualizing them. Virtualization helped
+// raw DOM count, but photo rows flickered when scrolling back because
+// cards were unmounted, remounted, then decoded again. The feed now
+// gets its perf win from "10 first, then load more" while preserving
+// stable image/video DOM for smooth scroll-back.
+function TimelineList({
   places,
   totalCount,
   locale,
@@ -1757,78 +1738,17 @@ function VirtualTimeline({
   locale: string;
   viewerId: string | undefined;
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollMargin, setScrollMargin] = useState(0);
-
-  // Capture the container's distance from page top once mounted, and
-  // again on resize (sticky header height can change with locale
-  // wrapping). Without this the virtualizer thinks scrollY=0 means
-  // "top of the timeline" and renders the wrong slice at first paint.
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-    const measure = () => setScrollMargin(node.offsetTop);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(document.documentElement);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, []);
-
-  const virtualizer = useWindowVirtualizer({
-    count: places.length,
-    estimateSize: () => 200,
-    overscan: 6,
-    scrollMargin,
-    // Stable string id per row so reorders (rare here — places
-    // sort by date_visited) don't fight the measurement cache.
-    getItemKey: (i) => places[i]?.id ?? i,
-  });
-
-  const items = virtualizer.getVirtualItems();
-  const totalSize = virtualizer.getTotalSize();
-
   return (
-    <div
-      ref={containerRef}
-      className="mt-2"
-      style={{
-        position: "relative",
-        height: `${totalSize}px`,
-        // Hint the browser this region needs its own layer so
-        // virtualizer's translateY animations don't repaint the
-        // whole page.
-        contain: "layout style",
-      }}
-    >
-      {items.map((v) => {
-        const place = places[v.index];
-        if (!place) return null;
-        return (
-          <div
-            key={v.key}
-            data-index={v.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              transform: `translateY(${v.start - virtualizer.options.scrollMargin}px)`,
-            }}
-          >
-            <TimelineItem
-              place={place}
-              locale={locale}
-              isLast={v.index === totalCount - 1}
-              viewerId={viewerId}
-            />
-          </div>
-        );
-      })}
+    <div className="mt-2">
+      {places.map((place, index) => (
+        <TimelineItem
+          key={place.id}
+          place={place}
+          locale={locale}
+          isLast={index === totalCount - 1}
+          viewerId={viewerId}
+        />
+      ))}
     </div>
   );
 }

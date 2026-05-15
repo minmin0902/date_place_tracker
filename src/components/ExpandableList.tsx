@@ -7,11 +7,9 @@ import { ChevronDown } from "lucide-react";
 // initial entry — most notably HomePage's grid/menu layouts and
 // ComparePage's fame/clash/pass sections.
 //
-// For lists that can grow unbounded (HomePage's timeline view), pair
-// with virtualization instead — see VirtualTimeline in HomePage.tsx.
-// This component is the simpler choice when the expected total is
-// modest (~5-100 items) and the row is heavy enough that lazy-mount
-// matters but virtual scrolling is overkill.
+// HomePage's main timeline uses a route-level progressive loader
+// instead so already-seen media stays mounted while the user scrolls
+// back up.
 export function ExpandableList<T>({
   items,
   initial = 5,

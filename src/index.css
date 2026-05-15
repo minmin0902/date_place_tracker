@@ -230,19 +230,6 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  /* Repeated, media-heavy cards can be skipped by the browser while
-     they are far outside the viewport. Unsupported browsers simply
-     ignore this and keep the old behavior. */
-  .render-smooth-card {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 160px;
-    will-change: transform;
-    transform: translateZ(0);
-  }
-  .render-smooth-panel {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 320px;
-  }
 }
 
 @keyframes ourtable-vt-old {
