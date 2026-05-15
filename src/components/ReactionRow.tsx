@@ -8,7 +8,7 @@ import EmojiPicker, {
   Theme,
   type EmojiClickData,
 } from "emoji-picker-react";
-import { Plus } from "lucide-react";
+import { Plus, Smile } from "lucide-react";
 import { BottomSheet } from "@/components/BottomSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
@@ -24,10 +24,10 @@ import type { ReactionTarget } from "@/lib/database.types";
 const QUICK_REACTION_SET = new Set<string>(QUICK_REACTIONS);
 
 // Instagram-style reaction strip that lives directly under a memo /
-// caption. Shows existing reactions as pill bubbles ("❤️ 2") and a
-// trailing "+" button that opens a bottom-sheet emoji picker sized
-// to the viewport. Tapping a bubble you've already used removes
-// your reaction.
+// caption. Collapsed state shows existing reactions plus a smile
+// trigger; tapping it opens the quick emoji strip, whose trailing "+"
+// opens the full bottom-sheet emoji picker. Tapping a bubble you've
+// already used removes your reaction.
 //
 // Two data paths:
 //   - Inside a <ReactionProvider> (PlaceDetailPage tree): reads the
@@ -59,6 +59,7 @@ function ReactionRowImpl({
   // HTTP for rows already covered by the bulk fetch.
   const fallback = useReactions(batch ? null : target);
   const toggle = useToggleReaction();
+  const [quickOpen, setQuickOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const rows = batch ? batch.getFor(target) : (fallback.data ?? []);
@@ -83,6 +84,7 @@ function ReactionRowImpl({
   function onTapEmoji(emoji: string, existingId: string | null) {
     if (!couple || !user) return;
     if (toggle.isPending) return;
+    setQuickOpen(false);
     setPickerOpen(false);
     void toggle.mutateAsync({
       coupleId: couple.id,
@@ -105,36 +107,7 @@ function ReactionRowImpl({
 
   return (
     <div className={`flex flex-wrap items-center gap-1 ${justify}`}>
-      {QUICK_REACTIONS.map((emoji) => {
-        const s = summaryByEmoji.get(emoji);
-        const mine = !!s?.mineId;
-        const count = s?.count ?? 0;
-        return (
-          <button
-            key={emoji}
-            type="button"
-            onClick={() => onTapEmoji(emoji, s?.mineId ?? null)}
-            disabled={toggle.isPending}
-            className={`inline-flex items-center rounded-full border transition active:scale-95 ${pillBase} ${
-              mine
-                ? "bg-peach-50 border-peach-200 text-peach-700"
-                : count > 0
-                  ? "bg-white border-cream-200 text-ink-600 hover:bg-cream-50"
-                  : "bg-white border-cream-200 text-ink-500 hover:text-peach-600 hover:bg-cream-50"
-            }`}
-            aria-pressed={mine}
-            aria-label={
-              count > 0 ? `${emoji} ${count}` : `add ${emoji} reaction`
-            }
-          >
-            <span className="leading-none">{emoji}</span>
-            {count > 0 && (
-              <span className="font-number font-bold">{count}</span>
-            )}
-          </button>
-        );
-      })}
-      {customSummary.map((s) => {
+      {!quickOpen && summary.map((s) => {
         const mine = !!s.mineId;
         return (
           <button
@@ -155,22 +128,87 @@ function ReactionRowImpl({
           </button>
         );
       })}
+      {quickOpen && (
+        <>
+          {QUICK_REACTIONS.map((emoji) => {
+            const s = summaryByEmoji.get(emoji);
+            const mine = !!s?.mineId;
+            const count = s?.count ?? 0;
+            return (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => onTapEmoji(emoji, s?.mineId ?? null)}
+                disabled={toggle.isPending}
+                className={`inline-flex items-center rounded-full border transition active:scale-95 ${pillBase} ${
+                  mine
+                    ? "bg-peach-50 border-peach-200 text-peach-700"
+                    : count > 0
+                      ? "bg-white border-cream-200 text-ink-600 hover:bg-cream-50"
+                      : "bg-white border-cream-200 text-ink-500 hover:text-peach-600 hover:bg-cream-50"
+                }`}
+                aria-pressed={mine}
+                aria-label={
+                  count > 0 ? `${emoji} ${count}` : `add ${emoji} reaction`
+                }
+              >
+                <span className="leading-none">{emoji}</span>
+                {count > 0 && (
+                  <span className="font-number font-bold">{count}</span>
+                )}
+              </button>
+            );
+          })}
+          {customSummary.map((s) => {
+            const mine = !!s.mineId;
+            return (
+              <button
+                key={s.emoji}
+                type="button"
+                onClick={() => onTapEmoji(s.emoji, s.mineId)}
+                disabled={toggle.isPending}
+                className={`inline-flex items-center rounded-full border transition active:scale-95 ${pillBase} ${
+                  mine
+                    ? "bg-peach-50 border-peach-200 text-peach-700"
+                    : "bg-white border-cream-200 text-ink-600 hover:bg-cream-50"
+                }`}
+                aria-pressed={mine}
+                aria-label={`${s.emoji} ${s.count}`}
+              >
+                <span className="leading-none">{s.emoji}</span>
+                <span className="font-number font-bold">{s.count}</span>
+              </button>
+            );
+          })}
+        </>
+      )}
       <div className="relative">
         <button
           type="button"
-          onClick={() => setPickerOpen(true)}
+          onClick={() =>
+            quickOpen ? setPickerOpen(true) : setQuickOpen((v) => !v)
+          }
           disabled={toggle.isPending}
           className={`inline-flex items-center rounded-full border border-cream-200 bg-white text-ink-400 hover:text-peach-500 hover:bg-cream-50 transition active:scale-95 ${
             isSm ? "px-1.5 py-0.5" : "px-2 py-0.5"
           }`}
-          aria-label="add emoji reaction"
-          aria-expanded={pickerOpen}
+          aria-label={
+            quickOpen ? "open emoji picker" : "open quick reactions"
+          }
+          aria-expanded={quickOpen || pickerOpen}
         >
-          <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          {quickOpen ? (
+            <Plus className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          ) : (
+            <Smile className={isSm ? "w-3 h-3" : "w-3.5 h-3.5"} />
+          )}
         </button>
         <BottomSheet
           open={pickerOpen}
-          onClose={() => setPickerOpen(false)}
+          onClose={() => {
+            setPickerOpen(false);
+            setQuickOpen(false);
+          }}
           title="emoji reaction"
           bodyClassName="px-2"
         >
