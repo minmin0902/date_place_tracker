@@ -60,10 +60,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SmoothLink } from "@/components/SmoothLink";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
-import {
-  consumeHomeNavReselect,
-  HOME_NAV_RESELECT_EVENT,
-} from "@/lib/navEvents";
+import { HOME_NAV_RESELECT_EVENT } from "@/lib/navEvents";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 
 type Tab = "timeline" | "wishlist";
@@ -319,7 +316,7 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
   } = useRefreshControls(refreshAll);
 
   useEffect(() => {
-    const scrollTopAndRefresh = () => {
+    const scrollTop = () => {
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
       ).matches;
@@ -327,13 +324,15 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
         top: 0,
         behavior: reduceMotion ? "auto" : "smooth",
       });
+    };
+    const onHomeReselect = () => {
+      if (window.scrollY > 24) {
+        scrollTop();
+        return;
+      }
       void onManualRefresh();
     };
-    const onHomeReselect = () => scrollTopAndRefresh();
     window.addEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
-    if (consumeHomeNavReselect()) {
-      requestAnimationFrame(scrollTopAndRefresh);
-    }
     return () => {
       window.removeEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
     };

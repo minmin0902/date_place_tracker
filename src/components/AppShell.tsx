@@ -17,7 +17,11 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAppBadge } from "@/hooks/useAppBadge";
 import { preloadAppRoutes, preloadRouteForPath } from "@/lib/routePreload";
-import { notifyHomeNavReselect, queueHomeNavReselect } from "@/lib/navEvents";
+import {
+  consumeHomeNavRestore,
+  notifyHomeNavReselect,
+  queueHomeNavRestore,
+} from "@/lib/navEvents";
 
 // Scroll behavior across route changes:
 //   - PUSH / REPLACE (forward nav): scroll to top, otherwise the new
@@ -66,6 +70,10 @@ function isListReturnRoute(key: string) {
     key === "/map" ||
     key === "/compare"
   );
+}
+
+function isHomeRoute(key: string) {
+  return key === "/" || key.startsWith("/?");
 }
 
 function isDetailRoute(key: string) {
@@ -176,7 +184,10 @@ function ScrollManager() {
     currentKey.current = routeKey;
 
     const target = getScrollMap()[routeKey] ?? 0;
+    const shouldRestoreHomeNav =
+      isHomeRoute(routeKey) && consumeHomeNavRestore();
     const shouldRestore =
+      shouldRestoreHomeNav ||
       navType === "POP" ||
       (target > 0 &&
         !!previous &&
@@ -262,7 +273,7 @@ function NavItem({
           notifyHomeNavReselect();
           return;
         }
-        queueHomeNavReselect();
+        queueHomeNavRestore();
       }}
       onFocus={warmRoute}
       onPointerEnter={warmRoute}
