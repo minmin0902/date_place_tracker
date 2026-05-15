@@ -193,7 +193,7 @@
     position: fixed;
     top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
     bottom: calc(env(safe-area-inset-bottom, 0px) + 5.4rem);
-    right: calc((100vw - min(100vw, 28rem)) / 2 + 0.35rem);
+    right: 0.45rem;
     z-index: 30;
     width: 3px;
     border-radius: 999px;
@@ -218,6 +218,11 @@
     background: rgba(248, 149, 112, 0.9);
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.42);
     will-change: transform;
+  }
+  @media (min-width: 48rem) {
+    .app-scroll-indicator {
+      right: 0.75rem;
+    }
   }
   .route-link-pressed .render-smooth-card {
     filter: saturate(1.02);
