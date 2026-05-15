@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./i18n";
+import i18n from "./i18n";
+import { installBilingualTextFilter } from "./i18n/bilingualTextFilter";
 import "./index.css";
 import App from "./App.tsx";
 
@@ -21,3 +22,5 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </StrictMode>
 );
+
+installBilingualTextFilter(i18n);

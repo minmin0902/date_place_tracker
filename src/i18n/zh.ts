@@ -124,7 +124,7 @@ export default {
     title: "设置",
     language: "语言",
     account: "我的账号",
-    ko: "한국어",
+    ko: "韩语",
     zh: "中文",
     bi: "双语",
     invite: "邀请码",

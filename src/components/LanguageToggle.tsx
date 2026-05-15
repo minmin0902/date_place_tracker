@@ -1,13 +1,10 @@
 import { useTranslation } from "react-i18next";
-import type { AppLanguage } from "@/i18n";
 
-const OPTIONS: AppLanguage[] = ["ko", "zh", "bi"];
+const OPTIONS = ["ko", "zh", "bi"];
 
 export function LanguageToggle() {
   const { i18n, t } = useTranslation();
-  const current = OPTIONS.includes(i18n.language as AppLanguage)
-    ? (i18n.language as AppLanguage)
-    : "bi";
+  const current = OPTIONS.includes(i18n.language) ? i18n.language : "zh";
 
   return (
     <div className="grid grid-cols-3 gap-1 rounded-2xl border border-cream-200 bg-cream-50 p-1">

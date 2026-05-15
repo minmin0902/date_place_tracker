@@ -7,6 +7,7 @@ import zh from "./zh";
 export type AppLanguage = "ko" | "zh" | "bi";
 
 const LANGUAGE_STORAGE_KEY = "ourtable:language:v1";
+const LANGUAGE_DEFAULT_MIGRATION_KEY = "ourtable:language-default:v2";
 const SUPPORTED_LANGUAGES: AppLanguage[] = ["ko", "zh", "bi"];
 
 function isAppLanguage(value: string | null): value is AppLanguage {
@@ -14,30 +15,34 @@ function isAppLanguage(value: string | null): value is AppLanguage {
 }
 
 function initialLanguage(): AppLanguage {
-  if (typeof window === "undefined") return "bi";
+  if (typeof window === "undefined") return "zh";
   try {
     const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    const migrated = window.localStorage.getItem(LANGUAGE_DEFAULT_MIGRATION_KEY);
+    if (!migrated) {
+      window.localStorage.setItem(LANGUAGE_DEFAULT_MIGRATION_KEY, "1");
+      return "zh";
+    }
     if (isAppLanguage(saved)) return saved;
   } catch {
     // localStorage may be unavailable in private contexts.
   }
-  return "bi";
+  return "zh";
 }
 
 function applyDocumentLanguage(language: string) {
-  const appLanguage: AppLanguage = isAppLanguage(language) ? language : "bi";
+  const appLanguage: AppLanguage = isAppLanguage(language) ? language : "zh";
   document.documentElement.lang = appLanguage === "zh" ? "zh-CN" : "ko";
   document.documentElement.dataset.language = appLanguage;
   try {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, appLanguage);
   } catch {
-    // Non-critical. The app falls back to bilingual mode next boot.
+    // Non-critical. The app falls back to Chinese mode next boot.
   }
 }
 
-// ko / zh are the original single-language resources. bi is the old
-// merged resource that renders "한글 · 中文" together, kept as the
-// default so existing users see the same UI until they switch modes.
+// ko / zh are single-language resources. bi is the old merged resource
+// that renders "한글 · 中文" together for users who still want both.
 void i18n.use(initReactI18next).init({
   resources: {
     ko: { translation: ko },
@@ -45,7 +50,7 @@ void i18n.use(initReactI18next).init({
     bi: { translation: bi },
   },
   lng: initialLanguage(),
-  fallbackLng: "bi",
+  fallbackLng: "zh",
   supportedLngs: SUPPORTED_LANGUAGES,
   interpolation: { escapeValue: false },
 });
