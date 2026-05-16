@@ -23,8 +23,7 @@ import { LocationPicker } from "@/components/LocationPicker";
 import { supabase } from "@/lib/supabase";
 import { pickLanguage } from "@/lib/language";
 import type { Profile } from "@/lib/database.types";
-import { categoryEmojiOf, isKnownPlaceCategory } from "@/lib/constants";
-import { getCategories, ratingsForViewer } from "@/lib/utils";
+import { ratingsForViewer } from "@/lib/utils";
 
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
 
@@ -39,12 +38,9 @@ export default function SettingsPage() {
     useCoupleProfiles();
   const { data: places } = usePlaces(couple?.id);
 
-  // ---------- Data-derived "Taste DNA" stats ----------
-  // Mirrors the bucketing ComparePage already does, but computed here
-  // so the profile card can show data-backed badges (별점 요정 vs
-  // 깐깐징어, 인생 메뉴 Top 3, 주력 카테고리) without touching the
-  // compare page. Only counts foods both partners ate so per-person
-  // averages stay apples-to-apples.
+  // ---------- My Top 3 ----------
+  // Keep settings personal and light: no compare-style DNA or roles
+  // here, just the viewer's own highest-rated foods.
   const tasteStats = useMemo(() => {
     type Row = {
       foodId: string;
@@ -52,85 +48,35 @@ export default function SettingsPage() {
       placeName: string;
       foodName: string;
       mine: number;
-      partner: number;
-      categories: string[];
+      partner: number | null;
     };
     const rows: Row[] = [];
     for (const p of places ?? []) {
       for (const f of p.foods ?? []) {
-        const isBoth = f.eater ? f.eater === "both" : !f.is_solo;
-        if (!isBoth) continue;
-        if (f.my_rating == null || f.partner_rating == null) continue;
         const view = ratingsForViewer(f, user?.id);
+        if (view.myRating == null) continue;
         rows.push({
           foodId: f.id,
           placeId: p.id,
           placeName: p.name,
           foodName: f.name,
-          mine: view.myRating ?? 0,
-          partner: view.partnerRating ?? 0,
-          categories: getCategories(p),
+          mine: view.myRating,
+          partner: view.partnerRating,
         });
       }
     }
 
-    let myAvg = 0;
-    let partnerAvg = 0;
-    if (rows.length > 0) {
-      myAvg = rows.reduce((s, r) => s + r.mine, 0) / rows.length;
-      partnerAvg = rows.reduce((s, r) => s + r.partner, 0) / rows.length;
-    }
-    const ratingDiff = Math.abs(myAvg - partnerAvg);
-    const ratingTie = ratingDiff < 0.1;
-    const myRole: "fairy" | "strict" | "tie" = ratingTie
-      ? "tie"
-      : myAvg > partnerAvg
-        ? "fairy"
-        : "strict";
-    const partnerRole: "fairy" | "strict" | "tie" = ratingTie
-      ? "tie"
-      : myRole === "fairy"
-        ? "strict"
-        : "fairy";
-
-    // Top 3 menus by viewer's own rating, with couple-avg as a
-    // tiebreaker so equally-loved menus rank by total enthusiasm.
     const myTop3 = [...rows]
       .sort(
         (a, b) =>
           b.mine - a.mine ||
-          b.mine + b.partner - (a.mine + a.partner)
+          b.mine + (b.partner ?? 0) - (a.mine + (a.partner ?? 0))
       )
       .slice(0, 3);
 
-    // Top category by count of place categories. Multi-cat places
-    // contribute to each category. Built-in only — custom strings
-    // could be noisy.
-    const catCount = new Map<string, number>();
-    for (const r of rows) {
-      for (const c of r.categories) {
-        if (!isKnownPlaceCategory(c)) continue;
-        catCount.set(c, (catCount.get(c) ?? 0) + 1);
-      }
-    }
-    let topCategory: string | null = null;
-    let topCount = 0;
-    for (const [cat, count] of catCount) {
-      if (count > topCount) {
-        topCategory = cat;
-        topCount = count;
-      }
-    }
-
     return {
       sampleSize: rows.length,
-      myAvg,
-      partnerAvg,
-      myRole,
-      partnerRole,
       myTop3,
-      topCategory,
-      topCount,
     };
   }, [places, user?.id]);
 
@@ -216,16 +162,10 @@ export default function SettingsPage() {
     <div>
       <PageHeader title={t("settings.title")} />
       <div className="px-5 space-y-4 pb-8">
-        {/* Dual profile card — two side-by-side avatars with a heart in
-            the middle visualizes "we are connected". Each side links to
-            its own edit form: tapping mine edits my own record, tapping
-            the partner side edits the애칭 *I* gave them. */}
+        {/* Profile card: personal profile info + my Top 3 only.
+            Compare-style rating roles / averages live on ComparePage. */}
         {couple && (
-          <div className="card p-5">
-            {/* Grid keeps the two avatars symmetrical on every width
-                — left/right columns are 1fr 1fr, centre is auto for
-                the heart. Old justify-around pushed avatars hard
-                against the card edges on narrow phones. */}
+          <div className="card p-5 space-y-4">
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pb-4 border-b border-cream-100">
               <ProfileAvatar
                 profile={meProfileQuery.data ?? null}
@@ -247,8 +187,6 @@ export default function SettingsPage() {
                     ? null
                     : pick("나", "我")
                 }
-                role={tasteStats.myRole}
-                showRole={tasteStats.sampleSize >= 3}
               />
               <Heart className="w-6 h-6 text-rose-300 animate-pulse flex-shrink-0" />
               <ProfileAvatar
@@ -273,45 +211,37 @@ export default function SettingsPage() {
                 overrideNickname={
                   meProfileQuery.data?.partner_nickname ?? null
                 }
-                role={tasteStats.partnerRole}
-                showRole={tasteStats.sampleSize >= 3}
               />
             </div>
 
-            {/* Quick info strip — only renders the bits that are set. */}
-            <div className="mt-4 space-y-2.5">
-              {meProfileQuery.data?.bio && (
-                <div className="bg-cream-50 border border-cream-200/60 rounded-xl px-3 py-2 text-[12px] text-ink-700">
-                  <span className="text-ink-400 text-[10px] font-bold uppercase tracking-wider mr-1 break-keep">
-                    {pick("내 한줄", "简介")}
-                  </span>
-                  {meProfileQuery.data.bio}
-                </div>
-              )}
-              {(meProfileQuery.data?.hate_ingredients?.length ?? 0) > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-ink-400 mb-1 uppercase tracking-wider">
-                    🚫 {pick("못 먹어요", "不能吃")}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {(meProfileQuery.data?.hate_ingredients ?? []).map(
-                      (h) => (
-                        <span
-                          key={h}
-                          className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-500 text-[11px] font-bold border border-rose-200/60"
-                        >
-                          {h}
-                        </span>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <ProfileFacts
+                title={pick("내 설정", "我的设置")}
+                profile={meProfileQuery.data ?? null}
+                partnerAlias={partnerProfileQuery.data?.partner_nickname ?? null}
+                partnerAliasLabel={pick("상대가 나를 부르는 이름", "TA给我的昵称")}
+                emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                pick={pick}
+              />
+              <ProfileFacts
+                title={pick("상대 설정", "TA的设置")}
+                profile={partnerProfileQuery.data ?? null}
+                partnerAlias={meProfileQuery.data?.partner_nickname ?? null}
+                partnerAliasLabel={pick("내가 상대를 부르는 이름", "我给TA的昵称")}
+                emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                pick={pick}
+              />
             </div>
+
+            <TopThreeList
+              items={tasteStats.myTop3}
+              sampleSize={tasteStats.sampleSize}
+              pick={pick}
+            />
 
             <Link
               to="/profile/me"
-              className="mt-3 inline-flex w-full items-center justify-between text-[12px] font-bold text-ink-500 hover:text-ink-700 transition px-1"
+              className="inline-flex w-full items-center justify-between text-[12px] font-bold text-ink-500 hover:text-ink-700 transition px-1"
             >
               {pick("내 프로필 자세히 편집", "完整编辑我的资料")}
               <ChevronRight className="w-3.5 h-3.5" />
@@ -319,296 +249,237 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* "Taste DNA" — derived stats card. Hides itself when the
-            couple hasn't logged enough cross-rated foods (need at
-            least 3 to make the badges meaningful and a top-3 list non-
-            trivial). */}
-        {couple && tasteStats.sampleSize >= 3 && (
-          <div className="card p-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-full bg-peach-100 text-peach-500">
-                🧬
+        <SettingsSection
+          icon="🌐"
+          title={pick("앱 설정", "应用设置")}
+          subtitle={pick("언어와 알림", "语言和通知")}
+        >
+          <div className="rounded-2xl bg-cream-50/70 border border-cream-200/60 p-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-white text-base shadow-sm">
+                🌐
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-bold text-ink-700">
-                  {pick("내 입맛 DNA", "我的口味DNA")}
+                  {t("settings.language")}
                 </p>
                 <p className="text-[11px] text-ink-400">
-                  {pick("공통 평가", "共评")}{" "}
-                  <span className="font-number font-bold text-ink-700">
-                    {tasteStats.sampleSize}
-                  </span>
-                  {pick("개 메뉴 기반", "道菜")}
+                  {t("settings.ko")} / {t("settings.zh")} / {t("settings.bi")}
                 </p>
               </div>
             </div>
-
-            {/* Average rating headline + role (별점 요정 / 깐깐징어 /
-                비등). Shows my number alongside the partner's so the
-                badge isn't just self-referential. */}
-            <div className="grid grid-cols-2 gap-2">
-              <PersonStatCell
-                tone="peach"
-                label={(() => {
-                  const me =
-                    meProfileQuery.data?.nickname?.trim() || "나";
-                  return pick(`${me} 평균`, `${me}的平均`);
-                })()}
-                avg={tasteStats.myAvg}
-                role={tasteStats.myRole}
-              />
-              <PersonStatCell
-                tone="rose"
-                label={(() => {
-                  const partner =
-                    meProfileQuery.data?.partner_nickname?.trim() ||
-                    partnerProfileQuery.data?.nickname?.trim() ||
-                    "짝꿍";
-                  return pick(`${partner} 평균`, `${partner}的平均`);
-                })()}
-                avg={tasteStats.partnerAvg}
-                role={tasteStats.partnerRole}
-              />
-            </div>
-
-            {/* Most-logged category — quick "what cuisine defines us"
-                summary. Falls back gracefully if no built-in cat dominates. */}
-            {tasteStats.topCategory && (
-              <div className="bg-cream-50 border border-cream-200/60 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-2xl flex-shrink-0">
-                  {categoryEmojiOf(tasteStats.topCategory)}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider">
-                    {pick("주력 카테고리", "主力类别")}
-                  </p>
-                  <p className="text-[13px] font-bold text-ink-900 break-keep">
-                    {t(`category.${tasteStats.topCategory}`)} {pick("매니아", "控")}
-                    <span className="text-ink-400 font-number ml-1.5 text-[11px]">
-                      ({tasteStats.topCount}{pick("회", "次")})
-                    </span>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Lifetime Top 3 — pinned by my own rating descending. */}
-            {tasteStats.myTop3.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider mb-2">
-                  🏆 {pick("내 인생 메뉴 Top 3", "我的TOP3")}
-                </p>
-                <div className="space-y-1.5">
-                  {tasteStats.myTop3.map((r, idx) => (
-                    <Link
-                      key={r.foodId}
-                      to={`/places/${r.placeId}`}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-peach-50 border border-amber-200/60 hover:from-amber-100 hover:to-peach-100 transition"
-                    >
-                      <span className="text-[15px] font-number font-black text-amber-500 flex-shrink-0 w-5 text-center">
-                        {idx + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-bold text-ink-900 truncate">
-                          {r.foodName}
-                        </p>
-                        <p className="text-[10px] text-ink-400 truncate">
-                          @ {r.placeName}
-                        </p>
-                      </div>
-                      <span className="text-[12px] font-number font-bold text-peach-500 flex-shrink-0">
-                        {r.mine.toFixed(1)}
-                        <span className="text-ink-400 text-[9px] ml-0.5">
-                          /5
-                        </span>
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
+            <LanguageToggle />
           </div>
-        )}
+          {!ALLOW_NO_AUTH && <PushNotificationCard />}
+        </SettingsSection>
 
-        <div className="card p-4 space-y-3">
-          <SettingsRow
-            label={t("settings.account")}
-            value={user?.email ?? "-"}
-            icon={<span className="text-base">✉️</span>}
-          />
-          {couple && (
+        {couple && (
+          <SettingsSection
+            icon="🏠"
+            title={pick("우리 설정", "我们的设置")}
+            subtitle={pick("집 주소와 초대 코드", "家庭住址和邀请码")}
+          >
             <SettingsRow
               label={t("settings.invite")}
               value={couple.invite_code}
               icon={<span className="text-base">🔗</span>}
               valueClassName="font-number tracking-[0.18em] text-peach-500 text-lg"
             />
-          )}
-        </div>
-
-        <div className="card p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-cream-100 text-base">
-              🌐
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-ink-700">
-                {t("settings.language")}
-              </p>
-              <p className="text-[11px] text-ink-400">
-                {t("settings.ko")} / {t("settings.zh")} / {t("settings.bi")}
-              </p>
-            </div>
-          </div>
-          <LanguageToggle />
-        </div>
-
-        {couple && (
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-full bg-rose-100 text-rose-500">
-                <Home className="w-4 h-4" />
-              </span>
-              <div>
-                <p className="text-sm font-bold text-ink-700">
-                  {pick("우리집 주소", "家庭住址")}
-                </p>
-                <p className="text-[11px] text-ink-400">
-                  {pick(
-                    "집밥 모드 + 지도의 집 마커에 사용돼요",
-                    "用于在家做饭和地图的家标记"
-                  )}
-                </p>
+            <div className="rounded-2xl bg-cream-50/70 border border-cream-200/60 p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-full bg-white text-rose-500 shadow-sm">
+                  <Home className="w-4 h-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-ink-700">
+                    {pick("우리집 주소", "家庭住址")}
+                  </p>
+                  <p className="text-[11px] text-ink-400">
+                    {pick(
+                      "집밥 모드 + 지도의 집 마커에 사용돼요",
+                      "用于在家做饭和地图的家标记"
+                    )}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <LocationPicker
-              value={coord}
-              label={label}
-              onChange={(v) => {
-                setCoord(v);
-                if (!v) setLabel(null);
-              }}
-              onPlaceSelected={(p) => {
-                setLabel(p.name || null);
-                setAddress(p.address);
-                if (
-                  typeof p.lat === "number" &&
-                  typeof p.lng === "number"
-                ) {
-                  setCoord({ lat: p.lat, lng: p.lng });
-                }
-              }}
-            />
-
-            <input
-              className="input-base"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder={pick("주소 (예: 서울시 마포구...)", "地址")}
-            />
-
-            <button
-              type="button"
-              onClick={() => void onSave()}
-              disabled={setHome.isPending}
-              className="btn-primary w-full"
-            >
-              {savedFlash
-                ? pick("저장됐어요!", "已保存")
-                : setHome.isPending
-                  ? pick("저장 중…", "保存中…")
-                  : pick("집 주소 저장", "保存家庭住址")}
-            </button>
-          </div>
-        )}
-
-        {/* Push notifications card — only useful in real-auth mode
-            since the local dev seed has no notifications backend. */}
-        {!ALLOW_NO_AUTH && <PushNotificationCard />}
-
-        {/* Password change — Supabase mode only. In ALLOW_NO_AUTH (local
-            dev with seeded localDb) there's no real auth session to
-            update, so the card hides itself. */}
-        {!ALLOW_NO_AUTH && (
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-full bg-peach-100 text-peach-500">
-                <KeyRound className="w-4 h-4" />
-              </span>
-              <div>
-                <p className="text-sm font-bold text-ink-700">
-                  {pick("비밀번호 변경", "修改密码")}
-                </p>
-                <p className="text-[11px] text-ink-400">
-                  {pick(
-                    `지금 로그인된 계정(${user?.email})의 비밀번호를 바꿔요`,
-                    `修改当前登录账号（${user?.email}）的密码`
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="relative">
-              <input
-                type={showPwd ? "text" : "password"}
-                className="input-base pr-11"
-                value={pwd}
-                onChange={(e) => setPwd(e.target.value)}
-                placeholder={pick("새 비밀번호 (6자 이상)", "新密码")}
-                autoComplete="new-password"
+              <LocationPicker
+                value={coord}
+                label={label}
+                onChange={(v) => {
+                  setCoord(v);
+                  if (!v) setLabel(null);
+                }}
+                onPlaceSelected={(p) => {
+                  setLabel(p.name || null);
+                  setAddress(p.address);
+                  if (
+                    typeof p.lat === "number" &&
+                    typeof p.lng === "number"
+                  ) {
+                    setCoord({ lat: p.lat, lng: p.lng });
+                  }
+                }}
               />
+
+              <input
+                className="input-base"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder={pick("주소 (예: 서울시 마포구...)", "地址")}
+              />
+
               <button
                 type="button"
-                onClick={() => setShowPwd((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
-                aria-label="toggle password visibility"
+                onClick={() => void onSave()}
+                disabled={setHome.isPending}
+                className="btn-primary w-full"
               >
-                {showPwd ? (
-                  <EyeOff className="w-4 h-4" />
-                ) : (
-                  <Eye className="w-4 h-4" />
-                )}
+                {savedFlash
+                  ? pick("저장됐어요!", "已保存")
+                  : setHome.isPending
+                    ? pick("저장 중…", "保存中…")
+                    : pick("집 주소 저장", "保存家庭住址")}
               </button>
             </div>
-            <input
-              type={showPwd ? "text" : "password"}
-              className="input-base"
-              value={pwdConfirm}
-              onChange={(e) => setPwdConfirm(e.target.value)}
-              placeholder={pick("비밀번호 확인", "确认密码")}
-              autoComplete="new-password"
-            />
-            {pwdMsg && (
-              <p
-                className={`text-xs font-medium px-1 ${
-                  pwdMsg.kind === "ok" ? "text-sage-400" : "text-rose-500"
-                }`}
-              >
-                {pwdMsg.text}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => void onChangePassword()}
-              disabled={pwdBusy || !pwd || !pwdConfirm}
-              className="btn-primary w-full"
-            >
-              {pwdBusy
-                ? pick("변경 중…", "修改中…")
-                : pick("비밀번호 변경", "修改密码")}
-            </button>
-          </div>
+          </SettingsSection>
         )}
 
-        <button
-          onClick={() => void signOut()}
-          className="w-full card p-4 flex items-center justify-center gap-2 text-rose-500 font-bold active:scale-[0.98] transition-transform"
+        <SettingsSection
+          icon="🔐"
+          title={pick("계정", "账号")}
+          subtitle={user?.email ?? "-"}
         >
-          <LogOut className="w-5 h-5" />
-          {pick("로그아웃", "退出登录")}
-        </button>
+          <SettingsRow
+            label={t("settings.account")}
+            value={user?.email ?? "-"}
+            icon={<span className="text-base">✉️</span>}
+          />
+
+          {!ALLOW_NO_AUTH && (
+            <div className="rounded-2xl bg-cream-50/70 border border-cream-200/60 p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-full bg-white text-peach-500 shadow-sm">
+                  <KeyRound className="w-4 h-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-ink-700">
+                    {pick("비밀번호 변경", "修改密码")}
+                  </p>
+                  <p className="text-[11px] text-ink-400">
+                    {pick(
+                      `지금 로그인된 계정(${user?.email})의 비밀번호를 바꿔요`,
+                      `修改当前登录账号（${user?.email}）的密码`
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPwd ? "text" : "password"}
+                  className="input-base pr-11"
+                  value={pwd}
+                  onChange={(e) => setPwd(e.target.value)}
+                  placeholder={pick("새 비밀번호 (6자 이상)", "新密码")}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+                  aria-label="toggle password visibility"
+                >
+                  {showPwd ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <input
+                type={showPwd ? "text" : "password"}
+                className="input-base"
+                value={pwdConfirm}
+                onChange={(e) => setPwdConfirm(e.target.value)}
+                placeholder={pick("비밀번호 확인", "确认密码")}
+                autoComplete="new-password"
+              />
+              {pwdMsg && (
+                <p
+                  className={`text-xs font-medium px-1 ${
+                    pwdMsg.kind === "ok" ? "text-sage-400" : "text-rose-500"
+                  }`}
+                >
+                  {pwdMsg.text}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => void onChangePassword()}
+                disabled={pwdBusy || !pwd || !pwdConfirm}
+                className="btn-primary w-full"
+              >
+                {pwdBusy
+                  ? pick("변경 중…", "修改中…")
+                  : pick("비밀번호 변경", "修改密码")}
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => void signOut()}
+            className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-3 flex items-center justify-center gap-2 text-rose-500 font-bold active:scale-[0.98] transition-transform"
+          >
+            <LogOut className="w-5 h-5" />
+            {pick("로그아웃", "退出登录")}
+          </button>
+        </SettingsSection>
       </div>
     </div>
+  );
+}
+
+function SettingsSection({
+  icon,
+  title,
+  subtitle,
+  children,
+  defaultOpen = false,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:scale-[0.99] transition-transform"
+        aria-expanded={open}
+      >
+        <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-cream-100 text-base">
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-black text-ink-900">
+            {title}
+          </span>
+          <span className="block text-[11px] font-medium text-ink-400 truncate">
+            {subtitle}
+          </span>
+        </span>
+        <ChevronRight
+          className={`w-4 h-4 flex-shrink-0 text-ink-400 transition-transform ${
+            open ? "rotate-90" : ""
+          }`}
+        />
+      </button>
+      {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </section>
   );
 }
 
@@ -638,6 +509,132 @@ function SettingsRow({
   );
 }
 
+function ProfileFacts({
+  title,
+  profile,
+  partnerAlias,
+  partnerAliasLabel,
+  emptyText,
+  pick,
+}: {
+  title: string;
+  profile: Profile | null;
+  partnerAlias: string | null;
+  partnerAliasLabel: string;
+  emptyText: string;
+  pick: (ko: string, zh: string) => string;
+}) {
+  const bio = profile?.bio?.trim() || null;
+  const hates = profile?.hate_ingredients?.filter(Boolean) ?? [];
+  const alias = partnerAlias?.trim() || null;
+  const hasContent = !!bio || hates.length > 0 || !!alias;
+  return (
+    <div className="rounded-2xl border border-cream-200/70 bg-cream-50/60 p-3 min-w-0">
+      <p className="text-[11px] font-black text-ink-700 mb-2">{title}</p>
+      {!hasContent ? (
+        <p className="text-[11px] text-ink-400">{emptyText}</p>
+      ) : (
+        <div className="space-y-2">
+          {bio && (
+            <p className="text-[12px] text-ink-700 leading-snug break-keep">
+              <span className="font-bold text-ink-400 mr-1">
+                {pick("한줄", "简介")}
+              </span>
+              {bio}
+            </p>
+          )}
+          {alias && (
+            <p className="text-[12px] text-ink-700 leading-snug break-keep">
+              <span className="font-bold text-ink-400 mr-1">
+                {partnerAliasLabel}
+              </span>
+              {alias}
+            </p>
+          )}
+          {hates.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-ink-400 mb-1">
+                🚫 {pick("못 먹어요", "不能吃")}
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {hates.map((h) => (
+                  <span
+                    key={h}
+                    className="px-2 py-0.5 rounded-full bg-white text-rose-500 text-[11px] font-bold border border-rose-100"
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopThreeList({
+  items,
+  sampleSize,
+  pick,
+}: {
+  items: {
+    foodId: string;
+    placeId: string;
+    placeName: string;
+    foodName: string;
+    mine: number;
+  }[];
+  sampleSize: number;
+  pick: (ko: string, zh: string) => string;
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-peach-50 p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-[11px] font-black text-amber-700">
+          🏆 {pick("내 Top 3", "我的TOP3")}
+        </p>
+        {sampleSize > 0 && (
+          <span className="text-[10px] font-number font-bold text-ink-400">
+            {sampleSize}
+          </span>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <p className="text-[11px] text-ink-400">
+          {pick("아직 별점 준 메뉴가 없어요", "还没有打过分的菜")}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((r, idx) => (
+            <Link
+              key={r.foodId}
+              to={`/places/${r.placeId}`}
+              className="flex items-center gap-2 rounded-xl bg-white/80 border border-white px-2.5 py-2 active:scale-[0.99] transition-transform"
+            >
+              <span className="text-[13px] font-number font-black text-amber-500 flex-shrink-0 w-4 text-center">
+                {idx + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12px] font-bold text-ink-900 truncate">
+                  {r.foodName}
+                </span>
+                <span className="block text-[10px] text-ink-400 truncate">
+                  @ {r.placeName}
+                </span>
+              </span>
+              <span className="text-[12px] font-number font-bold text-peach-500 flex-shrink-0">
+                {r.mine.toFixed(1)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Round profile avatar with a name + edit affordance underneath. Used
 // twice in the duos card (me + partner). Falls back to a colored
 // initial bubble when no avatar_url is set, since avatar upload is a
@@ -651,8 +648,6 @@ function ProfileAvatar({
   editTo,
   badge,
   overrideNickname,
-  role,
-  showRole,
 }: {
   profile: Profile | null;
   fallbackLabel: string;
@@ -664,12 +659,7 @@ function ProfileAvatar({
   // the same name twice (displayName ↑ + badge ↓).
   badge: string | null;
   overrideNickname?: string | null;
-  // Auto-derived role from RatingStats data — gets surfaced as a small
-  // badge under the avatar so the profile reads as "data-backed".
-  role?: "fairy" | "strict" | "tie";
-  showRole?: boolean;
 }) {
-  const { i18n } = useTranslation();
   const displayName =
     overrideNickname?.trim() || profile?.nickname?.trim() || fallbackLabel;
   const initial = Array.from(displayName)[0] ?? "?";
@@ -677,10 +667,6 @@ function ProfileAvatar({
     tone === "peach"
       ? "border-peach-300 bg-gradient-to-br from-peach-100 to-rose-100 text-peach-500"
       : "border-rose-300 bg-gradient-to-br from-rose-100 to-pink-100 text-rose-500";
-  const roleBadge =
-    showRole && role
-      ? roleBadgeFor(role, i18n.language)
-      : null;
 
   const inner = (
     <>
@@ -702,14 +688,6 @@ function ProfileAvatar({
       </p>
       {badge && (
         <p className="text-[10px] font-bold text-ink-400">{badge}</p>
-      )}
-      {roleBadge && (
-        <span
-          className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border max-w-full ${roleBadge.cls}`}
-        >
-          <span className="flex-shrink-0">{roleBadge.emoji}</span>
-          <span className="truncate">{roleBadge.label}</span>
-        </span>
       )}
     </>
   );
@@ -733,72 +711,6 @@ function ProfileAvatar({
   );
 }
 
-// Single source of truth for the 별점 요정 / 깐깐징어 / 비등 badge —
-// reused by both the avatar (small chip) and the stats grid (full row).
-function roleBadgeFor(role: "fairy" | "strict" | "tie", language: string) {
-  if (role === "fairy") {
-    return {
-      emoji: "🧚",
-      label: pickLanguage(language, "별점 요정", "打分天使"),
-      cls: "bg-amber-50 text-amber-600 border-amber-200",
-    } as const;
-  }
-  if (role === "strict") {
-    return {
-      emoji: "🧐",
-      label: pickLanguage(language, "깐깐징어", "严格考官"),
-      cls: "bg-indigo-50 text-indigo-600 border-indigo-200",
-    } as const;
-  }
-  return {
-    emoji: "🤝",
-    label: pickLanguage(language, "비등", "不分上下"),
-    cls: "bg-ink-100 text-ink-500 border-cream-200",
-  } as const;
-}
-
-// Inline avg+role tile for the Taste DNA card. Mirrors PersonStatTile
-// from ComparePage but trimmed (no expand state, no big avg number) to
-// fit the smaller settings card.
-function PersonStatCell({
-  tone,
-  label,
-  avg,
-  role,
-}: {
-  tone: "peach" | "rose";
-  label: string;
-  avg: number;
-  role: "fairy" | "strict" | "tie";
-}) {
-  const { i18n } = useTranslation();
-  const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
-  const accentCls =
-    tone === "peach"
-      ? "bg-peach-50 border-peach-200"
-      : "bg-rose-50 border-rose-200";
-  const badge = roleBadgeFor(role, i18n.language);
-  return (
-    <div
-      className={`rounded-xl p-2 border ${accentCls} flex flex-col items-center text-center shadow-sm`}
-    >
-      <span className={`text-[10px] font-bold ${personCls}`}>{label}</span>
-      <span className="text-[18px] font-number font-black text-ink-900 leading-none mt-0.5">
-        {avg.toFixed(2)}
-        <span className="text-[9px] text-ink-400 font-bold ml-0.5 tracking-wider">
-          /5
-        </span>
-      </span>
-      <span
-        className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${badge.cls}`}
-      >
-        <span>{badge.emoji}</span>
-        <span>{badge.label}</span>
-      </span>
-    </div>
-  );
-}
-
 // Push notification opt-in card. Sits above the password card on the
 // settings page. Surfaces the four states the underlying hook can
 // return so the user always knows why notifications aren't firing.
@@ -814,10 +726,10 @@ function PushNotificationCard() {
   const showHelpText = status === "denied" || status === "unsupported";
 
   return (
-    <div className="card p-4 space-y-3">
+    <div className="rounded-2xl bg-cream-50/70 border border-cream-200/60 p-3 space-y-3">
       <div className="flex items-center gap-2">
         <span
-          className={`p-2 rounded-full ${isOn ? "bg-peach-100 text-peach-500" : "bg-cream-100 text-ink-500"}`}
+          className={`p-2 rounded-full shadow-sm ${isOn ? "bg-peach-100 text-peach-500" : "bg-white text-ink-500"}`}
         >
           {isOn ? (
             <Bell className="w-4 h-4" />
