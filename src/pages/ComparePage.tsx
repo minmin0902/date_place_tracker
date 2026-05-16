@@ -44,6 +44,7 @@ import { ExpandableList } from "@/components/ExpandableList";
 import { SmoothLink } from "@/components/SmoothLink";
 import { useRefreshControls } from "@/hooks/useRefreshControls";
 import { useSessionState } from "@/hooks/useSessionState";
+import { countLanguage, pickLanguage } from "@/lib/language";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 import { RouletteModal } from "@/pages/HomePage";
 
@@ -351,6 +352,7 @@ const CompareRefreshControls = memo(function CompareRefreshControls({
 }: {
   refreshAll: () => Promise<unknown>;
 }) {
+  const { i18n } = useTranslation();
   const {
     pull,
     refreshing,
@@ -378,7 +380,7 @@ const CompareRefreshControls = memo(function CompareRefreshControls({
             : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
         }`}
         aria-label="refresh"
-        title="새로고침 · 刷新"
+        title={pickLanguage(i18n.language, "새로고침", "刷新")}
       >
         {justFinished ? (
           <Check className="w-5 h-5 animate-fade" />
@@ -395,6 +397,11 @@ const CompareRefreshControls = memo(function CompareRefreshControls({
 });
 
 export default function ComparePage() {
+  const { i18n } = useTranslation();
+  const pick = useCallback(
+    (ko: string, zh: string) => pickLanguage(i18n.language, ko, zh),
+    [i18n.language]
+  );
   const { user } = useAuth();
   const qc = useQueryClient();
   const { data: couple } = useCouple();
@@ -801,8 +808,8 @@ export default function ComparePage() {
   return (
     <div>
       <PageHeader
-        title="우리의 취향 지도 · 我们的口味地图"
-        subtitle="서로의 입맛을 한눈에 · 一秒看懂咱俩的口味"
+        title={pick("우리의 취향 지도", "我们的口味地图")}
+        subtitle={pick("서로의 입맛을 한눈에", "一秒看懂咱俩的口味")}
         right={<CompareRefreshControls refreshAll={refreshAll} />}
       />
 
@@ -811,21 +818,21 @@ export default function ComparePage() {
           <DiningSegment
             active={diningFilter === "all"}
             onClick={() => startTransition(() => setDiningFilter("all"))}
-            label="모두 · 全部"
+            label={pick("모두", "全部")}
             activeText="text-ink-900"
             activeBorder="border-cream-100"
           />
           <DiningSegment
             active={diningFilter === "out"}
             onClick={() => startTransition(() => setDiningFilter("out"))}
-            label="🍽️ 외식 · 探店"
+            label={pick("🍽️ 외식", "🍽️ 探店")}
             activeText="text-peach-500"
             activeBorder="border-peach-100"
           />
           <DiningSegment
             active={diningFilter === "home"}
             onClick={() => startTransition(() => setDiningFilter("home"))}
-            label="🍳 집밥 · 私房菜"
+            label={pick("🍳 집밥", "🍳 私房菜")}
             activeText="text-teal-600"
             activeBorder="border-teal-100"
           />
@@ -955,7 +962,7 @@ export default function ComparePage() {
                 type="button"
                 onClick={() => setCardEditorOpen(true)}
                 aria-label="card manager"
-                title="카드 관리 · 卡片管理"
+                title={pick("카드 관리", "卡片管理")}
                 className="absolute right-5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full bg-cream-100/80 border border-cream-200/60 text-ink-500 hover:bg-cream-200 hover:text-ink-700 transition"
               >
                 <Settings2 className="w-3.5 h-3.5" />
@@ -1025,10 +1032,13 @@ export default function ComparePage() {
             <div className="text-5xl mb-3">📭</div>
             <p className="text-sm text-ink-500 font-medium">
               {diningFilter === "home"
-                ? "집밥 평가가 아직 없어요 · 还没有家宴评分"
+                ? pick("집밥 평가가 아직 없어요", "还没有家宴评分")
                 : diningFilter === "out"
-                  ? "외식 평가가 아직 없어요 · 还没有探店评分"
-                  : "둘 다 평가한 메뉴가 아직 없어요 · 还没有共同评分的菜"}
+                  ? pick("외식 평가가 아직 없어요", "还没有探店评分")
+                  : pick(
+                      "둘 다 평가한 메뉴가 아직 없어요",
+                      "还没有共同评分的菜"
+                    )}
             </p>
           </div>
         ) : (
@@ -1064,12 +1074,18 @@ export default function ComparePage() {
                 }
                 emptyText={
                   fameView === "menu"
-                    ? "아직 4.5점 이상 메뉴가 없어요 · 还没有4.5+的封神菜"
+                    ? pick("아직 4.5점 이상 메뉴가 없어요", "还没有4.5+的封神菜")
                     : fameView === "home"
-                      ? "아직 평균 4.5점 이상 집밥이 없어요 · 还没有4.5+的家宴"
+                      ? pick(
+                          "아직 평균 4.5점 이상 집밥이 없어요",
+                          "还没有4.5+的家宴"
+                        )
                       : fameView === "booze"
-                        ? "아직 술집 카테고리 기록이 없어요 · 还没有酒馆记录"
-                        : "아직 평균 4.5점 이상 식당이 없어요 · 还没有4.5+的封神店"
+                        ? pick("아직 술집 카테고리 기록이 없어요", "还没有酒馆记录")
+                        : pick(
+                            "아직 평균 4.5점 이상 식당이 없어요",
+                            "还没有4.5+的封神店"
+                          )
                 }
               >
                 {/* Restaurant / home / menu segmented toggle —
@@ -1103,7 +1119,7 @@ export default function ComparePage() {
                         <div className="flex items-center gap-2 mb-3 px-1">
                           <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
                           <span className="text-[12px] font-bold text-rose-500">
-                            천생연분 · 双向奔赴
+                            {pick("천생연분", "双向奔赴")}
                           </span>
                           <span className="text-[10px] text-ink-400 font-number">
                             {fameRest.length}
@@ -1143,7 +1159,7 @@ export default function ComparePage() {
                         <div className="flex items-center gap-2 mb-3 px-1">
                           <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
                           <span className="text-[12px] font-bold text-rose-500">
-                            우리의 단골감 · 心头好店铺
+                            {pick("우리의 단골감", "心头好店铺")}
                           </span>
                           <span className="text-[10px] text-ink-400 font-number">
                             {famePlacesRestaurantRest.length}
@@ -1185,7 +1201,7 @@ export default function ComparePage() {
                         <div className="flex items-center gap-2 mb-3 px-1">
                           <HeartHandshake className="w-3.5 h-3.5 text-rose-400" />
                           <span className="text-[12px] font-bold text-rose-500">
-                            우리집 단골 메뉴 · 家里的拿手菜
+                            {pick("우리집 단골 메뉴", "家里的拿手菜")}
                           </span>
                           <span className="text-[10px] text-ink-400 font-number">
                             {famePlacesHomeRest.length}
@@ -1229,7 +1245,7 @@ export default function ComparePage() {
                         <div className="flex items-center gap-2 mb-3 px-1">
                           <Wine className="w-3.5 h-3.5 text-rose-400" />
                           <span className="text-[12px] font-bold text-rose-500">
-                            그 외 한 잔 · 其余几杯
+                            {pick("그 외 한 잔", "其余几杯")}
                           </span>
                           <span className="text-[10px] text-ink-400 font-number">
                             {boozeSortedRest.length}
@@ -1270,7 +1286,7 @@ export default function ComparePage() {
                     ? tasteWar.length === 0
                     : tasteWarPlaces.length === 0
                 }
-                emptyText="아직 없어요 · 还没有"
+                emptyText={pick("아직 없어요", "还没有")}
               >
                 <ListViewToggle
                   view={clashView}
@@ -1283,8 +1299,14 @@ export default function ComparePage() {
                     {(r) => {
                       const myFav = r.mine > r.partner;
                       const badge = myFav
-                        ? `⭐ ${myDisplay} 원픽! · ${myDisplay}的本命`
-                        : `⭐ ${partnerDisplay} 원픽! · ${partnerDisplay}的本命`;
+                        ? pick(
+                            `⭐ ${myDisplay} 원픽!`,
+                            `⭐ ${myDisplay}的本命`
+                          )
+                        : pick(
+                            `⭐ ${partnerDisplay} 원픽!`,
+                            `⭐ ${partnerDisplay}的本命`
+                          );
                       return (
                         <FoodCard
                           key={r.foodId}
@@ -1325,7 +1347,10 @@ export default function ComparePage() {
                     ? neverAgain.length === 0
                     : neverAgainPlaces.length === 0
                 }
-                emptyText="다행히 둘 다 별로였던 곳은 없어요 · 还好没有共同踩雷的"
+                emptyText={pick(
+                  "다행히 둘 다 별로였던 곳은 없어요",
+                  "还好没有共同踩雷的"
+                )}
               >
                 <ListViewToggle
                   view={passView}
@@ -1389,7 +1414,11 @@ function TasteDiagnosisCard({
   // neighbors don't see a tall "더 보기" view.
   isActive: boolean;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
+  const count = (value: number, koUnit: string, zhUnit: string) =>
+    countLanguage(i18n.language, value, koUnit, zhUnit);
   const [breakdownTab, setBreakdownTab] = useState<"bti" | "category">("bti");
   // One shared expanded-key for both tabs since only one row at a time
   // is open. Switching tabs clears the expansion implicitly because
@@ -1568,12 +1597,13 @@ function TasteDiagnosisCard({
       <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[420px]">
         <Dna className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
-          입맛 진단 준비 중 · 口味诊断准备中
+          {pick("입맛 진단 준비 중", "口味诊断准备中")}
         </h3>
         <p className="text-xs text-ink-500 max-w-[220px] break-keep">
-          둘 다 별점 매긴 메뉴가 모이면 우리 커플 입맛을 진단해드려요!
-          <br />
-          多打分就能看到你们的口味DNA啦！
+          {pick(
+            "둘 다 별점 매긴 메뉴가 모이면 우리 커플 입맛을 진단해드려요!",
+            "多打分就能看到你们的口味DNA啦！"
+          )}
         </p>
       </div>
     );
@@ -1599,7 +1629,7 @@ function TasteDiagnosisCard({
       />
       <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-2 border-b border-cream-100 pb-2 break-keep">
         <Dna className="w-4 h-4 text-ink-700 flex-shrink-0" />
-        우리의 입맛 진단 · 口味诊断
+        {pick("우리의 입맛 진단", "口味诊断")}
       </h3>
 
       {/* BTI verdict — kept compact so the diagnosis card matches
@@ -1612,13 +1642,10 @@ function TasteDiagnosisCard({
         <h2
           className={`text-[15px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r ${topProfile.gradient} tracking-tight break-keep leading-tight mt-0.5`}
         >
-          {topProfile.titleKo}{" "}
-          <span className="text-ink-400 text-[10px] font-bold align-middle">
-            · {topProfile.titleZh}
-          </span>
+          {pick(topProfile.titleKo, topProfile.titleZh)}
         </h2>
         <p className="text-[10px] font-medium text-ink-500 break-keep leading-snug px-1 mt-0.5">
-          “{topProfile.descKo}”
+          {pick(`“${topProfile.descKo}”`, `“${topProfile.descZh}”`)}
         </p>
       </div>
 
@@ -1631,7 +1658,7 @@ function TasteDiagnosisCard({
           className={`rounded-lg px-2 py-1 border flex items-center justify-center gap-1.5 ${syncTone.chip}`}
         >
           <span className="text-[9px] font-bold tracking-wider uppercase opacity-70">
-            싱크·默契
+            {pick("싱크", "默契")}
           </span>
           <span className="font-number font-black text-[13px] leading-none">
             {syncPercent.toFixed(0)}
@@ -1640,7 +1667,7 @@ function TasteDiagnosisCard({
         </div>
         <div className="rounded-lg px-2 py-1 border bg-cream-50 border-cream-200 text-ink-700 flex items-center justify-center gap-1.5">
           <span className="text-[9px] font-bold tracking-wider uppercase text-ink-400">
-            메뉴·评价
+            {pick("메뉴", "评价")}
           </span>
           <span className="font-number font-black text-[13px] leading-none text-ink-900">
             {rows.length}
@@ -1665,7 +1692,7 @@ function TasteDiagnosisCard({
               : "text-ink-500"
           }`}
         >
-          🧬 BTI별 · 类型
+          {pick("🧬 BTI별", "🧬 类型")}
         </button>
         <button
           type="button"
@@ -1679,7 +1706,7 @@ function TasteDiagnosisCard({
               : "text-ink-500"
           }`}
         >
-          🔥 카테고리별 · 类别
+          {pick("🔥 카테고리별", "🔥 类别")}
         </button>
       </div>
 
@@ -1710,10 +1737,7 @@ function TasteDiagnosisCard({
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center text-[12px] font-bold text-ink-700 mb-0.5 gap-2">
                         <span className="truncate break-keep">
-                          {pf.titleKo}{" "}
-                          <span className="text-ink-400 font-medium text-[11px]">
-                            · {pf.titleZh}
-                          </span>
+                          {pick(pf.titleKo, pf.titleZh)}
                         </span>
                         <span className="flex items-center gap-1 flex-shrink-0">
                           {/* Bilingual unit suffix — 곳 (Korean
@@ -1721,7 +1745,7 @@ function TasteDiagnosisCard({
                               counter) so the raw number doesn't read
                               as just "3". */}
                           <span className="text-[11px] text-ink-400 font-number">
-                            {s.count}곳·家
+                            {count(s.count, "곳", "家")}
                           </span>
                           <span className="font-number">
                             {Math.round(s.percent)}%
@@ -1763,7 +1787,7 @@ function TasteDiagnosisCard({
             {categorySections.map((section) => (
               <div key={section.headerKo}>
                 <p className="text-[11px] font-bold text-ink-400 tracking-wider mb-1.5 uppercase">
-                  {section.headerKo} · {section.headerZh}
+                  {pick(section.headerKo, section.headerZh)}
                 </p>
                 <div className="space-y-2">
                   {section.rows.map(({ cat, battle: b }) => {
@@ -1788,7 +1812,7 @@ function TasteDiagnosisCard({
                               <span>{categoryEmojiOf(cat)}</span>
                               <span className="truncate">{label}</span>
                               <span className="text-[11px] text-ink-400 font-number ml-1 flex-shrink-0">
-                                ({b.count}곳·家)
+                                ({count(b.count, "곳", "家")})
                               </span>
                             </span>
                             <span className="flex items-center gap-1 flex-shrink-0">
@@ -1844,7 +1868,7 @@ function TasteDiagnosisCard({
         <ChevronDown
           className={`w-3.5 h-3.5 transition-transform ${breakdownExpanded ? "rotate-180" : ""}`}
         />
-        {breakdownExpanded ? "접기 · 收起" : "더 보기 · 展开"}
+        {breakdownExpanded ? pick("접기", "收起") : pick("더 보기", "展开")}
       </button>
     </div>
   );
@@ -1938,6 +1962,11 @@ function HomeChefCard({
   // tall, asymmetric rectangle.
   isActive: boolean;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
+  const count = (value: number, koUnit: string, zhUnit: string) =>
+    countLanguage(i18n.language, value, koUnit, zhUnit);
   // Compact by default — user taps a tile to dive into that chef's
   // dish list. Carousel-aware reset below auto-collapses on swipe.
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
@@ -2050,13 +2079,13 @@ function HomeChefCard({
     <div className="bg-gradient-to-br from-teal-50 to-emerald-100 rounded-3xl p-4 border border-teal-200 shadow-airy h-full flex flex-col min-h-[420px]">
       <h3 className="font-sans font-bold text-teal-900 text-[14px] flex items-center gap-1.5 mb-2.5 border-b border-teal-200/50 pb-2 break-keep">
         <ChefHat className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
-        우리집 미슐랭 · 家庭米其林
+        {pick("우리집 미슐랭", "家庭米其林")}
       </h3>
 
       {/* Chef share — stacked horizontal bar + counts */}
       <div className="mb-2.5 bg-white/70 p-2.5 rounded-xl border border-teal-100/50 shadow-sm">
         <p className="text-[10px] font-bold text-teal-800 mb-1.5">
-          요리 지분율 · 掌勺比例
+          {pick("요리 지분율", "掌勺比例")}
         </p>
         <div className="w-full h-3.5 flex rounded-full overflow-hidden mb-2 border border-white shadow-inner">
           {myShare > 0 && (
@@ -2118,7 +2147,7 @@ function HomeChefCard({
         }`}
       >
         <p className="text-[10px] font-bold text-teal-800 mb-1.5">
-          누가 했을 때 더 맛있었지? · 谁做饭更好吃？
+          {pick("누가 했을 때 더 맛있었지?", "谁做饭更好吃？")}
         </p>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -2141,13 +2170,13 @@ function HomeChefCard({
           >
             <ChefAvatar url={myAvatarUrl} name={myDisplay} tone="peach" size="md" />
             <span className="text-[10px] font-bold text-peach-500 mb-0.5 mt-1">
-              {myDisplay} 요리 · {myDisplay}做的
+              {pick(`${myDisplay} 요리`, `${myDisplay}做的`)}
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {myAvg > 0 ? myAvg.toFixed(2) : "-"}
             </span>
             <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
-              {myCount}개·道
+              {count(myCount, "개", "道")}
             </span>
           </button>
           <button
@@ -2170,13 +2199,13 @@ function HomeChefCard({
           >
             <ChefAvatar url={partnerAvatarUrl} name={partnerDisplay} tone="rose" size="md" />
             <span className="text-[10px] font-bold text-rose-500 mb-0.5 mt-1">
-              {partnerDisplay} 요리 · {partnerDisplay}做的
+              {pick(`${partnerDisplay} 요리`, `${partnerDisplay}做的`)}
             </span>
             <span className="text-xl font-number font-bold text-ink-900 leading-none">
               {partnerAvg > 0 ? partnerAvg.toFixed(2) : "-"}
             </span>
             <span className="text-[9px] text-ink-400 font-number font-bold mt-0.5">
-              {partnerCount}개·道
+              {count(partnerCount, "개", "道")}
             </span>
           </button>
         </div>
@@ -2185,8 +2214,11 @@ function HomeChefCard({
           <div className="mt-3 pt-3 border-t border-teal-200/50 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-[10px] font-bold text-teal-700 tracking-wider uppercase mb-1">
               {expanded === "me"
-                ? `${myDisplay}이 한 메뉴 · ${myDisplay}掌勺的`
-                : `${partnerDisplay}이 한 메뉴 · ${partnerDisplay}掌勺的`}
+                ? pick(`${myDisplay}이 한 메뉴`, `${myDisplay}掌勺的`)
+                : pick(
+                    `${partnerDisplay}이 한 메뉴`,
+                    `${partnerDisplay}掌勺的`
+                  )}
             </p>
             {(expanded === "me" ? myRows : partnerRows).map((r) => (
               <ContributingFoodRow key={r.foodId} r={r} />
@@ -2220,6 +2252,11 @@ function RatingStats({
   // compact footprint while the user is mid-swipe.
   isActive: boolean;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
+  const count = (value: number, koUnit: string, zhUnit: string) =>
+    countLanguage(i18n.language, value, koUnit, zhUnit);
   // Compact by default — tap a tile to dive into that side's foods.
   const [expanded, setExpanded] = useState<"me" | "partner" | null>(null);
 
@@ -2248,12 +2285,13 @@ function RatingStats({
       <div className="bg-white rounded-3xl p-5 border border-cream-200 shadow-airy h-full flex flex-col items-center justify-center text-center min-h-[420px]">
         <Scale className="w-8 h-8 text-ink-300 mb-3" />
         <h3 className="font-bold text-ink-700 text-[15px] mb-1 break-keep">
-          별점 요정은 누구? · 谁是打分小天使？
+          {pick("별점 요정은 누구?", "谁是打分小天使？")}
         </h3>
         <p className="text-xs text-ink-500 max-w-[220px] break-keep">
-          둘이 별점을 더 매겨주세요. 평균이 모이면 비교가 시작돼요!
-          <br />
-          多打分就知道谁更大方啦！
+          {pick(
+            "둘이 별점을 더 매겨주세요. 평균이 모이면 비교가 시작돼요!",
+            "多打分就知道谁更大方啦！"
+          )}
         </p>
       </div>
     );
@@ -2278,7 +2316,7 @@ function RatingStats({
       <h3 className="font-sans font-bold text-ink-900 text-[12px] flex items-center gap-1.5 mb-2.5 border-b border-indigo-100 pb-2 whitespace-nowrap overflow-hidden">
         <Scale className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
         <span className="truncate">
-          별점 요정 vs 깐깐징어 · 打分天使 vs 严格考官
+          {pick("별점 요정 vs 깐깐징어", "打分天使 vs 严格考官")}
         </span>
       </h3>
 
@@ -2321,17 +2359,21 @@ function RatingStats({
           <p className="text-[10px] text-center text-indigo-600 font-medium mt-2 break-keep">
             {isTie ? (
               <>
-                비슷비슷 · 不分上下{" · "}
-                <span className="text-ink-500">{rows.length}개·道</span>
+                {pick("비슷비슷", "不分上下")}{" · "}
+                <span className="text-ink-500">
+                  {count(rows.length, "개", "道")}
+                </span>
               </>
             ) : (
               <>
-                평균{" "}
-                <span className="font-number font-bold mx-0.5">
-                  {diff.toFixed(2)}
+                {pick(
+                  `평균 ${diff.toFixed(2)}점 차이`,
+                  `相差 ${diff.toFixed(2)} 分`
+                )}
+                {" · "}
+                <span className="text-ink-500">
+                  {count(rows.length, "개", "道")}
                 </span>
-                점 차이 · 相差 {diff.toFixed(2)} 分{" · "}
-                <span className="text-ink-500">{rows.length}개·道</span>
               </>
             )}
           </p>
@@ -2341,8 +2383,14 @@ function RatingStats({
           <div className="mt-3 pt-3 border-t border-indigo-100 space-y-1.5 max-h-[200px] overflow-y-auto hide-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-[10px] font-bold text-indigo-500 tracking-wider uppercase mb-1">
               {expanded === "me"
-                ? `${myDisplay}이 후하게 준 순 · ${myDisplay}打分高→低`
-                : `${partnerDisplay}이 후하게 준 순 · ${partnerDisplay}打分高→低`}
+                ? pick(
+                    `${myDisplay}이 후하게 준 순`,
+                    `${myDisplay}打分高→低`
+                  )
+                : pick(
+                    `${partnerDisplay}이 후하게 준 순`,
+                    `${partnerDisplay}打分高→低`
+                  )}
             </p>
             {(expanded === "me" ? sortedByMine : sortedByPartner).map(
               (r) => (
@@ -2379,6 +2427,9 @@ function PersonStatTile({
   dimmed?: boolean;
   onToggle: () => void;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
   const accentCls =
     tone === "peach"
@@ -2450,7 +2501,7 @@ function PersonStatTile({
       >
         <span>{roleEmoji}</span>
         <span className="break-keep">
-          {roleKo} · {roleZh}
+          {pick(roleKo, roleZh)}
         </span>
       </div>
       <ChevronDown
@@ -2509,6 +2560,7 @@ function SectionTab({
   count: number;
   tone: "amber" | "rose" | "indigo" | "ink";
 }) {
+  const { i18n } = useTranslation();
   const activeCls =
     tone === "amber"
       ? "bg-amber-50 border-amber-200 text-amber-700"
@@ -2528,8 +2580,7 @@ function SectionTab({
       }`}
     >
       {icon}
-      <span>{labelKo}</span>
-      <span className="text-[10px] opacity-70">· {labelZh}</span>
+      <span>{pickLanguage(i18n.language, labelKo, labelZh)}</span>
       <span
         className={`ml-1 font-number text-[10px] px-1.5 py-0.5 rounded-full ${
           active && tone !== "ink"
@@ -2560,10 +2611,11 @@ function ListPanel({
   emptyText: string;
   children: React.ReactNode;
 }) {
+  const { i18n } = useTranslation();
   return (
     <section>
       <p className="text-xs text-ink-500 mb-3 px-1">
-        {titleKo} · {titleZh}
+        {pickLanguage(i18n.language, titleKo, titleZh)}
       </p>
       <div className="space-y-3">
         {empty ? (
@@ -2590,6 +2642,7 @@ function ListViewToggle({
   view: "menu" | "restaurant";
   onChange: (v: "menu" | "restaurant") => void;
 }) {
+  const { i18n } = useTranslation();
   return (
     <div className="flex bg-cream-100 p-1 rounded-xl mb-3">
       <button
@@ -2601,7 +2654,7 @@ function ListViewToggle({
             : "text-ink-500"
         }`}
       >
-        🏠 식당별 · 按店铺
+        {pickLanguage(i18n.language, "🏠 식당별", "🏠 按店铺")}
       </button>
       <button
         type="button"
@@ -2612,7 +2665,7 @@ function ListViewToggle({
             : "text-ink-500"
         }`}
       >
-        🍽️ 메뉴별 · 按菜品
+        {pickLanguage(i18n.language, "🍽️ 메뉴별", "🍽️ 按菜品")}
       </button>
     </div>
   );
@@ -2637,6 +2690,9 @@ function FameViewToggle({
   view: FameView;
   onChange: (v: FameView) => void;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const btn = (target: FameView, label: string) => (
     <button
       type="button"
@@ -2652,10 +2708,10 @@ function FameViewToggle({
   );
   return (
     <div className="flex bg-cream-100 p-1 rounded-xl mb-3 gap-0.5">
-      {btn("restaurant", "🏠 식당")}
-      {btn("home", "🍳 집밥")}
-      {btn("menu", "🍽️ 메뉴")}
-      {btn("booze", "🍷 술")}
+      {btn("restaurant", pick("🏠 식당", "🏠 店铺"))}
+      {btn("home", pick("🍳 집밥", "🍳 家宴"))}
+      {btn("menu", pick("🍽️ 메뉴", "🍽️ 菜品"))}
+      {btn("booze", pick("🍷 술", "🍷 酒"))}
     </div>
   );
 }
@@ -2685,6 +2741,8 @@ function FoodCard({
   partnerDisplay: string;
 }) {
   const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const total = r.mine + r.partner;
   const cardCls = yyds
     ? "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200 shadow-[0_4px_15px_rgba(251,191,36,0.18)]"
@@ -2725,7 +2783,7 @@ function FoodCard({
             {r.foodName}
             {r.isHomeCooked && (
               <span className="bg-teal-50 text-teal-600 border border-teal-100 px-1.5 py-0.5 rounded text-[9px] font-bold leading-none shrink-0 whitespace-nowrap">
-                🍳 집밥 · 私房菜
+                {pick("🍳 집밥", "🍳 私房菜")}
               </span>
             )}
           </p>
@@ -2799,6 +2857,8 @@ function PlaceFameCard({
   partnerDisplay: string;
 }) {
   const { i18n } = useTranslation();
+  const count = (value: number, koUnit: string, zhUnit: string) =>
+    countLanguage(i18n.language, value, koUnit, zhUnit);
   const total = p.avgMine + p.avgPartner;
   // All rows of a FamePlace share the same place row → same date.
   // Pull from the first available row; null-safe for legacy data.
@@ -2833,7 +2893,8 @@ function PlaceFameCard({
             <span className="truncate">{p.placeName}</span>
           </p>
           <p className="text-xs text-ink-500 truncate mt-0.5">
-            🍽️ {p.rows.length}개·道 평균 · 平均
+            🍽️ {count(p.rows.length, "개", "道")}{" "}
+            {pickLanguage(i18n.language, "평균", "平均")}
           </p>
           {visitDate && (
             <p className="text-[10px] text-ink-400 font-number mt-0.5">
@@ -2958,6 +3019,9 @@ function CardEditorModal({
   onChange: (next: CardConfig) => void;
   onClose: () => void;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const toggleHidden = (id: CardId) => {
     const isHidden = config.hidden.includes(id);
     onChange({
@@ -2990,10 +3054,10 @@ function CardEditorModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-cream-200">
           <div>
             <h3 className="font-bold text-ink-900 text-base">
-              카드 관리 · 卡片管理
+              {pick("카드 관리", "卡片管理")}
             </h3>
             <p className="text-[11px] text-ink-500 mt-0.5">
-              순서 바꾸거나 숨길 카드를 골라요 · 调整顺序或隐藏卡片
+              {pick("순서 바꾸거나 숨길 카드를 골라요", "调整顺序或隐藏卡片")}
             </p>
           </div>
           <button
@@ -3026,10 +3090,7 @@ function CardEditorModal({
                       isHidden ? "text-ink-400 line-through" : "text-ink-900"
                     }`}
                   >
-                    {meta.ko}
-                  </p>
-                  <p className="text-[10px] text-ink-400 truncate">
-                    {meta.zh}
+                    {pick(meta.ko, meta.zh)}
                   </p>
                 </div>
 
@@ -3079,14 +3140,14 @@ function CardEditorModal({
             onClick={reset}
             className="text-[11px] font-bold text-ink-500 hover:text-ink-700 transition"
           >
-            기본값 복원 · 恢复默认
+            {pick("기본값 복원", "恢复默认")}
           </button>
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 bg-ink-900 text-white rounded-xl text-[12px] font-bold hover:bg-ink-700 transition"
           >
-            완료 · 完成
+            {pick("완료", "完成")}
           </button>
         </div>
       </div>
@@ -3110,6 +3171,9 @@ function RouletteCard({
   visitedCount: number;
   wishlistCount: number;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const total = visitedCount + wishlistCount;
   return (
     <div className="relative bg-gradient-to-br from-peach-50 to-rose-50 rounded-3xl p-5 border border-peach-200/70 shadow-airy h-full flex flex-col min-h-[420px] overflow-hidden">
@@ -3117,39 +3181,39 @@ function RouletteCard({
 
       <h3 className="relative z-10 font-sans font-bold text-ink-900 text-[15px] flex items-center gap-1.5 mb-3 border-b border-peach-200/60 pb-3 break-keep">
         <Dice5 className="w-4 h-4 text-peach-500 flex-shrink-0" />
-        운명의 룰렛 · 听天由命
+        {pick("운명의 룰렛", "听天由命")}
       </h3>
 
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-3">
         <div className="text-5xl drop-shadow-sm">🎲</div>
         <p className="text-[13px] font-bold text-ink-900 break-keep">
-          오늘 뭐 먹지? · 今天吃啥？
+          {pick("오늘 뭐 먹지?", "今天吃啥？")}
         </p>
         <p className="text-[11px] font-medium text-ink-500 break-keep px-2">
-          去过的·想去的中随机抽一家
+          {pick("다녀온 곳/위시리스트 중 하나 골라요", "去过的/想去的中随机抽一家")}
         </p>
       </div>
 
       <div className="relative z-10 mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl px-2 py-1.5 border border-rose-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-rose-400">
-            가본 곳 · 去过的
+            {pick("가본 곳", "去过的")}
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
             {visitedCount}
             <span className="text-[10px] font-bold text-ink-400 ml-0.5">
-              곳·家
+              {pick("곳", "家")}
             </span>
           </div>
         </div>
         <div className="rounded-xl px-2 py-1.5 border border-amber-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-amber-500">
-            가고 싶은 곳 · 想去的
+            {pick("가고 싶은 곳", "想去的")}
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
             {wishlistCount}
             <span className="text-[10px] font-bold text-ink-400 ml-0.5">
-              곳·家
+              {pick("곳", "家")}
             </span>
           </div>
         </div>
@@ -3160,7 +3224,7 @@ function RouletteCard({
           there's nothing to spin. */}
       {total > 0 && (
         <p className="relative z-10 mt-2 text-[10px] font-bold text-ink-500 text-center">
-          총 {total}곳 중에서 한 곳 · 共 {total} 家中随机抽 1 家
+          {pick(`총 ${total}곳 중에서 한 곳`, `共 ${total} 家中随机抽 1 家`)}
         </p>
       )}
 
@@ -3171,7 +3235,7 @@ function RouletteCard({
         className="relative z-10 mt-3 w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-peach-400 to-rose-400 text-white text-[13px] font-bold shadow-soft hover:from-peach-500 hover:to-rose-500 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Dice5 className="w-4 h-4" />
-        {total === 0 ? "후보가 없어요 · 暂无候选" : "룰렛 돌리기 · 抽签"}
+        {total === 0 ? pick("후보가 없어요", "暂无候选") : pick("룰렛 돌리기", "抽签")}
       </button>
     </div>
   );
@@ -3193,6 +3257,9 @@ function RecipeBookCard({
   madeCount: number;
   wishlistCount: number;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const total = madeCount + wishlistCount;
   return (
     <div className="bg-gradient-to-br from-rose-50 to-amber-50 border border-rose-200/60 shadow-soft rounded-3xl p-5 h-full flex flex-col overflow-hidden relative">
@@ -3203,33 +3270,33 @@ function RecipeBookCard({
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-3">
         <div className="text-5xl drop-shadow-sm">📒</div>
         <p className="text-[13px] font-bold text-ink-900 break-keep">
-          우리 레시피 모음 · 我家食谱
+          {pick("우리 레시피 모음", "我家食谱")}
         </p>
         <p className="text-[11px] font-medium text-ink-500 break-keep px-2">
-          만든 메뉴 + 만들고 싶은 메뉴 한 곳에서 · 做过的+想做的都在这里
+          {pick("만든 메뉴 + 만들고 싶은 메뉴 한 곳에서", "做过的+想做的都在这里")}
         </p>
       </div>
 
       <div className="relative z-10 mt-3 grid grid-cols-2 gap-2">
         <div className="rounded-xl px-2 py-1.5 border border-rose-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-rose-400">
-            만든 · 做过
+            {pick("만든", "做过")}
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
             {madeCount}
             <span className="text-[10px] font-bold text-ink-400 ml-0.5">
-              개·道
+              {pick("개", "道")}
             </span>
           </div>
         </div>
         <div className="rounded-xl px-2 py-1.5 border border-amber-200/60 bg-white/70 text-center">
           <div className="text-[9px] font-bold tracking-wider uppercase text-amber-500">
-            만들고 싶은 · 想做
+            {pick("만들고 싶은", "想做")}
           </div>
           <div className="font-number font-black text-[16px] leading-none mt-0.5 text-ink-900">
             {wishlistCount}
             <span className="text-[10px] font-bold text-ink-400 ml-0.5">
-              개·道
+              {pick("개", "道")}
             </span>
           </div>
         </div>
@@ -3243,8 +3310,8 @@ function RecipeBookCard({
       >
         <ChefHat className="w-4 h-4" />
         {total === 0
-          ? "아직 레시피가 없어요 · 暂无食谱"
-          : "전체 보기 · 查看全部"}
+          ? pick("아직 레시피가 없어요", "暂无食谱")
+          : pick("전체 보기", "查看全部")}
       </Link>
     </div>
   );

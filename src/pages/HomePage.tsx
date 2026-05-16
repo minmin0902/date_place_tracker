@@ -60,6 +60,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SmoothLink } from "@/components/SmoothLink";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { HOME_NAV_RESELECT_EVENT } from "@/lib/navEvents";
+import { pickLanguage } from "@/lib/language";
 import { formatDate, getCategories, ratingsForViewer } from "@/lib/utils";
 
 type Tab = "timeline" | "wishlist";
@@ -305,6 +306,7 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
 }: {
   refreshAll: () => Promise<unknown>;
 }) {
+  const { i18n } = useTranslation();
   const {
     pull,
     refreshing,
@@ -357,7 +359,7 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
               : "bg-cream-100/70 border-cream-200/50 text-ink-700 hover:bg-cream-200"
           }`}
           aria-label="refresh"
-          title="새로고침 · 刷新"
+          title={pickLanguage(i18n.language, "새로고침", "刷新")}
         >
           {justFinished ? (
             <Check className="w-5 h-5 animate-fade" />
@@ -376,6 +378,10 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
 
 export default function HomePage() {
   const { i18n, t } = useTranslation();
+  const pick = useCallback(
+    (ko: string, zh: string) => pickLanguage(i18n.language, ko, zh),
+    [i18n.language]
+  );
   const qc = useQueryClient();
   const { user } = useAuth();
   const { data: couple } = useCouple();
@@ -932,10 +938,10 @@ export default function HomePage() {
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <h1 className="text-[22px] sm:text-[26px] font-sans font-black text-transparent bg-clip-text bg-gradient-to-r from-peach-400 to-rose-400 truncate tracking-tight leading-none mb-1.5">
-              우리의 식탁 · 我们的餐桌
+              {pick("우리의 식탁", "我们的餐桌")}
             </h1>
             <p className="text-[11px] text-ink-400 font-bold truncate">
-              둘이 함께 채우는 맛집 일기 · 咱俩的干饭日记
+              {pick("둘이 함께 채우는 맛집 일기", "咱俩的干饭日记")}
             </p>
           </div>
           {/* Top-right action cluster — only the high-frequency
@@ -950,7 +956,7 @@ export default function HomePage() {
             <input
               autoFocus
               className="input-base"
-              placeholder="이름이나 메모로 검색 · 搜索店名或备注"
+              placeholder={pick("이름이나 메모로 검색", "搜索店名或备注")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -963,13 +969,13 @@ export default function HomePage() {
             active={tab === "timeline"}
             accent="ink"
             onClick={() => startTransition(() => setTab("timeline"))}
-            label="발자취 · 我们的足迹 👣"
+            label={pick("발자취 👣", "我们的足迹 👣")}
           />
           <TabButton
             active={tab === "wishlist"}
             accent="peach"
             onClick={() => startTransition(() => setTab("wishlist"))}
-            label="위시리스트 · 种草清单 📝"
+            label={pick("위시리스트 📝", "种草清单 📝")}
             count={wishlist?.length}
           />
         </div>
@@ -982,7 +988,7 @@ export default function HomePage() {
 
             <div className="flex items-center justify-between mt-8 mb-3 px-1 gap-2">
               <h2 className="font-sans font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
-                <span>다녀온 곳 · 干饭足迹</span>
+                <span>{pick("다녀온 곳", "干饭足迹")}</span>
                 <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
                   {filteredPlaces.length}
                 </span>
@@ -1023,21 +1029,21 @@ export default function HomePage() {
               <SegmentButton
                 active={diningFilter === "all"}
                 onClick={() => startTransition(() => setDiningFilter("all"))}
-                label="모두 · 全部"
+                label={pick("모두", "全部")}
                 activeText="text-ink-900"
                 activeBorder="border-cream-100"
               />
               <SegmentButton
                 active={diningFilter === "out"}
                 onClick={() => startTransition(() => setDiningFilter("out"))}
-                label="🍽️ 探店"
+                label={pick("🍽️ 외식", "🍽️ 探店")}
                 activeText="text-peach-500"
                 activeBorder="border-peach-100"
               />
               <SegmentButton
                 active={diningFilter === "home"}
                 onClick={() => startTransition(() => setDiningFilter("home"))}
-                label="🍳 私房菜"
+                label={pick("🍳 집밥", "🍳 私房菜")}
                 activeText="text-teal-600"
                 activeBorder="border-teal-100"
               />
@@ -1067,7 +1073,7 @@ export default function HomePage() {
                   >
                     <span className="inline-flex items-center gap-2 min-w-0 truncate">
                       <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
-                      상세 필터 · 详细筛选
+                      {pick("상세 필터", "详细筛选")}
                     </span>
                     {isActive && (
                       <span className="bg-peach-400 text-white font-number text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center">
@@ -1084,7 +1090,7 @@ export default function HomePage() {
                         : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
                     }`}
                     aria-label="search"
-                    title="검색 · 搜索"
+                    title={pick("검색", "搜索")}
                   >
                     <Search className="w-4 h-4" />
                   </button>
@@ -1108,7 +1114,7 @@ export default function HomePage() {
                 <Heart
                   className={`w-3.5 h-3.5 ${listFilter === "revisit" ? "fill-rose-500" : ""}`}
                 />
-                또 갈래! · 必须二刷
+                {pick("또 갈래!", "必须二刷")}
               </button>
               <button
                 type="button"
@@ -1120,7 +1126,7 @@ export default function HomePage() {
                 }`}
               >
                 <span className="text-[13px] leading-none">✏️</span>
-                평가 안 한 메뉴 · 我还没打分
+                {pick("평가 안 한 메뉴", "我还没打分")}
               </button>
               <button
                 type="button"
@@ -1131,7 +1137,7 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🍴{myDisplay}만 먹음 · {myDisplay}独享
+                {pick(`🍴${myDisplay}만 먹음`, `🍴${myDisplay}独享`)}
               </button>
               <button
                 type="button"
@@ -1142,7 +1148,10 @@ export default function HomePage() {
                     : "bg-white text-ink-500 border-cream-200/60 shadow-sm hover:bg-cream-50"
                 }`}
               >
-                🍴{partnerDisplay}만 먹음 · {partnerDisplay}独享
+                {pick(
+                  `🍴${partnerDisplay}만 먹음`,
+                  `🍴${partnerDisplay}独享`
+                )}
               </button>
             </div>
 
@@ -1246,7 +1255,7 @@ export default function HomePage() {
                   }}
                   className="text-[11px] text-ink-400 font-bold ml-1 hover:text-ink-600 underline underline-offset-2"
                 >
-                  모두 지우기 · 全部清除
+                  {pick("모두 지우기", "全部清除")}
                 </button>
               </div>
             )}
@@ -1275,20 +1284,29 @@ export default function HomePage() {
                   }
                   text={
                     listFilter === "unrated"
-                      ? "모든 메뉴에 별점을 다 줬어요! · 所有菜都打过分啦！"
+                      ? pick("모든 메뉴에 별점을 다 줬어요!", "所有菜都打过分啦！")
                       : onlyUncategorized
-                        ? "카테고리 미설정 항목이 없어요 · 没有未分类的记录"
+                        ? pick("카테고리 미설정 항목이 없어요", "没有未分类的记录")
                         : listFilter === "revisit"
-                          ? "아직 ‘또 갈래’ 표시한 곳이 없어요 · 还没攒下想再去的神仙店铺"
+                          ? pick(
+                              "아직 ‘또 갈래’ 표시한 곳이 없어요",
+                              "还没攒下想再去的神仙店铺"
+                            )
                           : listFilter === "myOnly"
-                            ? `${myDisplay}만 먹은 메뉴가 아직 없어요 · 还没有${myDisplay}独享的菜`
+                            ? pick(
+                                `${myDisplay}만 먹은 메뉴가 아직 없어요`,
+                                `还没有${myDisplay}独享的菜`
+                              )
                             : listFilter === "partnerOnly"
-                              ? `${partnerDisplay}만 먹은 메뉴가 아직 없어요 · 还没有${partnerDisplay}独享的菜`
+                              ? pick(
+                                  `${partnerDisplay}만 먹은 메뉴가 아직 없어요`,
+                                  `还没有${partnerDisplay}独享的菜`
+                                )
                               : diningFilter === "home"
-                                ? "아직 집밥 기록이 없어요 · 还没有家宴记录"
+                                ? pick("아직 집밥 기록이 없어요", "还没有家宴记录")
                                 : diningFilter === "out"
-                                  ? "아직 외식 기록이 없어요 · 还没有探店记录"
-                                  : "아직 다녀온 곳이 없어요 · 还没有干饭记录"
+                                  ? pick("아직 외식 기록이 없어요", "还没有探店记录")
+                                  : pick("아직 다녀온 곳이 없어요", "还没有干饭记录")
                   }
                 />
               );
@@ -1322,7 +1340,7 @@ export default function HomePage() {
               filteredMenus.length === 0 ? (
                 <EmptyState
                   emoji="🍽️"
-                  text="조건에 맞는 메뉴가 없어요 · 没有符合的菜"
+                  text={pick("조건에 맞는 메뉴가 없어요", "没有符合的菜")}
                 />
               ) : (
                 <>
@@ -1557,26 +1575,28 @@ function StatsDashboard({
 }: {
   stats: { total: number; topCategory: string | null; topCount: number };
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   return (
     <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[1.75rem] p-5 sm:p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
       <div className="flex flex-col gap-1 min-w-0">
         <span className="text-[10px] sm:text-[11px] font-bold text-rose-500 tracking-[0.15em] uppercase truncate">
-          기록 · 干饭成就
+          {pick("기록", "干饭成就")}
         </span>
         <div className="mt-1">
           <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
             {stats.total}
           </span>
           <span className="text-sm font-bold text-ink-700 ml-1">
-            곳 · 处
+            {pick("곳", "处")}
           </span>
         </div>
       </div>
       <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
       <div className="flex flex-col gap-1 items-end min-w-0">
         <span className="text-[10px] sm:text-[11px] font-bold text-peach-500 tracking-[0.15em] uppercase truncate">
-          자주 찾은 메뉴 · 最常翻牌
+          {pick("자주 찾은 메뉴", "最常翻牌")}
         </span>
         {stats.topCategory ? (
           <div className="mt-1 flex items-center gap-1.5 min-w-0">
@@ -1701,12 +1721,13 @@ function ProgressiveLoadSentinel({
   visible: number;
   total: number;
 }) {
+  const { i18n } = useTranslation();
   if (!hasMore) return null;
   return (
     <div ref={sentinelRef} className="py-5 flex justify-center">
       <span className="inline-flex items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-1.5 text-[11px] font-bold text-ink-400 shadow-sm">
         <span className="h-3 w-3 rounded-full border-2 border-peach-200 border-t-peach-400 animate-spin" />
-        더 불러오는 중 · 加载更多
+        {pickLanguage(i18n.language, "더 불러오는 중", "加载更多")}
         <span className="font-number text-ink-300">
           {visible}/{total}
         </span>
@@ -1764,7 +1785,9 @@ function TimelineItemImpl({
   isLast: boolean;
   viewerId: string | undefined;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const avg = avgTotal(place);
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
@@ -1848,7 +1871,9 @@ function TimelineItemImpl({
                 <span
                   className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold leading-none border ${theme.tag}`}
                 >
-                  {isHome ? "🍳 집밥 · 私房菜" : "🍽️ 외식 · 探店"}
+                  {isHome
+                    ? pick("🍳 집밥", "🍳 私房菜")
+                    : pick("🍽️ 외식", "🍽️ 探店")}
                 </span>
               </div>
               {place.want_to_revisit && (
@@ -1869,7 +1894,7 @@ function TimelineItemImpl({
                   "❓ 미분류" pill so unclassified entries stand out. */}
               {catLabels.length === 0 ? (
                 <span className="text-[11px] px-2 py-0.5 rounded-lg shadow-sm border bg-amber-50 text-amber-700 border-amber-200 font-bold">
-                  ❓ 미분류 · 未分类
+                  {pick("❓ 미분류", "❓ 未分类")}
                 </span>
               ) : (
                 catLabels.map((label) => (
@@ -1888,7 +1913,7 @@ function TimelineItemImpl({
                 </span>
               ) : (
                 <span className="text-[11px] text-ink-400">
-                  아직 평가 전 · 等待打分
+                  {pick("아직 평가 전", "等待打分")}
                 </span>
               )}
               <span className="text-[11px] text-ink-600 bg-white/90 border border-cream-200/60 px-2 py-0.5 rounded-lg shadow-sm">
@@ -1896,27 +1921,27 @@ function TimelineItemImpl({
                 <span className="font-number font-bold">
                   {(place.foods ?? []).length}
                 </span>{" "}
-                <span className="opacity-70">개 · 道</span>
+                <span className="opacity-70">{pick("개", "道")}</span>
               </span>
               {/* Uncategorized foods badge — surfaces when at least
                   one food on this place is missing its category, so
                   the user can drill in and tag them. */}
               {uncategorizedFoods > 0 && (
                 <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
-                  ❓ 메뉴{" "}
-                  <span className="font-number">{uncategorizedFoods}</span>개
-                  미분류 · 菜未分类{" "}
-                  <span className="font-number">{uncategorizedFoods}</span>
+                  {pick(
+                    `❓ 메뉴 ${uncategorizedFoods}개 미분류`,
+                    `❓ ${uncategorizedFoods}道菜未分类`
+                  )}
                 </span>
               )}
               {/* "Need my rating" CTA — only shows when there's at least
                   one food on this place that the viewer hasn't scored yet. */}
               {unratedByMe > 0 && (
                 <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg shadow-sm">
-                  ✏️{" "}
-                  <span className="font-number">{unratedByMe}</span>개
-                  평가 안 함 · 还没打分{" "}
-                  <span className="font-number">{unratedByMe}</span>
+                  {pick(
+                    `✏️ ${unratedByMe}개 평가 안 함`,
+                    `✏️ ${unratedByMe}道还没打分`
+                  )}
                 </span>
               )}
             </div>
@@ -1982,7 +2007,9 @@ function MenuRowImpl({
   myDisplay: string;
   partnerDisplay: string;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
   const view = ratingsForViewer(food, viewerId);
@@ -2077,12 +2104,12 @@ function MenuRowImpl({
           ))}
           {eaterRole === "me" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-peach-50 text-peach-600 border border-peach-200 font-bold">
-              🍴{myDisplay}만 · {myDisplay}独享
+              {pick(`🍴${myDisplay}만`, `🍴${myDisplay}独享`)}
             </span>
           )}
           {eaterRole === "partner" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-500 border border-rose-200 font-bold">
-              🍴{partnerDisplay}만 · {partnerDisplay}独享
+              {pick(`🍴${partnerDisplay}만`, `🍴${partnerDisplay}独享`)}
             </span>
           )}
         </div>
@@ -2100,10 +2127,12 @@ function MenuRowImpl({
           // so the user knows there's something to fill in.
           view.myRating == null ? (
             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-              ✏️ 평가 전
+              {pick("✏️ 평가 전", "✏️ 待打分")}
             </span>
           ) : (
-            <span className="text-[10px] text-ink-400">짝꿍 대기</span>
+            <span className="text-[10px] text-ink-400">
+              {pick("짝꿍 대기", "等对方")}
+            </span>
           )
         ) : (
           // Solo food (나만 / 짝꿍만) without a rating — eater simply
@@ -2128,6 +2157,9 @@ function TimelineGridItemImpl({
   locale: string;
   viewerId: string | undefined;
 }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const isHome = !!place.is_home_cooked;
   const theme = timelineTheme(isHome);
   const avg = avgTotal(place);
@@ -2192,7 +2224,9 @@ function TimelineGridItemImpl({
           <span
             className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold leading-none border ${theme.tag}`}
           >
-            {isHome ? "🍳 집밥 · 私房菜" : "🍽️ 외식 · 探店"}
+            {isHome
+              ? pick("🍳 집밥", "🍳 私房菜")
+              : pick("🍽️ 외식", "🍽️ 探店")}
           </span>
         </div>
       </div>
@@ -2235,7 +2269,9 @@ function WishlistView({
   items: WishlistPlace[];
   couple_id: string | undefined;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const navigate = useNavigate();
   const del = useDeleteWishlist();
   // The item the user is hovering on the "다녀왔어" confirm dialog —
@@ -2264,8 +2300,8 @@ function WishlistView({
     return (
       <EmptyState
         emoji="📝"
-        text="위시리스트를 채워봐요 · 赶紧种种草吧"
-        hint="여기를 눌러서 추가 · 点这里添加"
+        text={pick("위시리스트를 채워봐요", "赶紧种种草吧")}
+        hint={pick("여기를 눌러서 추가", "点这里添加")}
         onClick={() => navigate("/wishlist/new")}
       />
     );
@@ -2291,21 +2327,33 @@ function WishlistView({
         title={
           confirmingVisit
             ? confirmingVisit.kind === "recipe"
-              ? `${confirmingVisit.name}, 만들어봤어요? · 真的做过这道菜了吗？`
-              : `${confirmingVisit.name}, 다녀왔어요? · 真的去过这里了吗？`
+              ? pick(
+                  `${confirmingVisit.name}, 만들어봤어요?`,
+                  `真的做过这道菜了吗？`
+                )
+              : pick(
+                  `${confirmingVisit.name}, 다녀왔어요?`,
+                  `真的去过这里了吗？`
+                )
             : ""
         }
         body={
           confirmingVisit?.kind === "recipe"
-            ? "집밥 기록 추가 화면으로 넘어가요. 아직이면 취소해도 돼요. · 会跳到家宴记录页面，还没做的话先看看也行。"
-            : "기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요. · 会跳到记录页面，路过的话先看看也行。"
+            ? pick(
+                "집밥 기록 추가 화면으로 넘어가요. 아직이면 취소해도 돼요.",
+                "会跳到家宴记录页面，还没做的话先看看也行。"
+              )
+            : pick(
+                "기록 추가 화면으로 넘어가요. 지나가는 중이면 취소해도 돼요.",
+                "会跳到记录页面，路过的话先看看也行。"
+              )
         }
         confirmLabel={
           confirmingVisit?.kind === "recipe"
-            ? "응! 만들어봤어 · 嗯，做过了！"
-            : "응! 다녀왔어 · 嗯，去过了！"
+            ? pick("응! 만들어봤어", "嗯，做过了！")
+            : pick("응! 다녀왔어", "嗯，去过了！")
         }
-        cancelLabel="先看看 · 좀 더 볼게"
+        cancelLabel={pick("좀 더 볼게", "先看看")}
         onCancel={() => setConfirmingVisit(null)}
         onConfirm={() => {
           const target = confirmingVisit;
@@ -2326,7 +2374,9 @@ function WishlistCard({
   onDelete: () => void;
   onMarkVisited: () => void;
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   // Legacy rows missing the kind column read as undefined → fall back
   // to 'restaurant' so existing wishlist cards keep their old layout.
   const isRecipe = item.kind === "recipe";
@@ -2361,7 +2411,9 @@ function WishlistCard({
                   : "bg-peach-50 text-peach-600 border-peach-100"
               }`}
             >
-              {isRecipe ? "📒 레시피 · 食谱" : "🏠 식당 · 餐厅"}
+              {isRecipe
+                ? pick("📒 레시피", "📒 食谱")
+                : pick("🏠 식당", "🏠 餐厅")}
             </span>
           </h3>
           {itemCategories.length > 0 && (
@@ -2395,8 +2447,8 @@ function WishlistCard({
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               {isRecipe
-                ? "만들어봤어요! · 已经做过了"
-                : "다녀왔어요! · 种草成功"}
+                ? pick("만들어봤어요!", "已经做过了")
+                : pick("다녀왔어요!", "种草成功")}
             </button>
           </div>
         </div>
@@ -2486,7 +2538,11 @@ export function RouletteModal({
   places: PlaceWithFoods[];
   wishlist: WishlistPlace[];
 }) {
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
+  const pick = useCallback(
+    (ko: string, zh: string) => pickLanguage(i18n.language, ko, zh),
+    [i18n.language]
+  );
   const [source, setSource] = useState<RouletteSource>("both");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   // Roulette city filter is multi-select on purpose — picking 2 or 3 cities
@@ -2564,7 +2620,7 @@ export function RouletteModal({
       for (const k of g.keys) known.add(k);
       if (subset.length === 0) continue;
       out.push({
-        groupLabel: `${g.ko} · ${g.zh}`,
+        groupLabel: pick(g.ko, g.zh),
         options: subset.map((c) => ({
           value: c,
           label: t(`category.${c}`),
@@ -2577,7 +2633,7 @@ export function RouletteModal({
       out.push({ value: c, label: c, emoji: "✏️" });
     }
     return out;
-  }, [availableCategories, t]);
+  }, [availableCategories, pick, t]);
 
   const availableCities = useMemo(() => {
     const byCount = new Map<string, number>();
@@ -2730,7 +2786,7 @@ export function RouletteModal({
           <div className="text-center">
             <div className="text-3xl mb-1">🤔</div>
             <h2 className="text-base sm:text-lg font-sans font-bold text-ink-900 tracking-tight">
-              오늘 뭐 먹지? · 今天吃啥？
+              {pick("오늘 뭐 먹지?", "今天吃啥？")}
             </h2>
           </div>
         </div>
@@ -2741,19 +2797,19 @@ export function RouletteModal({
         <div className="flex bg-cream-100 p-1 rounded-xl mb-2.5">
           {sourceButton(
             "revisit",
-            "去过的中",
+            pick("가본 곳 중", "去过的中"),
             <Heart
               className={`w-3.5 h-3.5 ${source === "revisit" ? "fill-rose-400 text-rose-400" : ""}`}
             />
           )}
           {sourceButton(
             "wishlist",
-            "想去的中",
+            pick("위시리스트 중", "想去的中"),
             <BookmarkPlus className="w-3.5 h-3.5" />
           )}
           {sourceButton(
             "both",
-            "全都行",
+            pick("전부", "全都行"),
             <Dice5 className="w-3.5 h-3.5" />
           )}
         </div>
@@ -2764,11 +2820,11 @@ export function RouletteModal({
         {availableCategories.length > 0 && (
           <div className="mb-2">
             <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
-              종류 · 种类
+              {pick("종류", "种类")}
             </p>
             <GroupedMultiSelect
-              title="카테고리 · 种类"
-              placeholder="전부 · 全部"
+              title={pick("카테고리", "种类")}
+              placeholder={pick("전부", "全部")}
               options={categoryDropdownOptions}
               value={categoryFilter ? [categoryFilter] : []}
               onChange={(next) => setCategoryFilter(next[0] ?? null)}
@@ -2783,11 +2839,11 @@ export function RouletteModal({
         {availableCities.length > 0 && (
           <div className="mb-3">
             <p className="text-[10px] font-bold text-ink-400 tracking-wider uppercase mb-1 px-0.5">
-              도시 · 城市
+              {pick("도시", "城市")}
             </p>
             <GroupedMultiSelect
-              title="도시 · 城市"
-              placeholder="전부 · 全部"
+              title={pick("도시", "城市")}
+              placeholder={pick("전부", "全部")}
               options={cityDropdownOptions}
               value={[...cityFilter]}
               onChange={(next) => setCityFilter(new Set(next))}
@@ -2821,8 +2877,8 @@ export function RouletteModal({
               ) : (
                 <p className="text-[11px] text-rose-500 mt-1.5 font-medium">
                   {picked.kind === "revisit"
-                    ? "또 올래! · 必须二刷"
-                    : "위시리스트 · 种草清单"}
+                    ? pick("또 올래!", "必须二刷")
+                    : pick("위시리스트", "种草清单")}
                 </p>
               )}
               {picked.memo && (
@@ -2834,9 +2890,7 @@ export function RouletteModal({
           )}
           {!spinning && pool.length === 0 && (
             <p className="text-sm text-ink-400 text-center px-4">
-              조건에 맞는 곳이 없어요
-              <br />
-              没找到符合条件的
+              {pick("조건에 맞는 곳이 없어요", "没找到符合条件的")}
             </p>
           )}
         </div>
@@ -2856,7 +2910,7 @@ export function RouletteModal({
               onClick={onClose}
               className="flex-1 min-w-0 text-center font-semibold text-[13px] sm:text-sm py-2.5 rounded-xl border border-cream-200 text-ink-700 hover:bg-cream-50 transition truncate"
             >
-              보러가기 · 去看看
+              {pick("보러가기", "去看看")}
             </Link>
           )}
           <button
@@ -2871,7 +2925,9 @@ export function RouletteModal({
               <Dice5 className="w-5 h-5 flex-shrink-0" />
             )}
             <span className="truncate">
-              {spinning ? "고르는 중… · 抽取中…" : "운명의 룰렛 · 听天由命"}
+              {spinning
+                ? pick("고르는 중…", "抽取中…")
+                : pick("운명의 룰렛", "听天由命")}
             </span>
           </button>
         </div>
