@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, RotateCcw, X } from "lucide-react";
 import { CATEGORY_GROUPS, categoryEmojiOf } from "@/lib/constants";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import { pickLanguage } from "@/lib/language";
 
 // One unified bottom-sheet that hosts all three timeline filters
 // (정렬 / 도시 / 카테고리). Replaces the previous 3-trigger grid where
@@ -70,7 +71,9 @@ export function FilterSheet({
   // Lets the parent disable the reset link when no filter is set.
   hasAnyActive: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   // Collapsed by default so the sheet doesn't open as a wall of chips.
   // Auto-expand when the section already has an active selection so
   // users land directly on what they've configured. State seeds from
@@ -175,10 +178,10 @@ export function FilterSheet({
         <div className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-cream-200 flex-shrink-0">
           <div className="min-w-0">
             <h3 className="font-bold text-ink-900 text-base break-keep">
-              상세 필터 · 详细筛选
+              {pick("상세 필터", "详细筛选")}
             </h3>
             <p className="text-[11px] text-ink-500 break-keep">
-              정렬·도시·카테고리 한 번에 · 一处搞定
+              {pick("정렬·도시·카테고리 한 번에", "一处搞定")}
             </p>
           </div>
           <button
@@ -195,7 +198,8 @@ export function FilterSheet({
           {/* ----- 정렬 (single-select chips) ----- */}
           <section>
             <h4 className="text-[12px] font-bold text-ink-700 mb-2 break-keep flex items-center gap-1.5">
-              <span>🔀</span>정렬 · 排序
+              <span>🔀</span>
+              {pick("정렬", "排序")}
             </h4>
             <div className="flex flex-wrap gap-1.5">
               {SORT_CHIPS.map((c) => {
@@ -212,7 +216,7 @@ export function FilterSheet({
                     }`}
                   >
                     <span>{c.emoji}</span>
-                    {c.ko} · {c.zh}
+                    {pick(c.ko, c.zh)}
                   </button>
                 );
               })}
@@ -227,7 +231,8 @@ export function FilterSheet({
               className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
             >
               <span className="inline-flex items-center gap-1.5">
-                <span>📍</span>도시 · 城市
+                <span>📍</span>
+                {pick("도시", "城市")}
                 {selectedCities.length > 0 && (
                   <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-peach-100 text-peach-600 text-[10px] font-number font-bold">
                     {selectedCities.length}
@@ -249,13 +254,13 @@ export function FilterSheet({
                       onClick={() => onChangeSelectedCities([])}
                       className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
                     >
-                      전체 해제 · 清空
+                      {pick("전체 해제", "清空")}
                     </button>
                   </div>
                 )}
                 {allCities.length === 0 ? (
                   <p className="text-[11px] text-ink-400 px-1">
-                    아직 도시가 없어요 · 还没有可选城市
+                    {pick("아직 도시가 없어요", "还没有可选城市")}
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
@@ -290,7 +295,8 @@ export function FilterSheet({
               className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
             >
               <span className="inline-flex items-center gap-1.5">
-                <span>🍽️</span>카테고리 · 类别
+                <span>🍽️</span>
+                {pick("카테고리", "类别")}
                 {categoryFilter.length > 0 && (
                   <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-number font-bold">
                     {categoryFilter.length}
@@ -313,7 +319,7 @@ export function FilterSheet({
                       onClick={() => onChangeCategoryFilter([])}
                       className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
                     >
-                      전체 해제 · 清空
+                      {pick("전체 해제", "清空")}
                     </button>
                   </div>
                 )}
@@ -329,7 +335,7 @@ export function FilterSheet({
                       : "bg-white text-ink-500 border-cream-200/80 hover:bg-cream-50"
                   }`}
                 >
-                  ❓ 카테고리 미설정 · 未分类
+                  ❓ {pick("카테고리 미설정", "未分类")}
                 </button>
               </div>
             )}
@@ -371,7 +377,7 @@ export function FilterSheet({
                             ? "−"
                             : ""}
                       </span>
-                      {g.ko} · {g.zh}
+                      {pick(g.ko, `${g.ko.split(" ")[0]} ${g.zh}`)}
                     </button>
                     <div className="flex flex-wrap gap-1.5">
                       {g.keys.map((k) => {
@@ -406,7 +412,7 @@ export function FilterSheet({
               {customsToShow.length > 0 && (
                 <div className="rounded-2xl border border-cream-200 bg-cream-50/40 px-3 py-2.5">
                   <p className="text-[11px] font-bold text-ink-700 mb-2 break-keep">
-                    ✏️ 직접 입력 · 自定义
+                    ✏️ {pick("직접 입력", "自定义")}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {customsToShow.map((c) => {
@@ -440,6 +446,7 @@ export function FilterSheet({
             onChangeFoodCategoryFilter && (
               <FoodCategorySection
                 t={t}
+                language={i18n.language}
                 value={foodCategoryFilter}
                 onChange={onChangeFoodCategoryFilter}
                 open={foodCategoriesOpen}
@@ -456,14 +463,14 @@ export function FilterSheet({
             className="inline-flex items-center gap-1.5 text-[12px] font-bold text-ink-500 hover:text-ink-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            전체 초기화 · 重置全部
+            {pick("전체 초기화", "重置全部")}
           </button>
           <button
             type="button"
             onClick={onClose}
             className="px-5 py-2 bg-ink-900 text-white rounded-xl text-[13px] font-bold hover:bg-ink-700 transition"
           >
-            저장 · 保存
+            {pick("저장", "保存")}
           </button>
         </div>
       </div>
@@ -501,17 +508,21 @@ const FOOD_FILTER_LAYOUT: FoodFilterEntry[] = [
 // at once.
 function FoodCategorySection({
   t,
+  language,
   value,
   onChange,
   open,
   onToggleOpen,
 }: {
   t: (key: string) => string;
+  language: string;
   value: string[];
   onChange: (v: string[]) => void;
   open: boolean;
   onToggleOpen: () => void;
 }) {
+  const pick = (ko: string, zh: string) => pickLanguage(language, ko, zh);
+
   function toggle(key: string) {
     if (value.includes(key)) onChange(value.filter((k) => k !== key));
     else onChange([...value, key]);
@@ -535,7 +546,8 @@ function FoodCategorySection({
         className="w-full flex items-center justify-between gap-2 text-[12px] font-bold text-ink-700 mb-2 break-keep"
       >
         <span className="inline-flex items-center gap-1.5">
-          <span>🍽️</span>메뉴 카테고리 · 菜品类别
+          <span>🍽️</span>
+          {pick("메뉴 카테고리", "菜品类别")}
           {value.length > 0 && (
             <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-number font-bold">
               {value.length}
@@ -557,7 +569,7 @@ function FoodCategorySection({
                 onClick={() => onChange([])}
                 className="text-[10px] font-bold text-ink-400 hover:text-rose-500 transition"
               >
-                전체 해제 · 清空
+                {pick("전체 해제", "清空")}
               </button>
             </div>
           )}
@@ -617,7 +629,7 @@ function FoodCategorySection({
                         ? "−"
                         : ""}
                   </span>
-                  {e.emoji} {e.labelKo} · {e.labelZh}
+                  {e.emoji} {pick(e.labelKo, e.labelZh)}
                 </button>
                 <div className="flex flex-wrap gap-1.5">
                   {e.keys.map((k) => {

@@ -21,6 +21,7 @@ import { usePlaces } from "@/hooks/usePlaces";
 import { useCoupleProfiles } from "@/hooks/useProfile";
 import { LocationPicker } from "@/components/LocationPicker";
 import { supabase } from "@/lib/supabase";
+import { pickLanguage } from "@/lib/language";
 import type { Profile } from "@/lib/database.types";
 import { categoryEmojiOf, isKnownPlaceCategory } from "@/lib/constants";
 import { getCategories, ratingsForViewer } from "@/lib/utils";
@@ -28,7 +29,9 @@ import { getCategories, ratingsForViewer } from "@/lib/utils";
 const ALLOW_NO_AUTH = import.meta.env.VITE_ALLOW_NO_AUTH === "true";
 
 export default function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const { user, signOut } = useAuth();
   const { data: couple } = useCouple();
   const setHome = useSetCoupleHome();
@@ -158,14 +161,14 @@ export default function SettingsPage() {
     if (pwd.length < 6) {
       setPwdMsg({
         kind: "err",
-        text: "비밀번호는 6자 이상이어야 해요 · 密码至少需要 6 个字符",
+        text: pick("비밀번호는 6자 이상이어야 해요", "密码至少需要 6 个字符"),
       });
       return;
     }
     if (pwd !== pwdConfirm) {
       setPwdMsg({
         kind: "err",
-        text: "두 비밀번호가 달라요 · 两次输入的密码不一致",
+        text: pick("두 비밀번호가 달라요", "两次输入的密码不一致"),
       });
       return;
     }
@@ -177,7 +180,7 @@ export default function SettingsPage() {
       setPwdConfirm("");
       setPwdMsg({
         kind: "ok",
-        text: "비밀번호가 변경됐어요! · 密码修改成功！",
+        text: pick("비밀번호가 변경됐어요!", "密码修改成功！"),
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -242,7 +245,7 @@ export default function SettingsPage() {
                 badge={
                   meProfileQuery.data?.nickname?.trim()
                     ? null
-                    : "나 · 我"
+                    : pick("나", "我")
                 }
                 role={tasteStats.myRole}
                 showRole={tasteStats.sampleSize >= 3}
@@ -262,7 +265,7 @@ export default function SettingsPage() {
                   meProfileQuery.data?.partner_nickname?.trim() ||
                   partnerProfileQuery.data?.nickname?.trim()
                     ? null
-                    : "짝꿍 · 宝宝"
+                    : pick("짝꿍", "宝宝")
                 }
                 // For the partner card we display the애칭 *I* set for
                 // them rather than what they call themselves. Falls back
@@ -280,7 +283,7 @@ export default function SettingsPage() {
               {meProfileQuery.data?.bio && (
                 <div className="bg-cream-50 border border-cream-200/60 rounded-xl px-3 py-2 text-[12px] text-ink-700">
                   <span className="text-ink-400 text-[10px] font-bold uppercase tracking-wider mr-1 break-keep">
-                    내 한줄 · 简介
+                    {pick("내 한줄", "简介")}
                   </span>
                   {meProfileQuery.data.bio}
                 </div>
@@ -288,7 +291,7 @@ export default function SettingsPage() {
               {(meProfileQuery.data?.hate_ingredients?.length ?? 0) > 0 && (
                 <div>
                   <p className="text-[10px] font-bold text-ink-400 mb-1 uppercase tracking-wider">
-                    🚫 못 먹어요 · 不能吃
+                    🚫 {pick("못 먹어요", "不能吃")}
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {(meProfileQuery.data?.hate_ingredients ?? []).map(
@@ -310,7 +313,7 @@ export default function SettingsPage() {
               to="/profile/me"
               className="mt-3 inline-flex w-full items-center justify-between text-[12px] font-bold text-ink-500 hover:text-ink-700 transition px-1"
             >
-              내 프로필 자세히 편집 · 完整编辑我的资料
+              {pick("내 프로필 자세히 편집", "完整编辑我的资料")}
               <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
@@ -328,14 +331,14 @@ export default function SettingsPage() {
               </span>
               <div>
                 <p className="text-sm font-bold text-ink-700">
-                  내 입맛 DNA · 我的口味DNA
+                  {pick("내 입맛 DNA", "我的口味DNA")}
                 </p>
                 <p className="text-[11px] text-ink-400">
-                  공통 평가{" "}
+                  {pick("공통 평가", "共评")}{" "}
                   <span className="font-number font-bold text-ink-700">
                     {tasteStats.sampleSize}
                   </span>
-                  개 메뉴 기반 · 基于{tasteStats.sampleSize}道共评菜
+                  {pick("개 메뉴 기반", "道菜")}
                 </p>
               </div>
             </div>
@@ -349,7 +352,7 @@ export default function SettingsPage() {
                 label={(() => {
                   const me =
                     meProfileQuery.data?.nickname?.trim() || "나";
-                  return `${me} 평균 · ${me}的平均`;
+                  return pick(`${me} 평균`, `${me}的平均`);
                 })()}
                 avg={tasteStats.myAvg}
                 role={tasteStats.myRole}
@@ -361,7 +364,7 @@ export default function SettingsPage() {
                     meProfileQuery.data?.partner_nickname?.trim() ||
                     partnerProfileQuery.data?.nickname?.trim() ||
                     "짝꿍";
-                  return `${partner} 평균 · ${partner}的平均`;
+                  return pick(`${partner} 평균`, `${partner}的平均`);
                 })()}
                 avg={tasteStats.partnerAvg}
                 role={tasteStats.partnerRole}
@@ -377,12 +380,12 @@ export default function SettingsPage() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider">
-                    주력 카테고리 · 主力类别
+                    {pick("주력 카테고리", "主力类别")}
                   </p>
                   <p className="text-[13px] font-bold text-ink-900 break-keep">
-                    {t(`category.${tasteStats.topCategory}`)} 매니아 · 控
+                    {t(`category.${tasteStats.topCategory}`)} {pick("매니아", "控")}
                     <span className="text-ink-400 font-number ml-1.5 text-[11px]">
-                      ({tasteStats.topCount}회·次)
+                      ({tasteStats.topCount}{pick("회", "次")})
                     </span>
                   </p>
                 </div>
@@ -393,7 +396,7 @@ export default function SettingsPage() {
             {tasteStats.myTop3.length > 0 && (
               <div>
                 <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider mb-2">
-                  🏆 내 인생 메뉴 Top 3 · 我的TOP3
+                  🏆 {pick("내 인생 메뉴 Top 3", "我的TOP3")}
                 </p>
                 <div className="space-y-1.5">
                   {tasteStats.myTop3.map((r, idx) => (
@@ -468,10 +471,13 @@ export default function SettingsPage() {
               </span>
               <div>
                 <p className="text-sm font-bold text-ink-700">
-                  우리집 주소 · 家庭住址
+                  {pick("우리집 주소", "家庭住址")}
                 </p>
                 <p className="text-[11px] text-ink-400">
-                  집밥 모드 + 지도의 집 마커에 사용돼요 · 用于在家做饭和地图的家标记
+                  {pick(
+                    "집밥 모드 + 지도의 집 마커에 사용돼요",
+                    "用于在家做饭和地图的家标记"
+                  )}
                 </p>
               </div>
             </div>
@@ -499,7 +505,7 @@ export default function SettingsPage() {
               className="input-base"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="주소 · 地址 (예: 서울시 마포구...)"
+              placeholder={pick("주소 (예: 서울시 마포구...)", "地址")}
             />
 
             <button
@@ -509,10 +515,10 @@ export default function SettingsPage() {
               className="btn-primary w-full"
             >
               {savedFlash
-                ? "저장됐어요! · 已保存"
+                ? pick("저장됐어요!", "已保存")
                 : setHome.isPending
-                  ? "저장 중… · 保存中…"
-                  : "집 주소 저장 · 保存家庭住址"}
+                  ? pick("저장 중…", "保存中…")
+                  : pick("집 주소 저장", "保存家庭住址")}
             </button>
           </div>
         )}
@@ -532,10 +538,13 @@ export default function SettingsPage() {
               </span>
               <div>
                 <p className="text-sm font-bold text-ink-700">
-                  비밀번호 변경 · 修改密码
+                  {pick("비밀번호 변경", "修改密码")}
                 </p>
                 <p className="text-[11px] text-ink-400">
-                  지금 로그인된 계정({user?.email})의 비밀번호를 바꿔요
+                  {pick(
+                    `지금 로그인된 계정(${user?.email})의 비밀번호를 바꿔요`,
+                    `修改当前登录账号（${user?.email}）的密码`
+                  )}
                 </p>
               </div>
             </div>
@@ -545,7 +554,7 @@ export default function SettingsPage() {
                 className="input-base pr-11"
                 value={pwd}
                 onChange={(e) => setPwd(e.target.value)}
-                placeholder="새 비밀번호 (6자 이상) · 新密码"
+                placeholder={pick("새 비밀번호 (6자 이상)", "新密码")}
                 autoComplete="new-password"
               />
               <button
@@ -566,7 +575,7 @@ export default function SettingsPage() {
               className="input-base"
               value={pwdConfirm}
               onChange={(e) => setPwdConfirm(e.target.value)}
-              placeholder="비밀번호 확인 · 确认密码"
+              placeholder={pick("비밀번호 확인", "确认密码")}
               autoComplete="new-password"
             />
             {pwdMsg && (
@@ -584,7 +593,9 @@ export default function SettingsPage() {
               disabled={pwdBusy || !pwd || !pwdConfirm}
               className="btn-primary w-full"
             >
-              {pwdBusy ? "변경 중… · 修改中…" : "비밀번호 변경 · 修改密码"}
+              {pwdBusy
+                ? pick("변경 중…", "修改中…")
+                : pick("비밀번호 변경", "修改密码")}
             </button>
           </div>
         )}
@@ -594,7 +605,7 @@ export default function SettingsPage() {
           className="w-full card p-4 flex items-center justify-center gap-2 text-rose-500 font-bold active:scale-[0.98] transition-transform"
         >
           <LogOut className="w-5 h-5" />
-          로그아웃 · 退出登录
+          {pick("로그아웃", "退出登录")}
         </button>
       </div>
     </div>
@@ -658,6 +669,7 @@ function ProfileAvatar({
   role?: "fairy" | "strict" | "tie";
   showRole?: boolean;
 }) {
+  const { i18n } = useTranslation();
   const displayName =
     overrideNickname?.trim() || profile?.nickname?.trim() || fallbackLabel;
   const initial = Array.from(displayName)[0] ?? "?";
@@ -667,7 +679,7 @@ function ProfileAvatar({
       : "border-rose-300 bg-gradient-to-br from-rose-100 to-pink-100 text-rose-500";
   const roleBadge =
     showRole && role
-      ? roleBadgeFor(role)
+      ? roleBadgeFor(role, i18n.language)
       : null;
 
   const inner = (
@@ -723,24 +735,24 @@ function ProfileAvatar({
 
 // Single source of truth for the 별점 요정 / 깐깐징어 / 비등 badge —
 // reused by both the avatar (small chip) and the stats grid (full row).
-function roleBadgeFor(role: "fairy" | "strict" | "tie") {
+function roleBadgeFor(role: "fairy" | "strict" | "tie", language: string) {
   if (role === "fairy") {
     return {
       emoji: "🧚",
-      label: "별점 요정 · 打分天使",
+      label: pickLanguage(language, "별점 요정", "打分天使"),
       cls: "bg-amber-50 text-amber-600 border-amber-200",
     } as const;
   }
   if (role === "strict") {
     return {
       emoji: "🧐",
-      label: "깐깐징어 · 严格考官",
+      label: pickLanguage(language, "깐깐징어", "严格考官"),
       cls: "bg-indigo-50 text-indigo-600 border-indigo-200",
     } as const;
   }
   return {
     emoji: "🤝",
-    label: "비등 · 不分上下",
+    label: pickLanguage(language, "비등", "不分上下"),
     cls: "bg-ink-100 text-ink-500 border-cream-200",
   } as const;
 }
@@ -759,12 +771,13 @@ function PersonStatCell({
   avg: number;
   role: "fairy" | "strict" | "tie";
 }) {
+  const { i18n } = useTranslation();
   const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
   const accentCls =
     tone === "peach"
       ? "bg-peach-50 border-peach-200"
       : "bg-rose-50 border-rose-200";
-  const badge = roleBadgeFor(role);
+  const badge = roleBadgeFor(role, i18n.language);
   return (
     <div
       className={`rounded-xl p-2 border ${accentCls} flex flex-col items-center text-center shadow-sm`}
@@ -790,6 +803,9 @@ function PersonStatCell({
 // settings page. Surfaces the four states the underlying hook can
 // return so the user always knows why notifications aren't firing.
 function PushNotificationCard() {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const { status, busy, error, enable, disable } = usePushSubscription();
 
   const isOn = status === "granted-subscribed";
@@ -811,12 +827,12 @@ function PushNotificationCard() {
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-ink-700">
-            푸시 알림 · 推送通知
+            {pick("푸시 알림", "推送通知")}
           </p>
           <p className="text-[11px] text-ink-400">
             {isOn
-              ? "짝꿍이 메모/사진 올리면 즉시 알림이 와요 · 宝宝有动静时立即推送"
-              : "짝꿍 활동을 앱이 닫혀있어도 알 수 있어요 · 应用关闭也能收到提醒"}
+              ? pick("짝꿍이 메모/사진 올리면 즉시 알림이 와요", "宝宝有动静时立即推送")
+              : pick("짝꿍 활동을 앱이 닫혀있어도 알 수 있어요", "应用关闭也能收到提醒")}
           </p>
         </div>
       </div>
@@ -824,8 +840,14 @@ function PushNotificationCard() {
       {showHelpText && (
         <p className="text-[11px] text-rose-500 bg-rose-50 border border-rose-200 rounded-xl p-3 leading-snug">
           {status === "denied"
-            ? "브라우저에서 알림이 차단되어 있어요. 브라우저 설정에서 알림을 허용해주세요. · 浏览器已禁止通知，请在浏览器设置中允许。"
-            : "이 브라우저는 푸시 알림을 지원하지 않아요 (iPhone은 홈 화면에 추가한 PWA에서만 동작). · 浏览器不支持推送（iPhone 仅支持已添加到主屏幕的 PWA）。"}
+            ? pick(
+                "브라우저에서 알림이 차단되어 있어요. 브라우저 설정에서 알림을 허용해주세요.",
+                "浏览器已禁止通知，请在浏览器设置中允许。"
+              )
+            : pick(
+                "이 브라우저는 푸시 알림을 지원하지 않아요 (iPhone은 홈 화면에 추가한 PWA에서만 동작).",
+                "浏览器不支持推送（iPhone 仅支持已添加到主屏幕的 PWA）。"
+              )}
         </p>
       )}
 
@@ -840,10 +862,10 @@ function PushNotificationCard() {
         className={`w-full ${isOn ? "btn-ghost border border-cream-200" : "btn-primary"} disabled:opacity-50`}
       >
         {busy
-          ? "처리 중… · 处理中…"
+          ? pick("처리 중…", "处理中…")
           : isOn
-            ? "알림 끄기 · 关闭通知"
-            : "알림 켜기 · 开启通知"}
+            ? pick("알림 끄기", "关闭通知")
+            : pick("알림 켜기", "开启通知")}
       </button>
     </div>
   );

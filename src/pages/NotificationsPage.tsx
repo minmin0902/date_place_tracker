@@ -13,6 +13,7 @@ import {
 import type { RefObject } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -44,6 +45,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { supabase } from "@/lib/supabase";
+import { pickLanguage } from "@/lib/language";
 import { isVideoUrl } from "@/lib/utils";
 import type {
   Memo as MemoRow,
@@ -311,6 +313,27 @@ function kindSpec(kind: NotificationRow["kind"]): KindSpec {
         textColor: "text-yellow-600",
         verb: "별점 · 打分",
       };
+  }
+}
+
+function kindVerb(kind: NotificationRow["kind"], language: string) {
+  switch (kind) {
+    case "place":
+      return pickLanguage(language, "새 장소", "新地点");
+    case "food":
+      return pickLanguage(language, "메뉴 추가", "添加菜品");
+    case "memo":
+      return pickLanguage(language, "메모 수정", "改了备注");
+    case "memo_thread":
+      return pickLanguage(language, "메모 남김", "留了言");
+    case "memo_reply":
+      return pickLanguage(language, "답글", "回复");
+    case "reaction":
+      return pickLanguage(language, "이모지", "表情");
+    case "revisit":
+      return pickLanguage(language, "또 갈래", "想再去");
+    case "rating":
+      return pickLanguage(language, "별점", "打分");
   }
 }
 
@@ -624,6 +647,9 @@ function useProgressiveNotificationRows(
 // a row marks it read and deep-links to the source content. A "전부
 // 읽음" footer button clears the badge in one shot.
 export default function NotificationsPage() {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const qc = useQueryClient();
   const { data: items, isLoading } = useNotifications();
   useUnreadCount();
@@ -956,11 +982,11 @@ export default function NotificationsPage() {
         justFinished={justFinished}
       />
       <PageHeader
-        title="알림 · 通知"
+        title={pick("알림", "通知")}
         subtitle={
           unreadCount > 0
-            ? `놓친 알림 ${unreadCount}개 · 未读 ${unreadCount} 条`
-            : "전부 읽었어요 · 全部已读"
+            ? pick(`놓친 알림 ${unreadCount}개`, `未读 ${unreadCount} 条`)
+            : pick("전부 읽었어요", "全部已读")
         }
         back
         right={
@@ -976,7 +1002,7 @@ export default function NotificationsPage() {
                 justFinished ? "text-sage-400" : ""
               }`}
               aria-label="refresh"
-              title="새로고침 · 刷新"
+              title={pick("새로고침", "刷新")}
             >
               {justFinished ? (
                 <Check className="w-5 h-5 animate-fade" />
@@ -993,7 +1019,7 @@ export default function NotificationsPage() {
                 disabled={markAll.isPending}
                 className="btn-ghost smooth-touch !p-2.5 text-peach-500 disabled:opacity-50"
                 aria-label="mark all read"
-                title="전부 읽음 · 全部已读"
+                title={pick("전부 읽음", "全部已读")}
               >
                 <CheckCheck className="w-5 h-5" />
               </button>
@@ -1008,13 +1034,13 @@ export default function NotificationsPage() {
             [
               {
                 key: "all",
-                label: "전체 · 全部",
+                label: pick("전체", "全部"),
                 count: allItems.length,
                 Icon: Bell,
               },
               {
                 key: "unread",
-                label: "안 읽음 · 未读",
+                label: pick("안 읽음", "未读"),
                 count: unreadCount,
                 Icon: Check,
               },
@@ -1073,7 +1099,7 @@ export default function NotificationsPage() {
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>
-                  {ko} · {zh}
+                  {pick(ko, zh)}
                 </span>
                 {count > 0 && (
                   <span
@@ -1093,7 +1119,7 @@ export default function NotificationsPage() {
       <div className="px-5 pb-8">
         {isLoading && (
           <p className="text-center text-ink-400 text-sm py-8">
-            불러오는 중… · 加载中…
+            {pick("불러오는 중…", "加载中…")}
           </p>
         )}
         {!isLoading && allItems.length === 0 && <EmptyState />}
@@ -1187,30 +1213,36 @@ function NotificationLoadMoreSentinel({
 }
 
 function EmptyState() {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   return (
     <div className="text-center py-16">
       <div className="text-5xl mb-3">📭</div>
       <p className="text-sm font-bold text-ink-700 mb-1">
-        알림이 없어요 · 还没有通知
+        {pick("알림이 없어요", "还没有通知")}
       </p>
       <p className="text-xs text-ink-400">
-        짝꿍이 뭔가 올리면 여기에 떠요 · 宝宝有动静就会显示在这里
+        {pick("짝꿍이 뭔가 올리면 여기에 떠요", "宝宝有动静就会显示在这里")}
       </p>
     </div>
   );
 }
 
 function AllCaughtUpState() {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   return (
     <div className="text-center py-12">
       <div className="w-12 h-12 mx-auto rounded-full bg-sage-100 text-sage-400 flex items-center justify-center mb-3">
         <CheckCheck className="w-6 h-6" />
       </div>
       <p className="text-sm font-bold text-ink-700 mb-1">
-        놓친 알림은 없어요 · 没有未读通知
+        {pick("놓친 알림은 없어요", "没有未读通知")}
       </p>
       <p className="text-xs text-ink-400">
-        전체 탭에서 지난 알림을 다시 볼 수 있어요 · 可在全部里回看
+        {pick("전체 탭에서 지난 알림을 다시 볼 수 있어요", "可在全部里回看")}
       </p>
     </div>
   );
@@ -1220,16 +1252,19 @@ function AllCaughtUpState() {
 // the currently selected filter. Hint at clearing the filter so the
 // user doesn't think the inbox is empty.
 function FilteredEmptyState({ unreadMode }: { unreadMode: boolean }) {
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   return (
     <div className="text-center py-12">
       <div className="text-4xl mb-2">🔍</div>
       <p className="text-sm font-bold text-ink-700 mb-1">
         {unreadMode
-          ? "이 카테고리엔 안 읽은 알림이 없어요 · 该分类暂无未读"
-          : "이 카테고리엔 알림이 없어요 · 该分类暂无通知"}
+          ? pick("이 카테고리엔 안 읽은 알림이 없어요", "该分类暂无未读")
+          : pick("이 카테고리엔 알림이 없어요", "该分类暂无通知")}
       </p>
       <p className="text-xs text-ink-400">
-        다른 카테고리 / 전체로 바꿔보세요 · 试试其他分类或「全部」
+        {pick("다른 카테고리 / 전체로 바꿔보세요", "试试其他分类或「全部」")}
       </p>
     </div>
   );
@@ -1253,6 +1288,9 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
   const rowCtx = useRowContext();
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const { name, avatarUrl } = useActorDisplay(bundle.latest.actor_id);
   const isUnread = bundle.items.some((i) => !i.read_at);
   const unreadIds = bundle.items.filter((i) => !i.read_at).map((i) => i.id);
@@ -1268,11 +1306,15 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
   const targetName =
     rowCtx.foodNameOf(bundle.foodId) ?? rowCtx.placeNameOf(effectivePlaceId);
   const thumbSrc = thumbnailFor(bundle.latest, rowCtx);
-  const stamp = relativeKo(bundle.latest.created_at);
+  const stamp = relativeTime(bundle.latest.created_at, i18n.language);
   const actorCount = bundle.actorIds.length;
   const actorLead =
-    actorCount > 1 ? `${name} 외 ${actorCount - 1}명` : name;
-  const emojiText = bundle.emojis.length ? bundle.emojis.join(" ") : "이모지";
+    actorCount > 1
+      ? pick(`${name} 외 ${actorCount - 1}명`, `${name} 等 ${actorCount}人`)
+      : name;
+  const emojiText = bundle.emojis.length
+    ? bundle.emojis.join(" ")
+    : pick("이모지", "表情");
   const reactedText =
     (bundle.memoId ? rowCtx.memoTextOf(bundle.memoId) : null) ??
     (bundle.foodId ? rowCtx.foodMemoOf(bundle.foodId) : null) ??
@@ -1321,13 +1363,15 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
           <p className="text-[12px] leading-snug text-ink-700">
             <span className="font-bold text-ink-900">{actorLead}</span>
             <span className="text-ink-400 mx-1">·</span>
-            <span className="font-bold text-rose-600">이모지 · 表情</span>
+            <span className="font-bold text-rose-600">
+              {pick("이모지", "表情")}
+            </span>
           </p>
           <p className="text-[12px] leading-snug mt-0.5 min-w-0 truncate">
             <span className="font-bold text-rose-600">{emojiText}</span>
             <span className="text-ink-400 font-number">
               {" "}
-              · {bundle.items.length}개 · {stamp}
+              · {pick(`${bundle.items.length}개`, `${bundle.items.length}个`)} · {stamp}
             </span>
           </p>
           {reactedText && (
@@ -1369,6 +1413,9 @@ const ActivityBundleItem = memo(
 function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   const { name, avatarUrl } = useActorDisplay(bundle.actorId);
   const rowCtx = useRowContext();
   const placeName = rowCtx.placeNameOf(bundle.placeId);
@@ -1396,7 +1443,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
     markReadAfterNavigation(markRead, unread);
   }
 
-  const stamp = relativeKo(bundle.latest.created_at);
+  const stamp = relativeTime(bundle.latest.created_at, i18n.language);
   const initial = Array.from(name)[0] ?? "·";
   const toneCls = "bg-rose-100 text-rose-500";
 
@@ -1422,13 +1469,16 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
     (bundle.ratings.length > 0 ? 1 : 0) +
     (bundle.revisit ? 1 : 0);
   const headerVerb = bundle.placeEvent
-    ? { label: "새 장소 · 新地点", color: "text-emerald-600" }
+    ? { label: pick("새 장소", "新地点"), color: "text-emerald-600" }
     : kindCount === 1
       ? (() => {
           const spec = kindSpec(primaryKind);
-          return { label: spec.verb, color: spec.textColor };
+          return {
+            label: kindVerb(primaryKind, i18n.language),
+            color: spec.textColor,
+          };
         })()
-      : { label: "새 기록 · 新记录", color: "text-ink-700" };
+      : { label: pick("새 기록", "新记录"), color: "text-ink-700" };
 
   // Build the body — one sub-row per non-empty kind. Order matches
   // the rough sequence of a recording session, but comments/replies
@@ -1454,7 +1504,10 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       key: "food",
       Icon: Utensils,
       color: "text-amber-600",
-      label: `메뉴 ${bundle.foods.length}개 · 菜品 ${bundle.foods.length}`,
+      label: pick(
+        `메뉴 ${bundle.foods.length}개`,
+        `菜品 ${bundle.foods.length}`
+      ),
       preview: null,
       onTap: () => navigateScoped(target, bundle.foods),
     });
@@ -1474,7 +1527,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       key: "memo",
       Icon: MessageCircle,
       color: "text-sky-600",
-      label: `메모/답글 ${total}개 · 留言 ${total}`,
+      label: pick(`메모/답글 ${total}개`, `留言 ${total}`),
       preview: null,
       onTap: () =>
         navigateScoped(target, [...bundle.memos, ...bundle.replies]),
@@ -1488,7 +1541,10 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       key: "rating",
       Icon: Star,
       color: "text-yellow-600",
-      label: `별점 ${bundle.ratings.length}개 · 打分 ${bundle.ratings.length}`,
+      label: pick(
+        `별점 ${bundle.ratings.length}개`,
+        `打分 ${bundle.ratings.length}`
+      ),
       preview: null,
       onTap: () => navigateScoped(target, bundle.ratings),
     });
@@ -1498,7 +1554,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       key: "revisit",
       Icon: Heart,
       color: "text-pink-600",
-      label: "또 갈래 · 想再去",
+      label: pick("또 갈래", "想再去"),
       preview: null,
       onTap: () =>
         navigateScoped(placeBase, bundle.revisit ? [bundle.revisit] : []),
@@ -1630,6 +1686,8 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
 // in the feed so the user can scan "오늘 · 어제 · 5월 12일" without
 // hunting through timestamps.
 function DateSectionHeader({ ko, zh }: { ko: string; zh: string }) {
+  const { i18n } = useTranslation();
+  const label = pickLanguage(i18n.language, ko, zh);
   return (
     <div
       role="listitem"
@@ -1637,7 +1695,7 @@ function DateSectionHeader({ ko, zh }: { ko: string; zh: string }) {
     >
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-bold text-ink-400 tracking-wide">
-          {ko} <span className="text-ink-300 font-medium">· {zh}</span>
+          {label}
         </span>
         <div className="h-px flex-1 bg-cream-100" />
       </div>
@@ -1661,6 +1719,9 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   const navigate = useNavigate();
   const markRead = useMarkNotificationRead();
   const rowCtx = useRowContext();
+  const { i18n } = useTranslation();
+  const pick = (ko: string, zh: string) =>
+    pickLanguage(i18n.language, ko, zh);
   // Actor is rendered with their OWN profile nickname (whatever they
   // set for themselves) — not the pet name the recipient may have
   // assigned via partner_nickname.
@@ -1698,7 +1759,7 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   }
 
   const isUnread = !item.read_at;
-  const stamp = relativeKo(item.created_at);
+  const stamp = relativeTime(item.created_at, i18n.language);
   const thumbSrc = thumbnailFor(item, rowCtx);
   const parentMemoText =
     item.kind === "memo_reply" ? rowCtx.parentMemoTextOf(item.memo_id) : null;
@@ -1707,42 +1768,42 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
     switch (item.kind) {
       case "memo_reply":
         return {
-          label: "답글 · 回复",
+          label: pick("답글", "回复"),
           color: "text-indigo-600",
         };
       case "memo_thread":
         return {
-          label: "메모 · 留言",
+          label: pick("메모", "留言"),
           color: "text-sky-600",
         };
       case "memo":
         return {
-          label: "메모 수정 · 改备注",
+          label: pick("메모 수정", "改备注"),
           color: "text-sky-600",
         };
       case "food":
         return {
-          label: "메뉴 · 菜品",
+          label: pick("메뉴", "菜品"),
           color: "text-amber-600",
         };
       case "place":
         return {
-          label: "새 장소 · 新地点",
+          label: pick("새 장소", "新地点"),
           color: "text-emerald-600",
         };
       case "rating":
         return {
-          label: "별점 · 打分",
+          label: pick("별점", "打分"),
           color: "text-yellow-600",
         };
       case "revisit":
         return {
-          label: "또 갈래 · 想再去",
+          label: pick("또 갈래", "想再去"),
           color: "text-pink-600",
         };
       case "reaction":
         return {
-          label: "이모지 · 表情",
+          label: pick("이모지", "表情"),
           color: "text-rose-600",
         };
     }
@@ -1837,21 +1898,26 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
 
 // Match the relative-time formatter used by MemoComment so the inbox
 // reads with the same vocabulary as the comment threads it links to.
-function relativeKo(iso: string): string {
+function relativeTime(iso: string, language: string): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
   const diffSec = Math.max(0, Math.round((Date.now() - t) / 1000));
-  if (diffSec < 60) return "방금 전";
+  if (diffSec < 60) return pickLanguage(language, "방금 전", "刚刚");
   const min = Math.floor(diffSec / 60);
-  if (min < 60) return `${min}분 전`;
+  if (min < 60) return pickLanguage(language, `${min}분 전`, `${min}分钟前`);
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}시간 전`;
+  if (hr < 24) return pickLanguage(language, `${hr}시간 전`, `${hr}小时前`);
   const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}일 전`;
-  return new Date(t).toLocaleDateString("ko-KR", {
+  if (day < 7) return pickLanguage(language, `${day}일 전`, `${day}天前`);
+  const koDate = new Date(t).toLocaleDateString("ko-KR", {
     month: "short",
     day: "numeric",
   });
+  const zhDate = new Date(t).toLocaleDateString("zh-CN", {
+    month: "short",
+    day: "numeric",
+  });
+  return pickLanguage(language, koDate, zhDate);
 }
 
 // Re-export the bell icon as a small hook+component pair so the home
