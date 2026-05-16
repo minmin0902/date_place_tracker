@@ -51,6 +51,23 @@ maintain a wishlist, and compare tastes over time.
   storage value to a "내가 / 짝꿍" label, it'll render swapped for the
   partner viewer.
 
+## Current local setup (2026-05-16)
+
+- Active local workspace is `/Users/minjookim/Projects/date-place-tracker`.
+  The old `/Users/minjookim/Desktop/date-place-tracker` copy was removed
+  because Desktop/iCloud file-provider behavior made local copy/clone and
+  dev-server work hang or feel unstable.
+- Local dev command:
+  `npm run dev -- --host 127.0.0.1 --port 5173`
+- `.env.local` is local-only and was copied into the Projects workspace.
+  Do not commit it.
+- Vercel deploys from GitHub, so moving/removing a local folder does not
+  affect production. Push to GitHub for Vercel to pick up changes.
+- The removed Desktop copy had one old `wip-isolation` stash touching
+  `FilterSheet.tsx` and `NotificationsPage.tsx`. It was from the bilingual
+  split work and is considered obsolete because the current main branch has
+  the later, cleaner language-mode implementation.
+
 ## Major features built (rough chronology)
 
 Read the git log for full detail; this is just the map.
@@ -82,6 +99,28 @@ Read the git log for full detail; this is just the map.
   couple unlink, etc.
 - RouletteModal: source toggle (간곳 / 가고싶은곳 / 모두), category +
   city dropdowns, 운명의 룰렛 spin button.
+
+### Recent UX / performance decisions
+- Language mode is split as `ko / zh / bi`. In `ko`, Korean-only labels
+  should render; in `zh`, Chinese-only labels should render; `bi` keeps the
+  bilingual labels. Use `pickLanguage(language, ko, zh)` for one-off labels
+  that are not already in i18next.
+- Notifications aggregate reaction noise and prioritize higher-signal events
+  like memo replies, direct memo activity, ratings, and revisit changes.
+  Reaction labels should stay short (`이모지` / `表情`) and should link back
+  to the specific place/food/memo context when available.
+- `MediaThumb` tracks already-painted image/video URLs and fades only first
+  paint. This prevents photos from flashing white when scrolling down and
+  back up. Do not replace it with raw `<img>` in list-heavy surfaces.
+- `SmoothLink` warms route chunks and nearby preview images on touch/hover.
+  Keep page transitions light; avoid heavyweight shared transitions that
+  delay clicks or break browser back scroll restoration.
+- HomePage progressive rendering starts at 10 items and adds 6 at a time.
+  This is intentionally slower than large batches because it keeps scrolling
+  steadier on mobile.
+- SettingsPage profile card now shows each person's bio, pet-name context,
+  and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
+  move those facts back into detached compare-style cards.
 
 ### Forms / pickers
 - `PlaceCategoryPicker` (shared) — `GroupedMultiSelect` + freeform
@@ -198,6 +237,20 @@ See `src/index.css` near `.animate-fade-up`.
 `tsc -b` (used by Vercel) enforces `noUnusedLocals`. **Always run
 `npm run build` before claiming done**, not just type-check. Caught
 multiple shipped breakages (e.g., `acd6a18`).
+
+### Vite dependency discovery / localhost infinite loading
+
+**Symptom**: `npm run dev` says Vite is ready, but localhost sits on an
+infinite loading screen or throws browser-console errors like "does not
+provide an export named 'default'" for CJS-only transitive deps.
+
+**Cause**: `optimizeDeps.noDiscovery: true` with an empty `include` list
+prevented Vite from prebundling dependencies such as `void-elements`,
+`html-parse-stringify`, and `use-sync-external-store/shim`.
+
+**Fix that works**: keep Vite's default dependency discovery ON. Do not
+reintroduce `noDiscovery: true`. Keep the explicit safety-net include list
+in `vite.config.ts` unless a future Vite upgrade proves it unnecessary.
 
 ### Viewer-perspective columns
 
