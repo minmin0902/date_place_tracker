@@ -5,6 +5,15 @@ making non-trivial changes — the **Pitfalls** section in particular records
 specific bugs that have already burned us, with the fixes that actually worked.
 Do not re-introduce a pattern listed there without explicit reason.
 
+**Keep this file current.** Whenever you make a change that contradicts a
+section here — swapping out a library, removing a feature, reversing a
+performance decision, changing a convention — update the relevant section
+in the same change. Stale CLAUDE.md is worse than missing CLAUDE.md: it
+sends future you (and Claude) chasing patterns that no longer exist.
+If you're unsure whether something is "documented enough to need
+updating," grep this file for the symbol/concept; if it's mentioned, it
+needs to match reality before you commit.
+
 ## What this app is
 
 Bilingual (한국어 + 中文) mobile-first PWA for couples to log restaurants,
@@ -412,13 +421,52 @@ text. See `e3970ab` for the actual diff.
 category 'bar') still serves food, so filtering by
 `placeCategories.includes('bar')` leaks non-drink items (charcuterie,
 appetizers) into a 술 ranking. To pull "actual drinks" use the FOOD
-category: `foodCategories.includes('drink')`. Same logic when
-isolating any food type (main, side, dessert) — don't take the place's
-category as a proxy.
+category. Same logic when isolating any food type (main, side,
+dessert) — don't take the place's category as a proxy.
+
+Specifically `drink` vs `liquor`: FOOD_CATEGORIES splits 음료 into:
+- `drink` (🥤 음료수 · 饮品) — non-alcoholic
+- `liquor` (🍷 술 · 酒) — alcohol
+
+A 술 랭킹 must filter on `foodCategories.includes('liquor')`, NOT
+`'drink'` (would drag in iced americanos) and NOT
+`placeCategories.includes('bar')` (would drag in 안주). Earlier
+iterations got this wrong twice — `12e8aa0` was the final fix that
+introduced the `liquor` key.
 
 `ComparePage`'s Row type carries BOTH `placeCategories` and
 `foodCategories` so view filters can pick the right axis. When adding
 a new view here, decide upfront which axis the filter rides on.
+
+In the food-category picker UI the two live under a 음료 group
+(`FoodFormPage` + `FilterSheet` `FoodCategorySection`) — visually
+grouped, semantically distinct.
+
+### ComparePage rows builder ≠ booze scan
+
+`rows` useMemo in `ComparePage.tsx` builds the common dataset for
+명예의전당 / 입맛격돌 / 여긴패스 and intentionally drops:
+- Solo-eater foods (`f.eater !== "both"` / `is_solo`) — can't compare
+  what only one person ate.
+- Foods missing either partner's rating (`my_rating == null ||
+  partner_rating == null`).
+
+These exclusions are correct for couple-comparison views. They are
+WRONG for 술 랭킹 — user wanted every liquor-tagged drink to surface
+regardless of solo / partial rating (someone might log a solo cocktail
+or skip rating). So `boozeSorted` runs its OWN scan over
+`places.foods` filtered only by `getCategories(f).includes("liquor")`;
+null ratings substitute as 0 and naturally sink to the bottom.
+
+The outer empty-state guard on the fame tab also has a booze
+exception: if `boozeSorted.length > 0` the guard passes even when
+`filteredRows` is empty, so the FameViewToggle stays reachable. See
+`1b90d4c`.
+
+If you add a similar "include everything in this category regardless
+of eater/rating" view in the future, mirror the booze pattern (own
+scan, own empty exception) rather than trying to relax the global
+`rows` filters.
 
 ### Raw float renders show 16-digit ugly form
 
@@ -658,22 +706,48 @@ the techniques that stuck:
 - Initial bundle dropped from one ~850KB chunk to ~360KB main +
   per-route chunks.
 
-### Virtualization
-HomePage's timeline view uses `useWindowVirtualizer` from
-`@tanstack/react-virtual` — see `VirtualTimeline`. Only viewport +
-overscan (6) rows are in DOM regardless of total count.
-- `scrollMargin = container.offsetTop` so virtualizer knows where its
-  slice begins relative to scrollY.
-- `measureElement` handles variable row heights.
-- `isLast` uses the full list length, not the virtualized subset, so
-  the connector line drops correctly on the actual last item.
+### Virtualization & long-list strategy
 
-Grid + menu layouts use `ExpandableList` (initial=20 + 더보기 button)
-— virtualization overkill for those.
+The two heavy lists use opposite strategies on purpose.
 
-NotificationsPage is NOT virtualized; relies on caps (14-day window +
-500 row safety + per-row React.memo) for performance. If row count
-grows further we'll need to virtualize.
+**HomePage timeline — progressive load, mounted forever (NOT
+virtualized).** Earlier code window-virtualized via
+`useWindowVirtualizer`, but commit `1610e36` removed it. Reason: photos
+flickered on scroll-back because cards were unmounted, remounted, and
+re-decoded. Current shape (`useProgressiveItems` in `HomePage.tsx`):
+- `HOME_INITIAL_VISIBLE = 10`, `HOME_LOAD_BATCH = 10`. Sentinel +
+  IntersectionObserver triggers a `+10` setState when visible.
+- `rootMargin: "900px 0px 2400px"` — bottom margin generous so the
+  next batch is mounted + images are decoding well before the user
+  reaches the sentinel ("더 불러오는 중" spinner shouldn't appear under
+  normal scroll speed).
+- Once mounted, cards stay mounted for the session — image decode cache
+  survives scroll-back.
+- `TimelineItemImpl` outer div uses
+  `[content-visibility:auto] [contain-intrinsic-size:auto_280px]` so
+  off-screen cards are skipped for layout/paint by the browser. Mount
+  is preserved (so decode cache stays); only the paint cost goes away.
+  280px is an estimated card height; once a card is rendered, `auto`
+  reuses the measured height.
+- Limit is persisted to `sessionStorage` per filter signature
+  (`HOME_PROGRESSIVE_KEY_PREFIX`) so back-navigation restores how far
+  the user had loaded.
+
+Grid + menu layouts on HomePage use the same `useProgressiveItems`
+hook (separate `progressiveMenus` instance) — same rationale, no
+virtualization.
+
+`ExpandableList` (initial=20 + 더보기 button) is used on `ComparePage`
+ranking lists — not on HomePage anymore.
+
+**NotificationsPage — IS virtualized.** Inverted from earlier — uses
+`useWindowVirtualizer` on the 14-day / 500-row capped feed because
+each row is cheap (no images) so unmount/remount has no decode cost,
+and the row count is large enough that DOM count actually matters.
+
+If you add a third heavy surface, decide upfront which axis is the
+bottleneck: image decode (favor mounted + content-visibility) or DOM
+count alone (favor virtualization).
 
 ### useDeferredValue / useTransition
 - HomePage filter inputs (`query`, `listFilter`, `viewMode`,
@@ -701,8 +775,46 @@ grows further we'll need to virtualize.
 - Videos use `preload="metadata"` so the first frame paints but the
   clip body doesn't download until play.
 
+### Upload pipeline (current state + planned optimizations)
+
+**Current shape** (`src/components/PhotoUploader.tsx` → `uploadPhoto`
+in `src/hooks/usePlaces.ts`):
+- Files are uploaded SEQUENTIALLY (`for...of` with `await`). Picking 4
+  photos = 4 round-trips serialized.
+- No client-side compression — raw camera-roll file (often 5–12 MB on
+  modern phones) goes straight to Supabase Storage.
+- No client-side preview — UI stays in `busy` state until every file
+  finishes, then re-renders with remote URLs.
+- Single `supabase.storage.from(PHOTO_BUCKET).upload(path, file, …)`
+  call — no resumable / chunked upload.
+
+**Planned wins** (in priority order — user-acknowledged but not yet
+shipped):
+1. **Image compression before upload** — `browser-image-compression`
+   (~10KB gzip) to ~1–2 MB at ~2000px long-edge. 3–5× faster uploads,
+   imperceptible quality loss for thumbnail/lightbox usage. SKIP for
+   videos (in-browser ffmpeg.wasm is too heavy for phones).
+2. **Parallel uploads** — `Promise.all` over selected files. Cap
+   concurrency at 3 on mobile so we don't saturate the connection.
+3. **Optimistic preview** — `URL.createObjectURL(file)` for instant
+   thumbnail in the picker grid; replace with the remote URL once the
+   upload resolves.
+
+If implementing, watch out for:
+- Compression must be skipped for `video/*` mimetypes — only compress
+  `image/*`. The current 200MB/60s video gate in `media-validation.ts`
+  stays.
+- HEIC/HEIF from iPhones — `browser-image-compression` auto-converts
+  via canvas, so output is JPEG. Make sure the contentType written to
+  Supabase reflects the OUTPUT, not the input.
+- Don't compress when the file is already small (<500KB threshold)
+  — compression for compression's sake adds CPU + risk.
+- Optimistic blob URLs must be `URL.revokeObjectURL`'d on unmount /
+  after replacement to avoid leaks.
+
 ### Bundle deps audited
-- `@tanstack/react-virtual` (~5KB) for VirtualTimeline.
+- `@tanstack/react-virtual` (~5KB) — used by NotificationsPage row
+  virtualization (HomePage no longer virtualizes; see above).
 - No image gallery library — `MediaLightbox` is hand-rolled.
 
 ---
