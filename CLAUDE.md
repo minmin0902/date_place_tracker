@@ -5,6 +5,10 @@ making non-trivial changes — the **Pitfalls** section in particular records
 specific bugs that have already burned us, with the fixes that actually worked.
 Do not re-introduce a pattern listed there without explicit reason.
 
+For Codex / other coding agents: root `AGENTS.md` exists only to point you
+here. Read this file first, then code. If you learn a new "don't do this
+again" lesson, add it here in the same commit.
+
 **Keep this file current.** Whenever you make a change that contradicts a
 section here — swapping out a library, removing a feature, reversing a
 performance decision, changing a convention — update the relevant section
@@ -91,20 +95,28 @@ Read the git log for full detail; this is just the map.
   etc.) + tab strip for 명예의전당 / 입맛격돌 / 여긴패스. Each tab has
   per-restaurant / per-menu views (fame additionally has 집밥별); ranks
   shown.
-- MapPage: per-place pins with revisit teardrop.
+- MapPage: per-place pins with revisit teardrop. Top legend chips focus
+  the matching marker groups (`去过`, `二刷`, `想去`, `我家`); keep the
+  legend compact and wrapped within the viewport.
 - NotificationsPage: in-app inbox + push subscription, deep-links into
   the relevant place.
 - ProfileEditPage: dual nicknames + 한줄 + 좋아하는/싫어하는 + avatar.
-- SettingsPage: language toggle, profile entry, password change,
-  couple unlink, etc.
+- SettingsPage: dual profile card (each person's bio / pet-name context /
+  cannot-eat chips), my Top 3, and collapsed app / couple-home / account
+  sections for language, push notifications, home address, password, sign-out.
 - RouletteModal: source toggle (간곳 / 가고싶은곳 / 모두), category +
   city dropdowns, 운명의 룰렛 spin button.
 
 ### Recent UX / performance decisions
-- Language mode is split as `ko / zh / bi`. In `ko`, Korean-only labels
-  should render; in `zh`, Chinese-only labels should render; `bi` keeps the
-  bilingual labels. Use `pickLanguage(language, ko, zh)` for one-off labels
-  that are not already in i18next.
+- Language mode is split as `ko / zh / bi`, with Chinese (`zh`) as the
+  default first-load mode. In `ko`, Korean-only labels should render; in
+  `zh`, Chinese-only labels should render; `bi` keeps the bilingual labels.
+  Use `pickLanguage(language, ko, zh)` for one-off labels that are not
+  already in i18next.
+- Do not leave mixed `한국어 · 中文` labels in `ko` or `zh` mode. The language
+  split was applied across `FilterSheet`, `NotificationsPage`, `SettingsPage`,
+  map legend, top tabs, and category chips after repeated feedback that
+  "완벽분리" mattered.
 - Notifications aggregate reaction noise and prioritize higher-signal events
   like memo replies, direct memo activity, ratings, and revisit changes.
   Reaction labels should stay short (`이모지` / `表情`) and should link back
@@ -118,6 +130,17 @@ Read the git log for full detail; this is just the map.
 - HomePage progressive rendering starts at 10 items and adds 6 at a time.
   This is intentionally slower than large batches because it keeps scrolling
   steadier on mobile.
+- Home tab behavior is intentional: tapping Home from another tab queues a
+  return to the saved Home scroll position; tapping Home again while already
+  on Home scrolls to top; tapping again at top refreshes. Do not change this
+  back to "Home always jumps to top".
+- Refresh controls are route-scoped. Home refresh invalidates only the data
+  Home renders; Map/Compare have isolated refresh controls; the Google Map
+  canvas has `data-no-pull-refresh` so dragging the map never triggers pull
+  refresh.
+- The custom app scrollbar is `AppScrollIndicator`, scoped visually below
+  the header and above the bottom nav. Do not let the browser scrollbar run
+  through the PageHeader/발자취 area on desktop-width testing.
 - SettingsPage profile card now shows each person's bio, pet-name context,
   and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
   move those facts back into detached compare-style cards.
@@ -429,7 +452,14 @@ force-remounts the entire route tree on POP — kills cached state +
 fights scroll restoration. The previous pretty `.animate-fade-up`
 keyed remount was removed for exactly this reason.
 
-See `src/components/AppShell.tsx` `ScrollManager`.
+Home bottom-tab behavior is layered on top of this: `queueHomeNavRestore()`
+marks a Home navigation from another tab so Home restores its saved list
+position instead of jumping top. Active Home reselect emits
+`HOME_NAV_RESELECT_EVENT`; HomePage scrolls to top if `scrollY > 24`, and
+refreshes only when already at top. This is the app-like behavior the user
+asked for after repeated regressions.
+
+See `src/components/AppShell.tsx` `ScrollManager` and `src/lib/navEvents.ts`.
 
 ### vh vs dvh for full-height pages
 
@@ -596,14 +626,20 @@ Per-row `useReactions` = 30+ round trips on mount. Solution:
 If the RPC migration hasn't shipped, the provider detects `bulk.isError`
 and renders `{children}` raw, so consumers transparently fall back.
 
-### Quick reactions set is fixed
+### Quick reactions + full emoji picker
 
-`QUICK_REACTIONS = ["❤️", "😘", "😋", "🥹", "🔥", "👍"]`. The
-expand picker tried as a 24-grid in one experiment; **inside narrow
-columns (memo thread) the grid wrapped to a tall single column** —
-ugly. The popover is now a horizontal pill row with just the 6
-quick reactions. Don't re-introduce the extended grid without a
-fixed-width portal/popover layout.
+`QUICK_REACTIONS = ["❤️", "😘", "😋", "🥹", "🔥", "👍"]`. The row is
+collapsed by default: existing reactions render first, then a smile trigger.
+Tap the smile to open the six quick reactions inline; the trailing `+` opens
+`emoji-picker-react` inside the shared `BottomSheet` so users can choose any
+native emoji. Keep the default six visible only after the smile trigger — the
+user explicitly did not want every memo to show the whole strip up front.
+
+Old experiments to avoid:
+- A 24-grid inline picker wrapped into a tall single column inside narrow memo
+  columns.
+- A text input that summoned the OS keyboard; it allowed language keyboards and
+  felt wrong. The current bottom-sheet emoji picker is the accepted pattern.
 
 ### Reaction picker click-outside on touch
 
@@ -756,6 +792,11 @@ the techniques that stuck:
   time the user taps a tab the chunk is usually warm — no Suspense
   flash.
 - `preloadRouteForPath(path)` warms a specific route on hover/intent.
+  `SmoothLink` calls it on touch/hover and also preloads the first few
+  preview images for the destination.
+- Suspense fallbacks are intentionally tiny toasts inside `AppShell`, not a
+  full-screen loading shell. Route chunks should feel like the current shell
+  is waiting, not like the app disappeared.
 - Initial bundle dropped from one ~850KB chunk to ~360KB main +
   per-route chunks.
 
@@ -768,12 +809,14 @@ virtualized).** Earlier code window-virtualized via
 `useWindowVirtualizer`, but commit `1610e36` removed it. Reason: photos
 flickered on scroll-back because cards were unmounted, remounted, and
 re-decoded. Current shape (`useProgressiveItems` in `HomePage.tsx`):
-- `HOME_INITIAL_VISIBLE = 10`, `HOME_LOAD_BATCH = 10`. Sentinel +
-  IntersectionObserver triggers a `+10` setState when visible.
+- `HOME_INITIAL_VISIBLE = 10`, `HOME_LOAD_BATCH = 6`. Sentinel +
+  IntersectionObserver triggers a small `+6` setState when visible so image
+  decode/render work is spread out instead of arriving in one large burst.
 - `rootMargin: "900px 0px 1200px"` — preloads the next batch ~1200px
   before the user reaches the sentinel.
 - Once mounted, cards stay mounted for the session — image decode cache
-  survives scroll-back.
+  survives scroll-back. `MediaThumb` also remembers painted URLs, so even if
+  a list re-renders the image does not flash white before repaint.
 - Limit is persisted to `sessionStorage` per filter signature
   (`HOME_PROGRESSIVE_KEY_PREFIX`) so back-navigation restores how far
   the user had loaded.
@@ -801,8 +844,9 @@ each row is cheap (no images) so unmount/remount has no decode cost,
 and the row count is large enough that DOM count actually matters.
 
 If you add a third heavy surface, decide upfront which axis is the
-bottleneck: image decode (favor mounted + content-visibility) or DOM
-count alone (favor virtualization).
+bottleneck: image decode (favor progressive mounted lists and stable media
+caches) or DOM count alone (favor virtualization). Only revisit
+`content-visibility` after measuring stable-height rows.
 
 ### useDeferredValue / useTransition
 - HomePage filter inputs (`query`, `listFilter`, `viewMode`,
@@ -827,8 +871,11 @@ count alone (favor virtualization).
 ### Images
 - `MediaThumb` `<img>` defaults to `loading="lazy"` + `decoding="async"`
   so 50+ imgs on a place page don't all GET concurrently.
-- Videos use `preload="metadata"` so the first frame paints but the
-  clip body doesn't download until play.
+- Video thumbnails in `MediaThumb` use `videoPreviewUrl(src)` (`#t=0.001`)
+  + `preload="auto"`, muted, playsInline, and a painted-video cache so
+  mobile Safari/Chrome actually paint the first frame instead of a blank
+  box. Composer previews may still use `metadata` where full preview is not
+  needed.
 
 ### Upload pipeline (current state + planned optimizations)
 
