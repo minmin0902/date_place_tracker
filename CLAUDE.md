@@ -717,21 +717,23 @@ flickered on scroll-back because cards were unmounted, remounted, and
 re-decoded. Current shape (`useProgressiveItems` in `HomePage.tsx`):
 - `HOME_INITIAL_VISIBLE = 10`, `HOME_LOAD_BATCH = 10`. Sentinel +
   IntersectionObserver triggers a `+10` setState when visible.
-- `rootMargin: "900px 0px 2400px"` — bottom margin generous so the
-  next batch is mounted + images are decoding well before the user
-  reaches the sentinel ("더 불러오는 중" spinner shouldn't appear under
-  normal scroll speed).
+- `rootMargin: "900px 0px 1200px"` — preloads the next batch ~1200px
+  before the user reaches the sentinel.
 - Once mounted, cards stay mounted for the session — image decode cache
   survives scroll-back.
-- `TimelineItemImpl` outer div uses
-  `[content-visibility:auto] [contain-intrinsic-size:auto_280px]` so
-  off-screen cards are skipped for layout/paint by the browser. Mount
-  is preserved (so decode cache stays); only the paint cost goes away.
-  280px is an estimated card height; once a card is rendered, `auto`
-  reuses the measured height.
 - Limit is persisted to `sessionStorage` per filter signature
   (`HOME_PROGRESSIVE_KEY_PREFIX`) so back-navigation restores how far
   the user had loaded.
+
+**Don't add `content-visibility: auto` to TimelineItem.** Tried
+2026-05-15: paired with `contain-intrinsic-size: auto 280px`. In
+practice scroll got *slower*, not faster. Likely because card heights
+vary widely (300–700px+ depending on photos / memo preview / chip
+count) so the intrinsic-size estimate was constantly wrong, forcing
+re-layout every time a card entered the viewport. The cost of those
+re-layouts outweighed the saved paint on a list this size. If you ever
+revisit, measure with the React profiler before re-shipping, and only
+do it on a list with stable card heights.
 
 Grid + menu layouts on HomePage use the same `useProgressiveItems`
 hook (separate `progressiveMenus` instance) — same rationale, no

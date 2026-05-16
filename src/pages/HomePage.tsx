@@ -1727,12 +1727,7 @@ function useProgressiveItems<T>(items: T[], storageKey: string) {
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();
       },
-      // Bottom margin generous so a new batch is mounted + images
-      // start decoding well before the user reaches the sentinel —
-      // they should never see the "더 불러오는 중" spinner under normal
-      // scroll speed. Combined with content-visibility on TimelineItem,
-      // keeping these cards mounted is cheap.
-      { rootMargin: "900px 0px 2400px" }
+      { rootMargin: "900px 0px 1200px" }
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -1863,13 +1858,7 @@ function TimelineItemImpl({
             : `${categoryEmojiOf(c)} ${c}`
         );
   return (
-    // content-visibility:auto lets the browser skip layout/paint for
-    // off-screen cards while keeping them mounted (so image decode
-    // cache survives — see commit 1610e36 for why we don't unmount).
-    // contain-intrinsic-size reserves an estimated height so the
-    // scrollbar stays stable; once a card has been measured, `auto`
-    // keeps reusing the real height.
-    <div className="relative pl-6 pb-6 [content-visibility:auto] [contain-intrinsic-size:auto_280px]">
+    <div className="relative pl-6 pb-6">
       {!isLast && (
         <div
           className={`absolute left-[11px] top-6 bottom-0 w-0.5 ${theme.line}`}
