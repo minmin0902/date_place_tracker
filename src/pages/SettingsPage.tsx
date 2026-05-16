@@ -321,7 +321,7 @@ export default function SettingsPage() {
             least 3 to make the badges meaningful and a top-3 list non-
             trivial). */}
         {couple && tasteStats.sampleSize >= 3 && (
-          <div className="card p-5 space-y-4">
+          <div className="card p-4 space-y-3">
             <div className="flex items-center gap-2">
               <span className="p-1.5 rounded-full bg-peach-100 text-peach-500">
                 🧬
@@ -340,69 +340,59 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Average rating headline + role (별점 요정 / 깐깐징어 /
-                비등). Shows my number alongside the partner's so the
-                badge isn't just self-referential. */}
-            <div className="grid grid-cols-2 gap-2">
-              <PersonStatCell
+            {/* Average rating compare row — single divided line, no
+                role badge (already on the avatars above) and no per-cell
+                bg/border. Just the two numbers side by side. */}
+            <div className="grid grid-cols-2 divide-x divide-cream-100">
+              <PersonAvgCell
                 tone="peach"
-                label={(() => {
-                  const me =
-                    meProfileQuery.data?.nickname?.trim() || "나";
-                  return `${me} 평균 · ${me}的平均`;
-                })()}
+                label={
+                  meProfileQuery.data?.nickname?.trim() || "나"
+                }
                 avg={tasteStats.myAvg}
-                role={tasteStats.myRole}
               />
-              <PersonStatCell
+              <PersonAvgCell
                 tone="rose"
-                label={(() => {
-                  const partner =
-                    meProfileQuery.data?.partner_nickname?.trim() ||
-                    partnerProfileQuery.data?.nickname?.trim() ||
-                    "짝꿍";
-                  return `${partner} 평균 · ${partner}的平均`;
-                })()}
+                label={
+                  meProfileQuery.data?.partner_nickname?.trim() ||
+                  partnerProfileQuery.data?.nickname?.trim() ||
+                  "짝꿍"
+                }
                 avg={tasteStats.partnerAvg}
-                role={tasteStats.partnerRole}
               />
             </div>
 
-            {/* Most-logged category — quick "what cuisine defines us"
-                summary. Falls back gracefully if no built-in cat dominates. */}
+            {/* Most-logged category — single inline line, no card. */}
             {tasteStats.topCategory && (
-              <div className="bg-cream-50 border border-cream-200/60 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-2xl flex-shrink-0">
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-base flex-shrink-0">
                   {categoryEmojiOf(tasteStats.topCategory)}
                 </span>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider">
-                    주력 카테고리 · 主力类别
-                  </p>
-                  <p className="text-[13px] font-bold text-ink-900 break-keep">
+                <p className="text-[12px] text-ink-700 break-keep min-w-0 flex-1">
+                  <span className="font-bold text-ink-900">
                     {t(`category.${tasteStats.topCategory}`)} 매니아 · 控
-                    <span className="text-ink-400 font-number ml-1.5 text-[11px]">
-                      ({tasteStats.topCount}회·次)
-                    </span>
-                  </p>
-                </div>
+                  </span>
+                  <span className="text-ink-400 font-number ml-1.5 text-[10px]">
+                    {tasteStats.topCount}회·次
+                  </span>
+                </p>
               </div>
             )}
 
             {/* Lifetime Top 3 — pinned by my own rating descending. */}
             {tasteStats.myTop3.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider mb-2">
+              <div className="pt-1">
+                <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider mb-1.5">
                   🏆 내 인생 메뉴 Top 3 · 我的TOP3
                 </p>
-                <div className="space-y-1.5">
+                <div>
                   {tasteStats.myTop3.map((r, idx) => (
                     <Link
                       key={r.foodId}
                       to={`/places/${r.placeId}`}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-peach-50 border border-amber-200/60 hover:from-amber-100 hover:to-peach-100 transition"
+                      className="flex items-center gap-2 px-1 py-1.5 rounded-lg hover:bg-cream-50 transition-colors"
                     >
-                      <span className="text-[15px] font-number font-black text-amber-500 flex-shrink-0 w-5 text-center">
+                      <span className="text-[13px] font-number font-black text-amber-500 flex-shrink-0 w-4 text-center">
                         {idx + 1}
                       </span>
                       <div className="min-w-0 flex-1">
@@ -415,9 +405,6 @@ export default function SettingsPage() {
                       </div>
                       <span className="text-[12px] font-number font-bold text-peach-500 flex-shrink-0">
                         {r.mine.toFixed(1)}
-                        <span className="text-ink-400 text-[9px] ml-0.5">
-                          /5
-                        </span>
                       </span>
                     </Link>
                   ))}
@@ -745,42 +732,30 @@ function roleBadgeFor(role: "fairy" | "strict" | "tie") {
   } as const;
 }
 
-// Inline avg+role tile for the Taste DNA card. Mirrors PersonStatTile
-// from ComparePage but trimmed (no expand state, no big avg number) to
-// fit the smaller settings card.
-function PersonStatCell({
+// Compact "name + avg" cell for the Taste DNA card's compare row.
+// Intentionally borderless / bg-less — sits in a `divide-x` grid so the
+// only separator is a hairline. Role badge lives on the profile avatar
+// above; surfacing it again here would just repeat the same info.
+function PersonAvgCell({
   tone,
   label,
   avg,
-  role,
 }: {
   tone: "peach" | "rose";
   label: string;
   avg: number;
-  role: "fairy" | "strict" | "tie";
 }) {
-  const personCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
-  const accentCls =
-    tone === "peach"
-      ? "bg-peach-50 border-peach-200"
-      : "bg-rose-50 border-rose-200";
-  const badge = roleBadgeFor(role);
+  const labelCls = tone === "peach" ? "text-peach-500" : "text-rose-500";
   return (
-    <div
-      className={`rounded-xl p-2 border ${accentCls} flex flex-col items-center text-center shadow-sm`}
-    >
-      <span className={`text-[10px] font-bold ${personCls}`}>{label}</span>
-      <span className="text-[18px] font-number font-black text-ink-900 leading-none mt-0.5">
-        {avg.toFixed(2)}
-        <span className="text-[9px] text-ink-400 font-bold ml-0.5 tracking-wider">
-          /5
-        </span>
-      </span>
+    <div className="flex flex-col items-center text-center px-2">
       <span
-        className={`mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${badge.cls}`}
+        className={`text-[10px] font-bold uppercase tracking-wider truncate max-w-full ${labelCls}`}
       >
-        <span>{badge.emoji}</span>
-        <span>{badge.label}</span>
+        {label}
+      </span>
+      <span className="text-[20px] font-number font-black text-ink-900 leading-none mt-1">
+        {avg.toFixed(2)}
+        <span className="text-[10px] text-ink-400 font-bold ml-0.5">/5</span>
       </span>
     </div>
   );
