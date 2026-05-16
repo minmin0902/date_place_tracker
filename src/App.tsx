@@ -81,6 +81,17 @@ function LoadingScreen({ note, error }: { note: string; error?: string }) {
   );
 }
 
+function RouteLoadingToast() {
+  return (
+    <div className="fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+0.75rem)] z-[80] -translate-x-1/2 pointer-events-none">
+      <div className="flex items-center gap-2 rounded-full border border-cream-200 bg-white/90 px-3 py-2 text-xs font-bold text-ink-500 shadow-soft backdrop-blur">
+        <span className="h-3 w-3 rounded-full border-2 border-coral-300 border-t-transparent animate-spin" />
+        加载中
+      </div>
+    </div>
+  );
+}
+
 function Gate() {
   const { user, loading } = useAuth();
   const coupleQuery = useCouple();
@@ -112,12 +123,10 @@ function Gate() {
   }
 
   return (
-    // Suspense fallback uses the same loading shell as Gate's auth
-    // check so the visual feel during a lazy chunk fetch matches the
-    // initial auth boot. Mounted ONCE at the route container level so
-    // every lazy route shares it — no need to wrap each <Route> in
-    // its own boundary.
-    <Suspense fallback={<LoadingScreen note="잠시만요… · 加载中…" />}>
+    // Route chunks are warmed on idle and link touch/hover. If a chunk
+    // still misses, keep the fallback tiny so navigation does not feel
+    // like the whole app disappeared for a beat.
+    <Suspense fallback={<RouteLoadingToast />}>
       <Routes>
         {/* Every authenticated route lives under AppShell so the bottom nav
             stays visible on place/food detail & form pages too. */}

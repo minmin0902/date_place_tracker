@@ -1,4 +1,5 @@
 import {
+  Suspense,
   type CSSProperties,
   useCallback,
   useEffect,
@@ -78,6 +79,17 @@ function isHomeRoute(key: string) {
 
 function isDetailRoute(key: string) {
   return key.startsWith("/places/");
+}
+
+function OutletLoadingToast() {
+  return (
+    <div className="flex min-h-[35vh] items-start justify-center pt-4">
+      <div className="flex items-center gap-2 rounded-full border border-cream-200 bg-white/90 px-3 py-2 text-xs font-bold text-ink-500 shadow-soft backdrop-blur">
+        <span className="h-3 w-3 rounded-full border-2 border-coral-300 border-t-transparent animate-spin" />
+        加载中
+      </div>
+    </div>
+  );
 }
 
 function leavingScrollY(existing: number, current: number) {
@@ -334,7 +346,9 @@ export function AppShell() {
             query subscription to re-establish. React Router naturally
             re-renders Outlet's children when the route changes; we
             don't need the explicit key. */}
-        <Outlet />
+        <Suspense fallback={<OutletLoadingToast />}>
+          <Outlet />
+        </Suspense>
       </main>
       <AppScrollIndicator routeKey={routeKey} />
       {/* z-20 sits ABOVE the timeline dots (z-[1]) so they don't peek

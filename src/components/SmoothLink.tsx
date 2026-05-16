@@ -1,5 +1,6 @@
 import { Link, type LinkProps } from "react-router-dom";
 import { preloadImages as warmImages } from "@/lib/mediaPreload";
+import { preloadRouteForPath } from "@/lib/routePreload";
 
 type SmoothLinkProps = LinkProps & {
   preloadImages?: readonly (string | null | undefined)[];
@@ -14,6 +15,11 @@ function pulseRouteHint() {
   }, 220);
 }
 
+function pathFromTo(to: LinkProps["to"]) {
+  if (typeof to === "string") return to;
+  return `${to.pathname ?? ""}${to.search ?? ""}${to.hash ?? ""}`;
+}
+
 export function SmoothLink({
   onClick,
   onPointerEnter,
@@ -22,6 +28,7 @@ export function SmoothLink({
   ...props
 }: SmoothLinkProps) {
   const warm = () => {
+    preloadRouteForPath(pathFromTo(props.to));
     if (preloadImages?.length) warmImages(preloadImages);
   };
 

@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { isVideoUrl, videoPreviewUrl } from "@/lib/utils";
+import { hasPreloadedImage, markImagePreloaded } from "@/lib/mediaPreload";
 import { MediaLightbox } from "./MediaLightbox";
+
+const paintedVideoCache = new Set<string>();
 
 // Drop-in replacement for `<img>` that flips to a `<video>` when the
 // URL extension is a video format. Kept tiny on purpose so it can
@@ -48,6 +51,17 @@ export function MediaThumb({
 }) {
   const [open, setOpen] = useState(false);
   const isVideo = isVideoUrl(src);
+  const [loaded, setLoaded] = useState(() =>
+    isVideo ? paintedVideoCache.has(src) : hasPreloadedImage(src)
+  );
+
+  useEffect(() => {
+    setLoaded(isVideo ? paintedVideoCache.has(src) : hasPreloadedImage(src));
+  }, [isVideo, src]);
+
+  const mediaClassName = `${className} transition-opacity duration-200 ease-out ${
+    loaded ? "opacity-100" : "opacity-0"
+  }`;
   // When clickable, the wrapper opens a lightbox — kill native
   // controls on the inline thumb (the lightbox provides them) and
   // surface a play badge so users know the clip is interactive.
@@ -61,11 +75,16 @@ export function MediaThumb({
           + playsInline keep iOS from auto-fullscreening the thumbnail. */}
       <video
         src={videoPreviewUrl(src)}
-        className={className}
+        className={mediaClassName}
         preload="auto"
         muted
         playsInline
         controls={inlineControls}
+        onLoadedData={() => {
+          paintedVideoCache.add(src);
+          setLoaded(true);
+        }}
+        onError={() => setLoaded(true)}
       />
       {showBadge && (
         <span className="absolute bottom-1 left-1 inline-flex items-center gap-0.5 bg-ink-900/70 text-white text-[9px] font-bold px-1 py-0.5 rounded pointer-events-none">
@@ -86,9 +105,14 @@ export function MediaThumb({
     <img
       src={src}
       alt={alt ?? ""}
-      className={className}
+      className={mediaClassName}
       loading={loading}
       decoding="async"
+      onLoad={() => {
+        markImagePreloaded(src);
+        setLoaded(true);
+      }}
+      onError={() => setLoaded(true)}
     />
   );
 

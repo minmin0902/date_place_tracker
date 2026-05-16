@@ -90,7 +90,7 @@ type ListFilter =
 type ListLayout = "list" | "grid" | "menu";
 
 const HOME_INITIAL_VISIBLE = 10;
-const HOME_LOAD_BATCH = 10;
+const HOME_LOAD_BATCH = 6;
 const HOME_PROGRESSIVE_KEY_PREFIX = "home:progressive-limit:v1";
 
 // Persist filter state across navigation in this tab session — so
@@ -1889,7 +1889,7 @@ function TimelineItemImpl({
                 alt={place.name}
                 className="w-full h-full object-cover"
                 clickable={false}
-                loading="eager"
+                loading="lazy"
               />
             ) : isHome ? (
               "🍳"
@@ -2091,7 +2091,7 @@ function MenuRowImpl({
             alt={food.name}
             className="w-full h-full object-cover"
             clickable={false}
-            loading="eager"
+            loading="lazy"
           />
         ) : isHome ? (
           "🍳"
@@ -2233,7 +2233,7 @@ function TimelineGridItemImpl({
             className="w-full h-full object-cover"
             showPlayBadge
             clickable={false}
-            loading="eager"
+            loading="lazy"
           />
         ) : (
           <span className="text-6xl drop-shadow-sm">
