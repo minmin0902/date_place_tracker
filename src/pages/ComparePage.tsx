@@ -825,14 +825,14 @@ export default function ComparePage() {
           <DiningSegment
             active={diningFilter === "out"}
             onClick={() => startTransition(() => setDiningFilter("out"))}
-            label={pick("🍽️ 외식", "🍽️ 探店")}
+            label={<IconLabel icon="🍽️" text={pick("외식", "探店")} />}
             activeText="text-peach-500"
             activeBorder="border-peach-100"
           />
           <DiningSegment
             active={diningFilter === "home"}
             onClick={() => startTransition(() => setDiningFilter("home"))}
-            label={pick("🍳 집밥", "🍳 私房菜")}
+            label={<IconLabel icon="🍳" text={pick("집밥", "私房菜")} />}
             activeText="text-teal-600"
             activeBorder="border-teal-100"
           />
@@ -2522,7 +2522,7 @@ function DiningSegment({
 }: {
   active: boolean;
   onClick: () => void;
-  label: string;
+  label: React.ReactNode;
   activeText: string;
   activeBorder: string;
 }) {
@@ -2538,6 +2538,23 @@ function DiningSegment({
     >
       {label}
     </button>
+  );
+}
+
+function IconLabel({
+  icon,
+  text,
+}: {
+  icon: string;
+  text: string;
+}) {
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1">
+      <span className="flex-shrink-0 leading-none" aria-hidden>
+        {icon}
+      </span>
+      <span className="min-w-0 truncate">{text}</span>
+    </span>
   );
 }
 

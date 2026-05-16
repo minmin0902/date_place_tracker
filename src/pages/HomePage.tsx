@@ -969,13 +969,25 @@ export default function HomePage() {
             active={tab === "timeline"}
             accent="ink"
             onClick={() => startTransition(() => setTab("timeline"))}
-            label={pick("발자취 👣", "我们的足迹 👣")}
+            label={
+              <IconLabel
+                icon="👣"
+                text={pick("발자취", "我们的足迹")}
+                iconPosition="end"
+              />
+            }
           />
           <TabButton
             active={tab === "wishlist"}
             accent="peach"
             onClick={() => startTransition(() => setTab("wishlist"))}
-            label={pick("위시리스트 📝", "种草清单 📝")}
+            label={
+              <IconLabel
+                icon="📝"
+                text={pick("위시리스트", "种草清单")}
+                iconPosition="end"
+              />
+            }
             count={wishlist?.length}
           />
         </div>
@@ -1036,14 +1048,14 @@ export default function HomePage() {
               <SegmentButton
                 active={diningFilter === "out"}
                 onClick={() => startTransition(() => setDiningFilter("out"))}
-                label={pick("🍽️ 외식", "🍽️ 探店")}
+                label={<IconLabel icon="🍽️" text={pick("외식", "探店")} />}
                 activeText="text-peach-500"
                 activeBorder="border-peach-100"
               />
               <SegmentButton
                 active={diningFilter === "home"}
                 onClick={() => startTransition(() => setDiningFilter("home"))}
-                label={pick("🍳 집밥", "🍳 私房菜")}
+                label={<IconLabel icon="🍳" text={pick("집밥", "私房菜")} />}
                 activeText="text-teal-600"
                 activeBorder="border-teal-100"
               />
@@ -1494,7 +1506,7 @@ function SegmentButton({
 }: {
   active: boolean;
   onClick: () => void;
-  label: string;
+  label: React.ReactNode;
   activeText: string;
   activeBorder: string;
 }) {
@@ -1528,7 +1540,7 @@ function TabButton({
   active: boolean;
   accent: "rose" | "peach" | "ink";
   onClick: () => void;
-  label: string;
+  label: React.ReactNode;
   count?: number;
 }) {
   const underline =
@@ -1551,7 +1563,7 @@ function TabButton({
         active ? activeText : "text-ink-400 hover:text-ink-700"
       }`}
     >
-      <span className="inline-block max-w-full truncate align-middle">
+      <span className="inline-flex max-w-full min-w-0 items-center justify-center align-middle">
         {label}
       </span>
       {count != null && count > 0 && (
@@ -1565,6 +1577,29 @@ function TabButton({
         />
       )}
     </button>
+  );
+}
+
+function IconLabel({
+  icon,
+  text,
+  iconPosition = "start",
+}: {
+  icon: string;
+  text: string;
+  iconPosition?: "start" | "end";
+}) {
+  const iconNode = (
+    <span className="flex-shrink-0 leading-none" aria-hidden>
+      {icon}
+    </span>
+  );
+  const textNode = <span className="min-w-0 truncate">{text}</span>;
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1">
+      {iconPosition === "start" ? iconNode : textNode}
+      {iconPosition === "start" ? textNode : iconNode}
+    </span>
   );
 }
 
