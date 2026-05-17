@@ -224,15 +224,6 @@
       right: 0.75rem;
     }
   }
-  .render-smooth-card {
-    /* Keep expensive card paints (shadow, image, badges) scoped to the
-       card itself. This is safer than content-visibility for this app:
-       scroll restoration depends on stable document height, and
-       content-visibility can estimate offscreen heights differently.
-       Do not apply this to panels that can host fixed/portal-like UI
-       such as emoji sheets; paint containment can clip those children. */
-    contain: layout paint style;
-  }
   .route-link-pressed .render-smooth-card {
     filter: saturate(1.02);
   }
