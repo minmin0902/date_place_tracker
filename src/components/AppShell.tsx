@@ -1,5 +1,6 @@
 import {
   Suspense,
+  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -281,6 +282,16 @@ function NavItem({
         if (to !== "/") return;
         if (pathname === "/") {
           event.preventDefault();
+          if (window.scrollY > 24) {
+            const reduceMotion = window.matchMedia(
+              "(prefers-reduced-motion: reduce)"
+            ).matches;
+            window.scrollTo({
+              top: 0,
+              behavior: reduceMotion ? "auto" : "smooth",
+            });
+            return;
+          }
           notifyHomeNavReselect();
           return;
         }
@@ -374,43 +385,12 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
-  const visualRef = useRef({
+  const [state, setState] = useState({
     visible: false,
     active: false,
     thumbHeight: 0,
     thumbY: 0,
   });
-
-  const applyVisual = useCallback(
-    (next: {
-      visible: boolean;
-      active: boolean;
-      thumbHeight: number;
-      thumbY: number;
-    }) => {
-      const track = trackRef.current;
-      const prev = visualRef.current;
-      if (
-        prev.visible === next.visible &&
-        prev.active === next.active &&
-        Math.abs(prev.thumbHeight - next.thumbHeight) < 0.5 &&
-        Math.abs(prev.thumbY - next.thumbY) < 0.5
-      ) {
-        return;
-      }
-
-      visualRef.current = next;
-      if (!track) return;
-      track.dataset.visible = next.visible ? "true" : "false";
-      track.dataset.active = next.active ? "true" : "false";
-      track.style.setProperty(
-        "--app-scroll-thumb-height",
-        `${next.thumbHeight}px`
-      );
-      track.style.setProperty("--app-scroll-thumb-y", `${next.thumbY}px`);
-    },
-    []
-  );
 
   const update = useCallback((active = false) => {
     const track = trackRef.current;
@@ -437,13 +417,24 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
       ? Math.max(0, Math.min(1, progress)) * (trackHeight - thumbHeight)
       : 0;
 
-    applyVisual({
-      visible,
-      active: visible && (active || visualRef.current.active),
-      thumbHeight,
-      thumbY,
+    setState((prev) => {
+      const next = {
+        visible,
+        active: visible && (active || prev.active),
+        thumbHeight,
+        thumbY,
+      };
+      if (
+        prev.visible === next.visible &&
+        prev.active === next.active &&
+        Math.abs(prev.thumbHeight - next.thumbHeight) < 0.5 &&
+        Math.abs(prev.thumbY - next.thumbY) < 0.5
+      ) {
+        return prev;
+      }
+      return next;
     });
-  }, [applyVisual]);
+  }, []);
 
   const scheduleUpdate = useCallback(
     (active = false) => {
@@ -453,7 +444,7 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
         }
         idleTimerRef.current = window.setTimeout(() => {
           idleTimerRef.current = null;
-          applyVisual({ ...visualRef.current, active: false });
+          setState((prev) => ({ ...prev, active: false }));
         }, 700);
       }
       if (rafRef.current !== null) return;
@@ -496,9 +487,15 @@ function AppScrollIndicator({ routeKey }: { routeKey: string }) {
     <div
       ref={trackRef}
       className="app-scroll-indicator"
-      data-visible="false"
-      data-active="false"
+      data-visible={state.visible}
+      data-active={state.active}
       aria-hidden="true"
+      style={
+        {
+          "--app-scroll-thumb-height": `${state.thumbHeight}px`,
+          "--app-scroll-thumb-y": `${state.thumbY}px`,
+        } as CSSProperties
+      }
     >
       <div className="app-scroll-indicator__thumb" />
     </div>

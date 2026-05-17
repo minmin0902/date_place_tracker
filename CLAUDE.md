@@ -129,10 +129,10 @@ Read the git log for full detail; this is just the map.
 - `MediaThumb` tracks already-painted image/video URLs and fades only first
   paint. This prevents photos from flashing white when scrolling down and
   back up. Do not replace it with raw `<img>` in list-heavy surfaces.
-- `render-smooth-card` is the lightweight scroll-performance class for
-  repeated list/card surfaces. It uses paint/layout containment to keep
-  image/shadow repaint cost local. Do not apply it to panels that can host
-  fixed children or bottom sheets; containment can clip those descendants.
+- `render-smooth-card` is only a lightweight marker for route-link pressed
+  polish. Do not add `contain` / broad paint containment to Home cards again:
+  like the earlier `content-visibility` attempt, it looked promising in code
+  but made real-device scrolling feel worse.
 - `SmoothLink` warms route chunks and nearby preview images on touch/hover.
   Keep page transitions light; avoid heavyweight shared transitions that
   delay clicks or break browser back scroll restoration.
@@ -149,9 +149,9 @@ Read the git log for full detail; this is just the map.
   refresh.
 - The custom app scrollbar is `AppScrollIndicator`, scoped visually below
   the header and above the bottom nav. Do not let the browser scrollbar run
-  through the PageHeader/발자취 area on desktop-width testing. Its thumb
-  position is updated with DOM style variables, not React state, so it does
-  not re-render AppShell on every scroll frame.
+  through the PageHeader/발자취 area on desktop-width testing. Keep the
+  React-state implementation unless profiling proves otherwise; the DOM-style
+  variable optimization made the scroll feel/color timing regress on device.
 - SettingsPage profile card uses a clean two-tier layout: avatars + heart on
   top, compact per-person fact tiles below. Each tile can show bio, nickname
   context, and up to three cannot-eat chips. Do not move those facts back into
@@ -178,20 +178,22 @@ after a few rounds of trying, reverting, and tightening.
   back to keeping already-seen cards mounted because unmount/remount made
   photos flash white when scrolling back. Current pattern: 10 initial items,
   add 6 at a time, memoized rows, `MediaThumb`, and stable DOM.
-- **Do not resurrect broad `content-visibility` on Home**: `f47d928` added
-  content-visibility plus a larger preload margin; `165213f` reverted it
-  because real-device feel got slower. Current safer compromise is
-  `render-smooth-card` paint/layout containment only on repeated cards, never
-  on panels that can host fixed/bottom-sheet children.
+- **Do not resurrect broad `content-visibility` or card containment on Home**:
+  `f47d928` added content-visibility plus a larger preload margin;
+  `165213f` reverted it because real-device feel got slower. `0b16372` later
+  tried lighter `render-smooth-card` paint containment; that also made scroll
+  feel worse after loading more items and was removed. Keep stable DOM +
+  progressive rendering instead.
 - **Media smoothness**: `a46e34b`, `10eeac6`, and `0b16372` improved the photo
   path by using lazy image loading, async decoding, route/image warmup via
   `SmoothLink`, and `MediaThumb`'s already-painted cache. Do not replace this
   with raw `<img>` or a preload-everything strategy; that makes first load
   heavier and can make scrolling worse.
-- **Custom scroll indicator**: `be0ab65`, `957794d`, `ff490fc`, and `0b16372`
-  fixed it in stages: hide the native page rail, scope the visible indicator
-  below the page header and above bottom nav, then update thumb position with
-  DOM style variables instead of React state on every scroll frame.
+- **Custom scroll indicator**: `be0ab65`, `957794d`, and `ff490fc` fixed it in
+  stages: hide the native page rail and scope the visible indicator below the
+  page header and above bottom nav. `0b16372` tried DOM style variable updates
+  instead of React state; users noticed changed color/timing and worse feel,
+  so keep the previous state-driven implementation.
 - **Route/back scroll restoration**: `f5d360b`, `099ff98`, `9203dbc`,
   `6b6e3ba`, and `25de4e3` fixed repeated "detail -> back goes top" bugs.
   Keep AppShell's `ScrollManager`, manual `history.scrollRestoration`, saved
