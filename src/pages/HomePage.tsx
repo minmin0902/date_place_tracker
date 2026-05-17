@@ -315,8 +315,27 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
+  const refreshOnNextHomeTap = useRef(false);
+  const refreshArmTimer = useRef<number | null>(null);
 
   useEffect(() => {
+    const clearRefreshArm = () => {
+      refreshOnNextHomeTap.current = false;
+      if (refreshArmTimer.current !== null) {
+        window.clearTimeout(refreshArmTimer.current);
+        refreshArmTimer.current = null;
+      }
+    };
+    const armRefreshOnNextTap = () => {
+      refreshOnNextHomeTap.current = true;
+      if (refreshArmTimer.current !== null) {
+        window.clearTimeout(refreshArmTimer.current);
+      }
+      refreshArmTimer.current = window.setTimeout(() => {
+        refreshOnNextHomeTap.current = false;
+        refreshArmTimer.current = null;
+      }, 3500);
+    };
     const scrollTop = () => {
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
@@ -327,15 +346,21 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
       });
     };
     const onHomeReselect = () => {
+      if (refreshOnNextHomeTap.current || window.scrollY <= 24) {
+        clearRefreshArm();
+        void onManualRefresh();
+        return;
+      }
       if (window.scrollY > 24) {
+        armRefreshOnNextTap();
         scrollTop();
         return;
       }
-      void onManualRefresh();
     };
     window.addEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
     return () => {
       window.removeEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
+      clearRefreshArm();
     };
   }, [onManualRefresh]);
 
