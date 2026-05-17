@@ -167,6 +167,91 @@ Read the git log for full detail; this is just the map.
   rectangular-ish. Avoid returning to oversized pill buttons or large cardy
   dropdown blocks in this sheet.
 
+### Commit-history lessons / already tried
+
+These notes come from scanning recent commits. They are the settled answers
+after a few rounds of trying, reverting, and tightening.
+
+- **Home scroll performance**: keep the feed progressively rendered, not fully
+  virtualized. `1b43e59` tried heavier Home virtualization; `1610e36` moved
+  back to keeping already-seen cards mounted because unmount/remount made
+  photos flash white when scrolling back. Current pattern: 10 initial items,
+  add 6 at a time, memoized rows, `MediaThumb`, and stable DOM.
+- **Do not resurrect broad `content-visibility` on Home**: `f47d928` added
+  content-visibility plus a larger preload margin; `165213f` reverted it
+  because real-device feel got slower. Current safer compromise is
+  `render-smooth-card` paint/layout containment only on repeated cards, never
+  on panels that can host fixed/bottom-sheet children.
+- **Media smoothness**: `a46e34b`, `10eeac6`, and `0b16372` improved the photo
+  path by using lazy image loading, async decoding, route/image warmup via
+  `SmoothLink`, and `MediaThumb`'s already-painted cache. Do not replace this
+  with raw `<img>` or a preload-everything strategy; that makes first load
+  heavier and can make scrolling worse.
+- **Custom scroll indicator**: `be0ab65`, `957794d`, `ff490fc`, and `0b16372`
+  fixed it in stages: hide the native page rail, scope the visible indicator
+  below the page header and above bottom nav, then update thumb position with
+  DOM style variables instead of React state on every scroll frame.
+- **Route/back scroll restoration**: `f5d360b`, `099ff98`, `9203dbc`,
+  `6b6e3ba`, and `25de4e3` fixed repeated "detail -> back goes top" bugs.
+  Keep AppShell's `ScrollManager`, manual `history.scrollRestoration`, saved
+  route scroll map, rAF retry-on-POP, and Home tab reselection behavior. Do not
+  add a keyed route wrapper or a global ScrollToTop component.
+- **Refresh jank**: `bf126a6`, `ab5f0b8`, `480051d`, and `c1e4ad6` moved the
+  app from broad/global invalidation toward route-scoped refresh controls.
+  Keep current data visible during refresh; show the small spinner/check
+  feedback instead of clearing lists or remounting large trees.
+- **Notifications final shape**: the inbox went through strong place/day
+  grouping, parent/child bundle cards, comment previews, date headers, and
+  reaction aggregation (`049e247`, `d518b5f`, `9d53e19`, `e47edd3`,
+  `d64f02f`, `d0b6061`, `138948e`). The settled version is simpler:
+  independent rows by event, date sections, aligned thumbnails, unread dot,
+  grouped low-priority reactions, and high-priority memo/reply/rating rows.
+  Do not bring back ActivityBundle-style parent/child cards.
+- **Notification deep links**: `af2f01c` and `138948e` fixed deep links by
+  jumping directly to the target context and consuming the hash once. Do not
+  use smooth scroll for notification entry; the visible "page opens then
+  slides down" motion felt messy, and leaving the hash active caused later
+  memo/reply updates to snap users back to the old notification target.
+- **Reaction picker final shape**: `74c5653`, `bf164e6`, `74f4104`,
+  `a37d154`, `897b41d`, `5701d9b`, and `3f06226` converged on this: collapsed
+  smile trigger -> quick reaction strip -> trailing plus opens a fitted
+  bottom-sheet emoji picker. Custom reactions must be emojis only; stale
+  reaction notifications should disappear when the underlying reaction is
+  deleted. Avoid always-expanded quick bars and plain text emoji inputs.
+- **Lightbox / media viewer**: `afbd60b` added gallery swipe, double-tap, and
+  pinch zoom; `5dc3138` changed slide transitions to a carousel pattern for
+  smoother movement. Keep that native-feeling interaction model instead of
+  rebuilding with a heavy modal animation.
+- **Language split**: `b4f1748`, `cf8d78b`, `576385a`, `205189f`, and
+  `a0a2d51` settled `ko / zh / bi`, with Chinese default. `ko` should be
+  Korean-only, `zh` Chinese-only, and `bi` bilingual. Some icons disappeared
+  during language cleanup and were restored later; keep meaningful emoji/icon
+  signals while keeping text language-separated.
+- **Map controls**: `6fffce3`, `02b750f`, `56130a1`, `1e5beaf`, and `f53d35d`
+  fixed the map area in stages: compact wrapped legend, Chinese-only map
+  labels where requested, legend chips focus matching marker groups, map drag
+  must not trigger pull-to-refresh, and the map refresh button should use the
+  same smooth spinner/check feedback as other pages.
+- **Settings simplification**: `6818d14` tried putting compare-style Taste DNA
+  into settings, then `097ecc2` reverted it. `2a68422`, `10eeac6`, and
+  `ad70295` settled on compact profile cards, per-person cannot-eat facts
+  under each profile, Top 3 inside the profile section, and collapsed setting
+  groups. Keep comparison analytics on ComparePage, not SettingsPage.
+- **Filter / top controls**: `ad70295` made Home's filter/search row compact
+  and connected, and `FilterSheet` chips smaller. Keep controls dense and
+  practical; avoid large detached search buttons, oversized pills, or empty
+  gaps between stats/title/filter rows.
+- **Compare rankings and categories**: `d2ad028`, `12e8aa0`, `1b90d4c`, and
+  `68b0224` clarified that rankings must use food-level categories where the
+  question is about foods/drinks, not restaurant-level categories. Also clamp
+  numeric display through formatting helpers so float precision never leaks
+  into scores.
+- **Memo/reply/reaction architecture**: `458cfe6`, `7406548`, and `7f50893`
+  added reactions, flat visual threading with arbitrary-depth `parent_id`,
+  batched reaction reads, and memoized comment rows. Keep `ReactionProvider` /
+  `reactions_for_place` for place detail; do not reintroduce per-row reaction
+  queries across the whole place tree.
+
 ### Forms / pickers
 - `PlaceCategoryPicker` (shared) — `GroupedMultiSelect` + freeform
   custom-tag input. Used by PlaceFormPage AND WishlistFormPage.
