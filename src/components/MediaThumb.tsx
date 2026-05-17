@@ -54,12 +54,19 @@ export function MediaThumb({
   const [loaded, setLoaded] = useState(() =>
     isVideo ? paintedVideoCache.has(src) : hasPreloadedImage(src)
   );
+  const [skipFade, setSkipFade] = useState(() =>
+    isVideo ? paintedVideoCache.has(src) : hasPreloadedImage(src)
+  );
 
   useEffect(() => {
-    setLoaded(isVideo ? paintedVideoCache.has(src) : hasPreloadedImage(src));
+    const alreadyPainted = isVideo
+      ? paintedVideoCache.has(src)
+      : hasPreloadedImage(src);
+    setLoaded(alreadyPainted);
+    setSkipFade(alreadyPainted);
   }, [isVideo, src]);
 
-  const mediaClassName = `${className} transition-opacity duration-200 ease-out ${
+  const mediaClassName = `${className} ${skipFade ? "" : "transition-opacity duration-200 ease-out"} ${
     loaded ? "opacity-100" : "opacity-0"
   }`;
   // When clickable, the wrapper opens a lightbox — kill native
