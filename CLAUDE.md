@@ -251,7 +251,14 @@ after a few rounds of trying, reverting, and tightening.
   added reactions, flat visual threading with arbitrary-depth `parent_id`,
   batched reaction reads, and memoized comment rows. Keep `ReactionProvider` /
   `reactions_for_place` for place detail; do not reintroduce per-row reaction
-  queries across the whole place tree.
+  queries across the whole place tree. Reply-to-reply composers must not add
+  another visual indent; keep descendants visually flat so the input does not
+  become too narrow on mobile.
+- **Horizontal overflow / page shake**: menu forms and segmented controls must
+  not create viewport-width overflow. Keep form wrappers `min-w-0` /
+  `overflow-x-hidden`, use grid columns for 3-way toggles, and truncate long
+  nickname-based labels. The root/html/body also hide horizontal overflow so
+  iOS cannot rubber-band the page sideways.
 
 ### Forms / pickers
 - `PlaceCategoryPicker` (shared) — `GroupedMultiSelect` + freeform

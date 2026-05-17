@@ -23,8 +23,8 @@ const MAX_COMMENT_PHOTOS = 2;
 //
 // Each top-level memo carries its own ReactionRow + [답글] button.
 // Tapping reply opens a slim sub-composer (text-only) right under that
-// memo. Children render indented; 1 level deep only — the reply button
-// is hidden on rows that already have parent_id.
+// memo. Descendants can reply again, but the UI flattens them to one
+// visual indent so reply-to-reply does not become too narrow on mobile.
 //
 // The "primary" memo (places.memo / foods.memo typed in the create
 // form) is rendered separately by the caller — this component only
@@ -141,6 +141,8 @@ export function MemoThread({
   }, [childrenByParent]);
 
   const isSm = size === "sm";
+  const actionIndent = isSm ? "ml-8" : "ml-10";
+  const replyIndent = isSm ? "ml-5" : "ml-7";
 
   async function handlePickFiles(files: FileList | null) {
     if (!files || !files.length || !couple) return;
@@ -243,7 +245,7 @@ export function MemoThread({
                     body — i.e. under the avatar gutter, indented by
                     the same avatar-width + gap so the actions hang
                     off the text column, not the avatar. */}
-                <div className={`${isSm ? "ml-10" : "ml-11"} mt-1 flex items-center justify-between gap-2`}>
+                <div className={`${actionIndent} mt-1 flex items-center justify-between gap-2`}>
                   <ReactionRow
                     target={{ kind: "memo", id: m.id }}
                     size="sm"
@@ -278,7 +280,7 @@ export function MemoThread({
                 rich attachments. Indented to align with the replies
                 row it will produce. */}
             {replyingHere && couple && user && (
-              <div className={`${isSm ? "ml-10" : "ml-11"}`}>
+              <div className={replyIndent}>
                 <ReplyComposer
                   parentId={m.id}
                   onSend={(text) => void onSendReply(m.id, text)}
@@ -295,7 +297,7 @@ export function MemoThread({
                 Depth grows in the DB (memos.parent_id chain) but
                 stays visually flat to keep mobile width usable. */}
             {descendants.length > 0 && (
-              <div className={`${isSm ? "ml-10" : "ml-11"} space-y-2 pt-1`}>
+              <div className={`${replyIndent} space-y-2 pt-1`}>
                 {descendants.map((r) => {
                   const rAuthor = r.author_id === user?.id;
                   const rReplyingHere = replyingTo === r.id;
@@ -317,7 +319,7 @@ export function MemoThread({
                             photoUrls={r.photo_urls}
                             size="sm"
                           />
-                          <div className="ml-10 mt-1 flex items-center justify-between gap-2">
+                          <div className={`${actionIndent} mt-1 flex items-center justify-between gap-2`}>
                             <ReactionRow
                               target={{ kind: "memo", id: r.id }}
                               size="sm"
@@ -353,7 +355,7 @@ export function MemoThread({
                           the DB chain; the visual stays flat thanks
                           to gatherDescendants flattening above. */}
                       {rReplyingHere && couple && user && (
-                        <div className="ml-10">
+                        <div>
                           <ReplyComposer
                             parentId={r.id}
                             onSend={(text) =>
@@ -519,17 +521,19 @@ function ReplyComposer({
   }
 
   return (
-    <div className="flex items-start gap-2 bg-cream-50/60 border border-cream-100 rounded-2xl px-2.5 py-2">
-      <CornerDownRight className="w-3.5 h-3.5 text-ink-300 mt-2 flex-shrink-0" />
-      <textarea
-        className="input-base min-h-[36px] flex-1 text-[12px] resize-none !py-1.5 !px-2"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="답글… · 回复…"
-        rows={1}
-        autoFocus
-      />
-      <div className="flex items-center gap-1 flex-shrink-0">
+    <div className="rounded-2xl border border-cream-100 bg-cream-50/60 px-2.5 py-2">
+      <div className="flex min-w-0 items-start gap-2">
+        <CornerDownRight className="w-3.5 h-3.5 text-ink-300 mt-2 flex-shrink-0" />
+        <textarea
+          className="input-base min-h-[38px] min-w-0 flex-1 resize-none text-[12px] !px-2 !py-1.5"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="답글… · 回复…"
+          rows={1}
+          autoFocus
+        />
+      </div>
+      <div className="mt-1.5 flex items-center justify-end gap-1">
         <button
           type="button"
           onClick={() => {
