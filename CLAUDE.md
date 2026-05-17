@@ -668,9 +668,12 @@ The inbox is dense — restructure history was painful. Current shape:
 ### Context resolver
 - `usePlaces(coupleId)` loads once at page level. `ContextResolver`
   exposes `placeNameOf / foodNameOf / placeMemoOf / foodMemoOf /
-  placePhotoOf / foodPhotoOf / memoTextOf / parentMemoTextOf /
-  memoPhotoOf / foodPlaceIdOf / foodPlaceNameOf`. Provided via
-  React Context so 50+ rows share lookup without re-fetching.
+  placePhotoOf / foodPhotoOf / foodRatingOf / memoTextOf /
+  parentMemoTextOf / memoPhotoOf / foodPlaceIdOf / foodPlaceNameOf`.
+  Provided via React Context so 50+ rows share lookup without
+  re-fetching. `foodRatingOf(foodId, actorId)` must use
+  `ratingsForViewer(food, actorId).myRating` so rating notifications
+  show the actual score the actor gave.
 - `useNotificationMemoLookup` fetches memo bodies for visible notif
   rows (and their parent memos for replies) in two batched IN-clauses.
   Feeds memoTextOf / parentMemoTextOf.
@@ -682,25 +685,32 @@ useMemo:
 1. **DateHeader** rows emitted whenever the calendar day changes
    walking the newest-first feed. Labels: "오늘 / 어제 / M월 D일".
 
-2. **ActivityBundle** cards collapse all events for the same
-   `(place_id, day, actor_id)` in the 전체 filter. Place becomes the
-   header, sub-rows show kind tallies (`🍴 메뉴 N`, `💬 메모/답글 N`,
-   etc.). Reactions are extracted into a separate ReactionBundle.
-   `effectivePlaceId = n.place_id ?? rowContext.foodPlaceIdOf(n.food_id)`
-   keeps food-scoped notifications inside their parent place's card.
+2. **ActivityBundle** cards collapse record-style events for the same
+   `(place_id, day, actor_id)` in the 전체 filter: place creation, menu
+   additions, rating fills, and revisit toggles. Place becomes the
+   header, sub-rows are compact pills (`메뉴 N`, `별점 4.5/5`, etc.).
+   Text comments/replies intentionally stay as detailed single rows;
+   they are higher-signal and easier to miss. Reactions are extracted
+   into a separate ReactionBundle. `effectivePlaceId = n.place_id ??
+   rowContext.foodPlaceIdOf(n.food_id)` keeps food-scoped notifications
+   inside their parent place's card.
 
 3. **ReactionBundle** rows group emoji reactions by
    `(actor, target signature)` Instagram-style ("❤️😘 3"). Lives
    alongside ActivityBundles within the date section.
 
 ### Filter behavior
-- "전체" filter: bundling enabled (above).
-- All other chips (`새 기록 / 메모/이모지 / 평점 / 또 갈래`): bundling
-  DISABLED, every notification rendered as a detailed single row.
-  Users in a narrow filter want every event, not a summary.
+- "전체" filter: record bundling + reaction bundling enabled (above),
+  while comments/replies stay detailed.
+- User-facing chips are intentionally short: `전체 / 댓글 / 이모지 / 기록`
+  (`全部 / 留言 / 表情 / 记录`). `기록/记录` contains place, food,
+  rating, and revisit notifications.
+- Narrow filters disable cross-kind bundling because the user has
+  already asked for one surface.
 - Filter chip clicks go through `startTransition(() => setFilter(k))`
   so the chip highlight flips instantly while the heavy list rebuild
-  runs in a transition.
+  runs in a transition. Session-stored legacy filter keys are sanitized
+  back to `all`.
 
 ### Sub-row clickability
 Each sub-row in an ActivityBundle is its own button with its own
@@ -724,22 +734,26 @@ will read "새 기록" misleadingly.
 - NotificationItem bodyLine: kind === "place" shows `item.preview`
   (= place name). Other kinds derive from memo / food / emoji.
 
-### Don't downgrade N=1 bundles
-The bundle layout is preserved even at 1 event so memos/replies always
-show their parent place as a bold header line, not a truncated
-breadcrumb. Previously we collapsed N=1 → flat single row; the user
-hated losing the parent context.
+### Don't downgrade N=1 record bundles
+The bundle layout is preserved even at 1 record-style event in `전체`
+so menu/rating/revisit noise reads as compact place activity instead
+of scattered rows. Comments/replies are not part of this rule anymore;
+they stay detailed single rows.
 
 ### Reaction notifications get the actor's actual emoji
 The trigger puts `preview = new.emoji`, so the inbox preview reads the
 emoji directly without re-fetching the reaction row.
 
-### KindBadge corner badge
+### KindBadge corner badge / unread dot
 Each row's avatar carries a `<KindBadge kind>` in the bottom-right
 corner with a color-coded icon (place=emerald MapPin, food=amber
 Utensils, memo=sky MessageCircle, reply=indigo CornerDownRight,
 reaction=rose Smile, rating=yellow Star, revisit=pink Heart). Plus
 the verb text uses the same color. First-glance type recognition.
+
+Unread state is a single small top-right dot on every row type. Do not
+bring back the old left unread bar or an inline dot column: both made
+thumbnail positions inconsistent across read/unread rows.
 
 ---
 
