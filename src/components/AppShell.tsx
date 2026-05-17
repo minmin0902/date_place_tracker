@@ -282,16 +282,6 @@ function NavItem({
         if (to !== "/") return;
         if (pathname === "/") {
           event.preventDefault();
-          if (window.scrollY > 24) {
-            const reduceMotion = window.matchMedia(
-              "(prefers-reduced-motion: reduce)"
-            ).matches;
-            window.scrollTo({
-              top: 0,
-              behavior: reduceMotion ? "auto" : "smooth",
-            });
-            return;
-          }
           notifyHomeNavReselect();
           return;
         }
