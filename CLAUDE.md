@@ -121,18 +121,9 @@ Read the git log for full detail; this is just the map.
   like memo replies, direct memo activity, ratings, and revisit changes.
   Reaction labels should stay short (`이모지` / `表情`) and should link back
   to the specific place/food/memo context when available.
-- Place/food activity notifications should render as independent rows
-  (`새 장소` / `新地点`, `메뉴 추가` / `添加菜品`) rather than parent/child
-  bundle cards. Notification deep links should jump cleanly to the target
-  context, consume their hash once, and not keep snapping back after the user
-  scrolls elsewhere.
 - `MediaThumb` tracks already-painted image/video URLs and fades only first
   paint. This prevents photos from flashing white when scrolling down and
   back up. Do not replace it with raw `<img>` in list-heavy surfaces.
-- `render-smooth-card` is only a lightweight marker for route-link pressed
-  polish. Do not add `contain` / broad paint containment to Home cards again:
-  like the earlier `content-visibility` attempt, it looked promising in code
-  but made real-device scrolling feel worse.
 - `SmoothLink` warms route chunks and nearby preview images on touch/hover.
   Keep page transitions light; avoid heavyweight shared transitions that
   delay clicks or break browser back scroll restoration.
@@ -149,118 +140,10 @@ Read the git log for full detail; this is just the map.
   refresh.
 - The custom app scrollbar is `AppScrollIndicator`, scoped visually below
   the header and above the bottom nav. Do not let the browser scrollbar run
-  through the PageHeader/발자취 area on desktop-width testing. Keep the
-  React-state implementation unless profiling proves otherwise; the DOM-style
-  variable optimization made the scroll feel/color timing regress on device.
-- SettingsPage profile card uses a clean two-tier layout: avatars + heart on
-  top, compact per-person fact tiles below. Each tile can show bio, nickname
-  context, and up to three cannot-eat chips. Do not move those facts back into
-  detached compare-style cards or a noisy two-column text dump.
-- SettingsPage Top 3 should stay inside the profile section and should not
-  show the raw sample size count (the old `208`-style number made the card
-  feel noisy without helping the user).
-- HomePage top controls should stay visually dense: the stats card should
-  lead into the feed title without a huge blank gap, and 상세 필터 / 详细筛选
-  plus search should be one connected compact control, not a detached large
-  search square floating on the right. The search input opens just below the
-  top tabs so it still works for both timeline and wishlist tabs.
-- FilterSheet chips and section headers are intentionally compact and
-  rectangular-ish. Avoid returning to oversized pill buttons or large cardy
-  dropdown blocks in this sheet.
-
-### Commit-history lessons / already tried
-
-These notes come from scanning recent commits. They are the settled answers
-after a few rounds of trying, reverting, and tightening.
-
-- **Home scroll performance**: keep the feed progressively rendered, not fully
-  virtualized. `1b43e59` tried heavier Home virtualization; `1610e36` moved
-  back to keeping already-seen cards mounted because unmount/remount made
-  photos flash white when scrolling back. Current pattern: 10 initial items,
-  add 6 at a time, memoized rows, `MediaThumb`, and stable DOM.
-- **Do not resurrect broad `content-visibility` or card containment on Home**:
-  `f47d928` added content-visibility plus a larger preload margin;
-  `165213f` reverted it because real-device feel got slower. `0b16372` later
-  tried lighter `render-smooth-card` paint containment; that also made scroll
-  feel worse after loading more items and was removed. Keep stable DOM +
-  progressive rendering instead.
-- **Media smoothness**: `a46e34b`, `10eeac6`, and `0b16372` improved the photo
-  path by using lazy image loading, async decoding, route/image warmup via
-  `SmoothLink`, and `MediaThumb`'s already-painted cache. Do not replace this
-  with raw `<img>` or a preload-everything strategy; that makes first load
-  heavier and can make scrolling worse.
-- **Custom scroll indicator**: `be0ab65`, `957794d`, and `ff490fc` fixed it in
-  stages: hide the native page rail and scope the visible indicator below the
-  page header and above bottom nav. `0b16372` tried DOM style variable updates
-  instead of React state; users noticed changed color/timing and worse feel,
-  so keep the previous state-driven implementation.
-- **Route/back scroll restoration**: `f5d360b`, `099ff98`, `9203dbc`,
-  `6b6e3ba`, and `25de4e3` fixed repeated "detail -> back goes top" bugs.
-  Keep AppShell's `ScrollManager`, manual `history.scrollRestoration`, saved
-  route scroll map, rAF retry-on-POP, and Home tab reselection behavior. Do not
-  add a keyed route wrapper or a global ScrollToTop component.
-- **Refresh jank**: `bf126a6`, `ab5f0b8`, `480051d`, and `c1e4ad6` moved the
-  app from broad/global invalidation toward route-scoped refresh controls.
-  Keep current data visible during refresh; show the small spinner/check
-  feedback instead of clearing lists or remounting large trees.
-- **Notifications final shape**: the inbox went through strong place/day
-  grouping, parent/child bundle cards, comment previews, date headers, and
-  reaction aggregation (`049e247`, `d518b5f`, `9d53e19`, `e47edd3`,
-  `d64f02f`, `d0b6061`, `138948e`). The settled version is simpler:
-  independent rows by event, date sections, aligned thumbnails, unread dot,
-  grouped low-priority reactions, and high-priority memo/reply/rating rows.
-  Do not bring back ActivityBundle-style parent/child cards.
-- **Notification deep links**: `af2f01c` and `138948e` fixed deep links by
-  jumping directly to the target context and consuming the hash once. Do not
-  use smooth scroll for notification entry; the visible "page opens then
-  slides down" motion felt messy, and leaving the hash active caused later
-  memo/reply updates to snap users back to the old notification target.
-- **Reaction picker final shape**: `74c5653`, `bf164e6`, `74f4104`,
-  `a37d154`, `897b41d`, `5701d9b`, and `3f06226` converged on this: collapsed
-  smile trigger -> quick reaction strip -> trailing plus opens a fitted
-  bottom-sheet emoji picker. Custom reactions must be emojis only; stale
-  reaction notifications should disappear when the underlying reaction is
-  deleted. Avoid always-expanded quick bars and plain text emoji inputs.
-- **Lightbox / media viewer**: `afbd60b` added gallery swipe, double-tap, and
-  pinch zoom; `5dc3138` changed slide transitions to a carousel pattern for
-  smoother movement. Keep that native-feeling interaction model instead of
-  rebuilding with a heavy modal animation.
-- **Language split**: `b4f1748`, `cf8d78b`, `576385a`, `205189f`, and
-  `a0a2d51` settled `ko / zh / bi`, with Chinese default. `ko` should be
-  Korean-only, `zh` Chinese-only, and `bi` bilingual. Some icons disappeared
-  during language cleanup and were restored later; keep meaningful emoji/icon
-  signals while keeping text language-separated.
-- **Map controls**: `6fffce3`, `02b750f`, `56130a1`, `1e5beaf`, and `f53d35d`
-  fixed the map area in stages: compact wrapped legend, Chinese-only map
-  labels where requested, legend chips focus matching marker groups, map drag
-  must not trigger pull-to-refresh, and the map refresh button should use the
-  same smooth spinner/check feedback as other pages.
-- **Settings simplification**: `6818d14` tried putting compare-style Taste DNA
-  into settings, then `097ecc2` reverted it. `2a68422`, `10eeac6`, and
-  `ad70295` settled on compact profile cards, per-person cannot-eat facts
-  under each profile, Top 3 inside the profile section, and collapsed setting
-  groups. Keep comparison analytics on ComparePage, not SettingsPage.
-- **Filter / top controls**: `ad70295` made Home's filter/search row compact
-  and connected, and `FilterSheet` chips smaller. Keep controls dense and
-  practical; avoid large detached search buttons, oversized pills, or empty
-  gaps between stats/title/filter rows.
-- **Compare rankings and categories**: `d2ad028`, `12e8aa0`, `1b90d4c`, and
-  `68b0224` clarified that rankings must use food-level categories where the
-  question is about foods/drinks, not restaurant-level categories. Also clamp
-  numeric display through formatting helpers so float precision never leaks
-  into scores.
-- **Memo/reply/reaction architecture**: `458cfe6`, `7406548`, and `7f50893`
-  added reactions, flat visual threading with arbitrary-depth `parent_id`,
-  batched reaction reads, and memoized comment rows. Keep `ReactionProvider` /
-  `reactions_for_place` for place detail; do not reintroduce per-row reaction
-  queries across the whole place tree. Reply-to-reply composers must not add
-  another visual indent; keep descendants visually flat so the input does not
-  become too narrow on mobile.
-- **Horizontal overflow / page shake**: menu forms and segmented controls must
-  not create viewport-width overflow. Keep form wrappers `min-w-0` /
-  `overflow-x-hidden`, use grid columns for 3-way toggles, and truncate long
-  nickname-based labels. The root/html/body also hide horizontal overflow so
-  iOS cannot rubber-band the page sideways.
+  through the PageHeader/발자취 area on desktop-width testing.
+- SettingsPage profile card now shows each person's bio, pet-name context,
+  and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
+  move those facts back into detached compare-style cards.
 
 ### Forms / pickers
 - `PlaceCategoryPicker` (shared) — `GroupedMultiSelect` + freeform
@@ -462,13 +345,6 @@ React Router stamps on the first entry) and falls back to
 
 If you add a new back button outside `PageHeader`, mirror this
 fallback.
-
-PlaceDetailPage consumes hash anchors once per navigation. The effect
-polls for the target, jumps with `behavior: "auto"` (not smooth, to avoid
-visibly sliding down the whole page), highlights it, then removes the
-hash via `history.replaceState`. Do not leave the hash active after the
-first scroll — later memo/reply mutations will re-render the page and
-pull the user back to the old notification target.
 
 ### Wishlist row preservation on form abandonment
 
@@ -792,57 +668,78 @@ The inbox is dense — restructure history was painful. Current shape:
 ### Context resolver
 - `usePlaces(coupleId)` loads once at page level. `ContextResolver`
   exposes `placeNameOf / foodNameOf / placeMemoOf / foodMemoOf /
-  placePhotoOf / foodPhotoOf / foodRatingOf / memoTextOf /
-  parentMemoTextOf / memoPhotoOf / foodPlaceIdOf / foodPlaceNameOf`.
-  Provided via React Context so 50+ rows share lookup without
-  re-fetching. `foodRatingOf(foodId, actorId)` must use
-  `ratingsForViewer(food, actorId).myRating` so rating notifications
-  show the actual score the actor gave.
+  placePhotoOf / foodPhotoOf / memoTextOf / parentMemoTextOf /
+  memoPhotoOf / foodPlaceIdOf / foodPlaceNameOf`. Provided via
+  React Context so 50+ rows share lookup without re-fetching.
 - `useNotificationMemoLookup` fetches memo bodies for visible notif
   rows (and their parent memos for replies) in two batched IN-clauses.
   Feeds memoTextOf / parentMemoTextOf.
 
-### Row Shape
-- **DateHeader** rows emit whenever the calendar day changes walking
-  the newest-first feed. Labels: `오늘 / 어제 / M월 D일`.
-- **NotificationItem** is the default for place, food, memo, reply,
-  rating, and revisit notifications. Keep records as separate rows;
-  do not put menu/rating/revisit under a place parent card. The user
-  found that parent/child shape confusing (`新地点` with `菜品 1`).
-- **ReactionBundle** rows are the only grouped row. Emoji taps against
-  the same place / food / memo collapse Instagram-style because those
-  are low-priority repeated events.
+### Grouping
+Three tiers, all rebuilt on the (visibleItems, filter, rowContext)
+useMemo:
+
+1. **DateHeader** rows emitted whenever the calendar day changes
+   walking the newest-first feed. Labels: "오늘 / 어제 / M월 D일".
+
+2. **ActivityBundle** cards collapse all events for the same
+   `(place_id, day, actor_id)` in the 전체 filter. Place becomes the
+   header, sub-rows show kind tallies (`🍴 메뉴 N`, `💬 메모/답글 N`,
+   etc.). Reactions are extracted into a separate ReactionBundle.
+   `effectivePlaceId = n.place_id ?? rowContext.foodPlaceIdOf(n.food_id)`
+   keeps food-scoped notifications inside their parent place's card.
+
+3. **ReactionBundle** rows group emoji reactions by
+   `(actor, target signature)` Instagram-style ("❤️😘 3"). Lives
+   alongside ActivityBundles within the date section.
 
 ### Filter behavior
-- User-facing chips are intentionally short: `전체 / 댓글 / 이모지 / 기록`
-  (`全部 / 留言 / 表情 / 记录`). `기록/记录` contains place, food,
-  rating, and revisit notifications.
-- Filtering never introduces a parent/child card shape. Narrow filters
-  simply show the matching detailed rows, except reactions which stay
-  grouped by target.
+- "전체" filter: bundling enabled (above).
+- All other chips (`새 기록 / 메모/이모지 / 평점 / 또 갈래`): bundling
+  DISABLED, every notification rendered as a detailed single row.
+  Users in a narrow filter want every event, not a summary.
 - Filter chip clicks go through `startTransition(() => setFilter(k))`
   so the chip highlight flips instantly while the heavy list rebuild
-  runs in a transition. Session-stored legacy filter keys are sanitized
-  back to `all`.
+  runs in a transition.
 
-### Place and rating display
-- `NotificationItem` bodyLine: kind === `place` shows `item.preview`
-  (= place name). `food` shows the menu name, `rating` shows the menu
-  name while the headline includes the score (`별점 4.5/5`, `打分 4.5分`),
-  and memo/reply rows show the memo text.
-- Reactions should still show the reacted target context via the
-  quoted memo/food/place text when available.
+### Sub-row clickability
+Each sub-row in an ActivityBundle is its own button with its own
+scoped deep-link (memo → `#memo-<id>`, food → `#food-<id>`, etc.) and
+its own mark-read scope. Implemented as `<article>` container with
+SIBLING `<button>` elements — nested buttons are invalid HTML.
 
-### KindBadge corner badge / unread dot
+### Header verb
+- Single-kind bundle: use `kindSpec(primaryKind).verb` ("별점 · 打分",
+  "메뉴 추가 · 添加菜品", etc.).
+- Multi-kind bundle: catch-all "새 기록 · 新记录".
+- placeEvent present: always "새 장소 · 新地点".
+
+Don't simplify to a binary placeEvent / else — single-kind bundles
+will read "새 기록" misleadingly.
+
+### Place name display rule
+- ActivityBundleItem header: show `placeName` ONLY when
+  `bundle.placeEvent` is set. Other bundles intentionally hide it —
+  user fed back that always-showing-place was visually noisy.
+- NotificationItem bodyLine: kind === "place" shows `item.preview`
+  (= place name). Other kinds derive from memo / food / emoji.
+
+### Don't downgrade N=1 bundles
+The bundle layout is preserved even at 1 event so memos/replies always
+show their parent place as a bold header line, not a truncated
+breadcrumb. Previously we collapsed N=1 → flat single row; the user
+hated losing the parent context.
+
+### Reaction notifications get the actor's actual emoji
+The trigger puts `preview = new.emoji`, so the inbox preview reads the
+emoji directly without re-fetching the reaction row.
+
+### KindBadge corner badge
 Each row's avatar carries a `<KindBadge kind>` in the bottom-right
 corner with a color-coded icon (place=emerald MapPin, food=amber
 Utensils, memo=sky MessageCircle, reply=indigo CornerDownRight,
 reaction=rose Smile, rating=yellow Star, revisit=pink Heart). Plus
 the verb text uses the same color. First-glance type recognition.
-
-Unread state is a single small top-right dot on every row type. Do not
-bring back the old left unread bar or an inline dot column: both made
-thumbnail positions inconsistent across read/unread rows.
 
 ---
 
@@ -882,9 +779,8 @@ the techniques that stuck:
 - `React.memo` on every heavy leaf that renders inside a long list:
   `MemoComment`, `ReactionRow` (custom comparator on target identity),
   `FoodMemoBlock`, `TimelineItem` / `MenuRow` / `TimelineGridItem` on
-  HomePage, `ReactionBundleItem` / `NotificationItem` on
-  NotificationsPage (custom comparators for id/read/preview or bundle
-  size + unread bit).
+  HomePage, `ActivityBundleItem` / `NotificationItem` on
+  NotificationsPage (custom comparator: id + unread bit + length).
 - Custom comparator pattern when props are rebuilt every parent
   render but the rendered output only depends on a stable shape.
 

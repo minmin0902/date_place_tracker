@@ -386,7 +386,7 @@ export default function FoodFormPage() {
         title={isEdit ? "메뉴 수정 · 修改记录" : "새로운 메뉴 · 记下新菜品"}
         back
       />
-      <form onSubmit={onSubmit} className="min-w-0 overflow-x-hidden px-5 space-y-5 pb-6">
+      <form onSubmit={onSubmit} className="px-5 space-y-5 pb-6">
         <div>
           <label className="block text-sm font-bold mb-1.5 text-ink-700">
             메뉴 이름 · 菜名 *
@@ -425,7 +425,7 @@ export default function FoodFormPage() {
 
         {/* Eater toggle — three options. Both partners can flip it
             (translation handles the perspective swap on save). */}
-        <div className="grid min-w-0 grid-cols-3 gap-1 bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 overflow-hidden">
+        <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60">
           <EaterSegment
             active={viewerEater === "both"}
             onClick={() => setViewerEater("both")}
@@ -460,7 +460,7 @@ export default function FoodFormPage() {
                 선택 안 해도 돼요 · 可不选
               </span>
             </p>
-            <div className="grid min-w-0 grid-cols-3 gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100 overflow-hidden">
+            <div className="flex gap-1 bg-cream-50 p-1 rounded-xl border border-cream-100">
               <FoodChefButton
                 active={chef === "me"}
                 onClick={() => setChef(chef === "me" ? null : "me")}
@@ -673,14 +673,14 @@ function EaterSegment({
     <button
       type="button"
       onClick={onClick}
-      className={`min-w-0 py-2 px-1 rounded-lg transition-all flex flex-col items-center justify-center leading-tight ${
+      className={`flex-1 py-2 px-1 rounded-lg transition-all min-w-0 flex flex-col items-center justify-center leading-tight ${
         active
           ? "bg-white shadow-sm border border-peach-100 text-peach-500"
           : "text-ink-500 hover:text-ink-700"
       }`}
     >
-      <span className="max-w-full truncate text-[12px] font-bold">{label}</span>
-      <span className="mt-0.5 max-w-full truncate text-[10px] font-medium opacity-70">{sub}</span>
+      <span className="text-[12px] font-bold">{label}</span>
+      <span className="text-[10px] opacity-70 font-medium mt-0.5">{sub}</span>
     </button>
   );
 }
@@ -712,17 +712,17 @@ function FoodChefButton({
     <button
       type="button"
       onClick={onClick}
-      className={`min-w-0 py-1.5 px-1 rounded-lg border text-[11px] font-bold flex flex-col items-center gap-0.5 leading-tight transition-all ${
+      className={`flex-1 py-1.5 px-1 rounded-lg border text-[11px] font-bold flex flex-col items-center gap-0.5 leading-tight transition-all min-w-0 ${
         active
           ? `${activeCls} shadow-sm`
           : "border-transparent text-ink-500 hover:text-ink-700"
       }`}
     >
-      <span className="inline-flex max-w-full min-w-0 items-center gap-1 truncate">
+      <span className="inline-flex items-center gap-1 truncate">
         {icon}
         <span className="truncate">{labelKo}</span>
       </span>
-      <span className="max-w-full truncate text-[9px] font-medium opacity-70">
+      <span className="text-[9px] opacity-70 font-medium truncate">
         {labelZh}
       </span>
     </button>

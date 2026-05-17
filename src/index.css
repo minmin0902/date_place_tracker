@@ -25,7 +25,6 @@
     -webkit-text-size-adjust: 100%;
     /* Stop the iOS rubber-band bounce on scroll and on the web page shell. */
     overscroll-behavior-y: none;
-    overflow-x: hidden;
     /* The real scroll container is still window/document because route
        restore, pull refresh, and virtualization all share it. Hide the
        browser rail; AppShell paints a scoped scrollbar inside the app frame. */
@@ -51,14 +50,10 @@
       Roboto, sans-serif;
     font-feature-settings: "ss01", "ss02";
     overscroll-behavior-y: none;
-    overflow-x: hidden;
     scrollbar-width: none;
     ::selection {
       background: #fde2e4;
     }
-  }
-  #root {
-    overflow-x: hidden;
   }
   /* Same chain explicitly tied to the .font-sans utility used by the
      stats / header / detail bento — if something opts back into sans

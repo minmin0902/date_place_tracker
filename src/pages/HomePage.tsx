@@ -315,27 +315,8 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
     justFinished,
     onManualRefresh,
   } = useRefreshControls(refreshAll);
-  const refreshOnNextHomeTap = useRef(false);
-  const refreshArmTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    const clearRefreshArm = () => {
-      refreshOnNextHomeTap.current = false;
-      if (refreshArmTimer.current !== null) {
-        window.clearTimeout(refreshArmTimer.current);
-        refreshArmTimer.current = null;
-      }
-    };
-    const armRefreshOnNextTap = () => {
-      refreshOnNextHomeTap.current = true;
-      if (refreshArmTimer.current !== null) {
-        window.clearTimeout(refreshArmTimer.current);
-      }
-      refreshArmTimer.current = window.setTimeout(() => {
-        refreshOnNextHomeTap.current = false;
-        refreshArmTimer.current = null;
-      }, 3500);
-    };
     const scrollTop = () => {
       const reduceMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)"
@@ -346,21 +327,15 @@ const HomeRefreshControls = memo(function HomeRefreshControls({
       });
     };
     const onHomeReselect = () => {
-      if (refreshOnNextHomeTap.current || window.scrollY <= 24) {
-        clearRefreshArm();
-        void onManualRefresh();
-        return;
-      }
       if (window.scrollY > 24) {
-        armRefreshOnNextTap();
         scrollTop();
         return;
       }
+      void onManualRefresh();
     };
     window.addEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
     return () => {
       window.removeEventListener(HOME_NAV_RESELECT_EVENT, onHomeReselect);
-      clearRefreshArm();
     };
   }, [onManualRefresh]);
 
@@ -976,6 +951,18 @@ export default function HomePage() {
           <HomeRefreshControls refreshAll={refreshAll} />
         </div>
 
+        {showSearch && (
+          <div className="mb-3">
+            <input
+              autoFocus
+              className="input-base"
+              placeholder={pick("이름이나 메모로 검색", "搜索店名或备注")}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
+
         {/* Main tabs */}
         <div className="flex justify-between gap-2 -mx-1">
           <TabButton
@@ -1004,18 +991,6 @@ export default function HomePage() {
             count={wishlist?.length}
           />
         </div>
-
-        {showSearch && (
-          <div className="mt-2.5 mb-1">
-            <input
-              autoFocus
-              className="input-base h-10 rounded-xl text-[13px]"
-              placeholder={pick("이름이나 메모로 검색", "搜索店名或备注")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        )}
       </header>
 
       <main className="px-5 py-5">
@@ -1023,7 +998,7 @@ export default function HomePage() {
           <>
             <StatsDashboard stats={stats} />
 
-            <div className="flex items-center justify-between mt-5 mb-2 px-1 gap-2">
+            <div className="flex items-center justify-between mt-8 mb-3 px-1 gap-2">
               <h2 className="font-sans font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
                 <span>{pick("다녀온 곳", "干饭足迹")}</span>
                 <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
@@ -1062,7 +1037,7 @@ export default function HomePage() {
                 Korean to keep emoji + Chinese only on the dining
                 buttons; the 모두 button is short enough to keep both
                 languages. */}
-            <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-2.5">
+            <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
               <SegmentButton
                 active={diningFilter === "all"}
                 onClick={() => startTransition(() => setDiningFilter("all"))}
@@ -1098,24 +1073,18 @@ export default function HomePage() {
                 (listLayout === "menu" ? foodCategoryFilter.length : 0);
               const isActive = sheetCount > 0;
               return (
-                <div
-                  className={`mb-2.5 flex h-10 overflow-hidden rounded-xl border bg-white text-[12px] font-bold shadow-sm transition ${
-                    isActive || showSearch
-                      ? "border-peach-200"
-                      : "border-cream-200/80"
-                  }`}
-                >
+                <div className="flex items-stretch gap-2 mb-3">
                   <button
                     type="button"
                     onClick={() => setFilterSheetOpen(true)}
-                    className={`min-w-0 flex-1 inline-flex items-center justify-between gap-2 px-3 text-left transition active:bg-cream-50 break-keep ${
+                    className={`flex-1 min-w-0 inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition active:scale-[0.98] shadow-sm break-keep ${
                       isActive
-                        ? "bg-peach-50 text-peach-700"
-                        : "text-ink-700 hover:bg-cream-50"
+                        ? "bg-peach-50 border-peach-200 text-peach-700"
+                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
                     }`}
                   >
                     <span className="inline-flex items-center gap-2 min-w-0 truncate">
-                      <SlidersHorizontal className="w-3.5 h-3.5 flex-shrink-0" />
+                      <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
                       {pick("상세 필터", "详细筛选")}
                     </span>
                     {isActive && (
@@ -1127,10 +1096,10 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setShowSearch((v) => !v)}
-                    className={`grid w-10 flex-shrink-0 place-items-center border-l transition active:bg-cream-50 ${
+                    className={`flex-shrink-0 px-4 rounded-2xl border text-[13px] font-bold transition active:scale-95 shadow-sm ${
                       showSearch
-                        ? "border-peach-200 bg-peach-50 text-peach-700"
-                        : "border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                        ? "bg-peach-50 border-peach-200 text-peach-700"
+                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
                     }`}
                     aria-label="search"
                     title={pick("검색", "搜索")}
@@ -1144,7 +1113,7 @@ export default function HomePage() {
             {/* 3) Single-pick chip group: 또 갈래 / 평가 안 한 메뉴 /
                 나만 먹음 / 짝꿍만 먹음. 옛 라벨 그대로, mutually
                 exclusive 동작 유지. */}
-            <div className="flex gap-1.5 mb-2.5 px-1 overflow-x-auto hide-scrollbar">
+            <div className="flex gap-1.5 mb-3 px-1 overflow-x-auto hide-scrollbar">
               <button
                 type="button"
                 onClick={() => toggleListFilter("revisit")}
@@ -1645,43 +1614,41 @@ function StatsDashboard({
   const pick = (ko: string, zh: string) =>
     pickLanguage(i18n.language, ko, zh);
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-rose-200/60 bg-gradient-to-br from-peach-100 to-rose-100 px-4 py-3 shadow-sm sm:px-4 sm:py-3.5">
-      <div className="min-w-0">
-        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.13em] text-rose-500">
+    <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[1.75rem] p-5 sm:p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-1 min-w-0">
+        <span className="text-[10px] sm:text-[11px] font-bold text-rose-500 tracking-[0.15em] uppercase truncate">
           {pick("기록", "干饭成就")}
         </span>
-        <div className="mt-1 flex h-8 items-baseline min-w-0">
-          <span className="font-number text-2xl font-bold tracking-tight text-ink-900">
+        <div className="mt-1">
+          <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
             {stats.total}
           </span>
-          <span className="ml-1 text-sm font-bold text-ink-700">
+          <span className="text-sm font-bold text-ink-700 ml-1">
             {pick("곳", "处")}
           </span>
         </div>
       </div>
-      <div className="h-10 w-px bg-rose-200/60" />
-      <div className="min-w-0 text-right">
-        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.13em] text-peach-500">
+      <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
+      <div className="flex flex-col gap-1 items-end min-w-0">
+        <span className="text-[10px] sm:text-[11px] font-bold text-peach-500 tracking-[0.15em] uppercase truncate">
           {pick("자주 찾은 메뉴", "最常翻牌")}
         </span>
         {stats.topCategory ? (
-          <div className="mt-1 flex h-8 min-w-0 items-center justify-end gap-1.5">
-            <span className="flex-shrink-0 text-lg leading-none">
+          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+            <span className="text-lg sm:text-xl flex-shrink-0">
               {categoryIcon(stats.topCategory)}
             </span>
-            <span className="min-w-0 truncate text-sm font-bold text-ink-900">
+            <span className="text-sm sm:text-base font-bold text-ink-900 truncate">
               {isKnownPlaceCategory(stats.topCategory)
                 ? t(`category.${stats.topCategory}`)
                 : stats.topCategory}
             </span>
-            <span className="flex-shrink-0 font-number text-xs font-bold text-ink-400">
+            <span className="text-xs sm:text-sm font-number font-bold text-ink-400 ml-1 flex-shrink-0">
               ({stats.topCount})
             </span>
           </div>
         ) : (
-          <span className="mt-1 flex h-8 items-center justify-end text-sm font-bold text-ink-400">
-            -
-          </span>
+          <span className="text-base font-bold text-ink-400 mt-1">-</span>
         )}
       </div>
     </div>

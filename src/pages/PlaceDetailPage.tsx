@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -71,17 +71,16 @@ export default function PlaceDetailPage() {
   //                        threads, replies, reactions on a memo)
   //                        or #food-<foodId> for food-level events
   //
-  // Consume each anchor once per navigation. Keeping the hash around
-  // made later memo/reply updates re-run this effect and drag the user
-  // back to the notification target after they had scrolled elsewhere.
-  const consumedAnchorRef = useRef<string | null>(null);
+  // Generic by element id — any anchor we ever add gets handled
+  // automatically. The retry loop accommodates async children:
+  // food cards mount with `place`, but memos load via separate
+  // useMemos queries inside MemoThread / FoodMemoBlock and may
+  // arrive a tick later. We poll up to ~2s for the element to
+  // exist before giving up silently.
   useEffect(() => {
     if (!place) return;
     const hash = location.hash;
     if (!hash || hash.length <= 1) return;
-    const anchorKey = `${location.key}:${hash}`;
-    if (consumedAnchorRef.current === anchorKey) return;
-
     const elId = hash.slice(1);
     let attempts = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -89,16 +88,11 @@ export default function PlaceDetailPage() {
     const tryScroll = () => {
       const el = document.getElementById(elId);
       if (el) {
-        consumedAnchorRef.current = anchorKey;
-        // Instant jump feels cleaner than visibly sliding through the
-        // whole page from the top. The highlight still confirms the
-        // deep-link target without leaving the hash active forever.
-        el.scrollIntoView({ behavior: "auto", block: "center" });
-        window.history.replaceState(
-          window.history.state,
-          "",
-          `${location.pathname}${location.search}`
-        );
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Pulse — Tailwind ring classes added then removed after
+        // 1.4s. Plain DOM manipulation rather than React state so
+        // the highlight doesn't trigger a re-render of the foods
+        // list, and so we don't fight the existing memo on FoodCard.
         el.classList.add(
           "ring-2",
           "ring-peach-400",
@@ -130,7 +124,10 @@ export default function PlaceDetailPage() {
       if (timer !== null) clearTimeout(timer);
       if (pulseTimer !== null) clearTimeout(pulseTimer);
     };
-  }, [place, location.hash, location.key, location.pathname, location.search]);
+    // `place` in deps so this runs once data is ready. location.hash
+    // in deps so deep-linking again (same page, different memo)
+    // re-triggers the scroll.
+  }, [place, location.hash]);
 
   async function toggleRevisit() {
     if (!place || !user || !couple) return;
