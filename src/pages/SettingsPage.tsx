@@ -74,10 +74,7 @@ export default function SettingsPage() {
       )
       .slice(0, 3);
 
-    return {
-      sampleSize: rows.length,
-      myTop3,
-    };
+    return { myTop3 };
   }, [places, user?.id]);
 
   // Local form state for the home address card. Hydrate once when the
@@ -165,84 +162,98 @@ export default function SettingsPage() {
         {/* Profile card: personal profile info + my Top 3 only.
             Compare-style rating roles / averages live on ComparePage. */}
         {couple && (
-          <div className="card p-5 space-y-4">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 pb-4 border-b border-cream-100">
-              <div className="min-w-0 rounded-2xl bg-cream-50/70 border border-cream-200/60 p-3">
-                <ProfileAvatar
-                  profile={meProfileQuery.data ?? null}
-                  fallbackLabel={
-                    // Use the local-part of the email as a friendlier
-                    // fallback so we don't dump "luoyuhan2025@gmail..."
-                    // and risk truncation on narrow widths.
-                    user?.email?.split("@")[0] ?? "나"
-                  }
-                  tone="peach"
-                  editable
-                  editTo="/profile/me"
-                  // When the user has set a nickname the displayName
-                  // already shows it — surfacing "나 · 我" underneath
-                  // becomes redundant, so suppress the badge in that
-                  // case. No nickname → keep the default role label.
-                  badge={
-                    meProfileQuery.data?.nickname?.trim()
-                      ? null
-                      : pick("나", "我")
-                  }
-                />
-                <ProfileFacts
-                  profile={meProfileQuery.data ?? null}
-                  partnerAlias={
-                    partnerProfileQuery.data?.partner_nickname ?? null
-                  }
-                  partnerAliasLabel={pick("상대가 나를 부르는 이름", "TA给我的昵称")}
-                  emptyText={pick("아직 적은 게 없어요", "还没填写")}
-                  pick={pick}
-                />
-              </div>
-              <Heart className="mt-8 w-5 h-5 text-rose-300 animate-pulse flex-shrink-0" />
-              <div className="min-w-0 rounded-2xl bg-rose-50/45 border border-rose-100/70 p-3">
-                <ProfileAvatar
-                  profile={partnerProfileQuery.data ?? null}
-                  fallbackLabel="짝꿍"
-                  tone="rose"
-                  editable
-                  editTo="/profile/partner"
-                  badge={
-                    // Same logic for partner: if I set 애칭 (or partner
-                    // has their own nickname) the displayName already
-                    // shows it, so the "짝꿍 · 宝宝" caption underneath
-                    // would just repeat. Drop it in that case.
-                    meProfileQuery.data?.partner_nickname?.trim() ||
-                    partnerProfileQuery.data?.nickname?.trim()
-                      ? null
-                      : pick("짝꿍", "宝宝")
-                  }
-                  // For the partner card we display the애칭 *I* set for
-                  // them rather than what they call themselves. Falls back
-                  // to their own nickname if I haven't set one yet.
-                  overrideNickname={
-                    meProfileQuery.data?.partner_nickname ?? null
-                  }
-                />
-                <ProfileFacts
-                  profile={partnerProfileQuery.data ?? null}
-                  partnerAlias={meProfileQuery.data?.partner_nickname ?? null}
-                  partnerAliasLabel={pick("내가 상대를 부르는 이름", "我给TA的昵称")}
-                  emptyText={pick("아직 적은 게 없어요", "还没填写")}
-                  pick={pick}
-                />
+          <div className="card overflow-hidden">
+            <div className="p-4 pb-3">
+              <div className="rounded-2xl border border-cream-200/70 bg-gradient-to-br from-white to-cream-50/60 p-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3">
+                  <div className="min-w-0">
+                    <ProfileAvatar
+                      profile={meProfileQuery.data ?? null}
+                      fallbackLabel={
+                        // Use the local-part of the email as a friendlier
+                        // fallback so we don't dump "luoyuhan2025@gmail..."
+                        // and risk truncation on narrow widths.
+                        user?.email?.split("@")[0] ?? "나"
+                      }
+                      tone="peach"
+                      editable
+                      editTo="/profile/me"
+                      // When the user has set a nickname the displayName
+                      // already shows it — surfacing "나 · 我" underneath
+                      // becomes redundant, so suppress the badge in that
+                      // case. No nickname → keep the default role label.
+                      badge={
+                        meProfileQuery.data?.nickname?.trim()
+                          ? null
+                          : pick("나", "我")
+                      }
+                    />
+                    <ProfileFacts
+                      profile={meProfileQuery.data ?? null}
+                      partnerAlias={
+                        partnerProfileQuery.data?.partner_nickname ?? null
+                      }
+                      partnerAliasLabel={pick(
+                        "상대가 나를 부르는 이름",
+                        "TA给我的昵称"
+                      )}
+                      emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                      pick={pick}
+                    />
+                  </div>
+
+                  <div className="mt-8 flex flex-col items-center gap-1 text-rose-300">
+                    <span className="h-8 w-px bg-rose-100" />
+                    <Heart className="w-4 h-4 flex-shrink-0" />
+                    <span className="h-8 w-px bg-rose-100" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <ProfileAvatar
+                      profile={partnerProfileQuery.data ?? null}
+                      fallbackLabel="짝꿍"
+                      tone="rose"
+                      editable
+                      editTo="/profile/partner"
+                      badge={
+                        // Same logic for partner: if I set 애칭 (or partner
+                        // has their own nickname) the displayName already
+                        // shows it, so the "짝꿍 · 宝宝" caption underneath
+                        // would just repeat. Drop it in that case.
+                        meProfileQuery.data?.partner_nickname?.trim() ||
+                        partnerProfileQuery.data?.nickname?.trim()
+                          ? null
+                          : pick("짝꿍", "宝宝")
+                      }
+                      // For the partner card we display the애칭 *I* set for
+                      // them rather than what they call themselves. Falls back
+                      // to their own nickname if I haven't set one yet.
+                      overrideNickname={
+                        meProfileQuery.data?.partner_nickname ?? null
+                      }
+                    />
+                    <ProfileFacts
+                      profile={partnerProfileQuery.data ?? null}
+                      partnerAlias={meProfileQuery.data?.partner_nickname ?? null}
+                      partnerAliasLabel={pick(
+                        "내가 상대를 부르는 이름",
+                        "我给TA的昵称"
+                      )}
+                      emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                      pick={pick}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <TopThreeList
-              items={tasteStats.myTop3}
-              sampleSize={tasteStats.sampleSize}
-              pick={pick}
-            />
+            <div className="border-t border-cream-100 px-4 py-3">
+              <TopThreeList items={tasteStats.myTop3} pick={pick} />
+            </div>
 
             <Link
               to="/profile/me"
-              className="inline-flex w-full items-center justify-between text-[12px] font-bold text-ink-500 hover:text-ink-700 transition px-1"
+              className="inline-flex w-full items-center justify-between border-t border-cream-100 px-4 py-3 text-[12px] font-bold text-ink-500 transition hover:text-ink-700"
             >
               {pick("내 프로필 자세히 편집", "完整编辑我的资料")}
               <ChevronRight className="w-3.5 h-3.5" />
@@ -528,13 +539,13 @@ function ProfileFacts({
   const alias = partnerAlias?.trim() || null;
   const hasContent = !!bio || hates.length > 0 || !!alias;
   return (
-    <div className="mt-3 w-full min-w-0 border-t border-white/80 pt-3">
+    <div className="mt-2 w-full min-w-0 border-t border-cream-100/80 pt-2">
       {!hasContent ? (
         <p className="text-[11px] text-center text-ink-400">{emptyText}</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {bio && (
-            <p className="text-[12px] text-ink-700 leading-snug break-words">
+            <p className="text-[11px] text-ink-700 leading-snug break-words">
               <span className="font-bold text-ink-400 mr-1">
                 {pick("한줄", "简介")}
               </span>
@@ -542,7 +553,7 @@ function ProfileFacts({
             </p>
           )}
           {alias && (
-            <p className="text-[12px] text-ink-700 leading-snug break-words">
+            <p className="text-[11px] text-ink-700 leading-snug break-words">
               <span className="font-bold text-ink-400 mr-1">
                 {partnerAliasLabel}
               </span>
@@ -558,7 +569,7 @@ function ProfileFacts({
                 {hates.map((h) => (
                   <span
                     key={h}
-                    className="px-2 py-0.5 rounded-full bg-white text-rose-500 text-[11px] font-bold border border-rose-100"
+                    className="px-2 py-0.5 rounded-full bg-white text-rose-500 text-[10px] font-bold border border-rose-100"
                   >
                     {h}
                   </span>
@@ -574,7 +585,6 @@ function ProfileFacts({
 
 function TopThreeList({
   items,
-  sampleSize,
   pick,
 }: {
   items: {
@@ -584,20 +594,14 @@ function TopThreeList({
     foodName: string;
     mine: number;
   }[];
-  sampleSize: number;
   pick: (ko: string, zh: string) => string;
 }) {
   return (
     <div className="rounded-2xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-peach-50 p-3">
-      <div className="flex items-center justify-between gap-2 mb-2">
+      <div className="mb-2 flex items-center gap-1.5">
         <p className="text-[11px] font-black text-amber-700">
           🏆 {pick("내 Top 3", "我的TOP3")}
         </p>
-        {sampleSize > 0 && (
-          <span className="text-[10px] font-number font-bold text-ink-400">
-            {sampleSize}
-          </span>
-        )}
       </div>
       {items.length === 0 ? (
         <p className="text-[11px] text-ink-400">
@@ -669,7 +673,7 @@ function ProfileAvatar({
   const inner = (
     <>
       <div
-        className={`w-20 h-20 rounded-full border-2 flex items-center justify-center overflow-hidden shadow-sm ${ringCls}`}
+        className={`w-16 h-16 rounded-full border-2 flex items-center justify-center overflow-hidden shadow-sm ${ringCls}`}
       >
         {profile?.avatar_url ? (
           <img
@@ -678,10 +682,10 @@ function ProfileAvatar({
             className="w-full h-full object-cover"
           />
         ) : (
-          <span className="text-[28px] font-sans font-black">{initial}</span>
+          <span className="text-[24px] font-sans font-black">{initial}</span>
         )}
       </div>
-      <p className="text-[12px] font-bold text-ink-900 mt-2 truncate w-full px-1 text-center">
+      <p className="text-[12px] font-bold text-ink-900 mt-1.5 truncate w-full px-1 text-center">
         {displayName}
       </p>
       {badge && (

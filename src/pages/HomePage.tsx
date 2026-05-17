@@ -951,18 +951,6 @@ export default function HomePage() {
           <HomeRefreshControls refreshAll={refreshAll} />
         </div>
 
-        {showSearch && (
-          <div className="mb-3">
-            <input
-              autoFocus
-              className="input-base"
-              placeholder={pick("이름이나 메모로 검색", "搜索店名或备注")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        )}
-
         {/* Main tabs */}
         <div className="flex justify-between gap-2 -mx-1">
           <TabButton
@@ -991,6 +979,18 @@ export default function HomePage() {
             count={wishlist?.length}
           />
         </div>
+
+        {showSearch && (
+          <div className="mt-2.5 mb-1">
+            <input
+              autoFocus
+              className="input-base h-10 rounded-xl text-[13px]"
+              placeholder={pick("이름이나 메모로 검색", "搜索店名或备注")}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
       </header>
 
       <main className="px-5 py-5">
@@ -998,7 +998,7 @@ export default function HomePage() {
           <>
             <StatsDashboard stats={stats} />
 
-            <div className="flex items-center justify-between mt-8 mb-3 px-1 gap-2">
+            <div className="flex items-center justify-between mt-5 mb-2 px-1 gap-2">
               <h2 className="font-sans font-bold text-[18px] text-ink-900 flex items-center gap-2 tracking-tight">
                 <span>{pick("다녀온 곳", "干饭足迹")}</span>
                 <span className="text-rose-500 text-xs font-number font-bold bg-rose-50 px-2.5 py-0.5 rounded-full">
@@ -1037,7 +1037,7 @@ export default function HomePage() {
                 Korean to keep emoji + Chinese only on the dining
                 buttons; the 모두 button is short enough to keep both
                 languages. */}
-            <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-3">
+            <div className="flex bg-cream-100/80 p-1 rounded-xl border border-cream-200/60 mb-2.5">
               <SegmentButton
                 active={diningFilter === "all"}
                 onClick={() => startTransition(() => setDiningFilter("all"))}
@@ -1073,18 +1073,24 @@ export default function HomePage() {
                 (listLayout === "menu" ? foodCategoryFilter.length : 0);
               const isActive = sheetCount > 0;
               return (
-                <div className="flex items-stretch gap-2 mb-3">
+                <div
+                  className={`mb-2.5 flex h-10 overflow-hidden rounded-xl border bg-white text-[12px] font-bold shadow-sm transition ${
+                    isActive || showSearch
+                      ? "border-peach-200"
+                      : "border-cream-200/80"
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() => setFilterSheetOpen(true)}
-                    className={`flex-1 min-w-0 inline-flex items-center justify-between gap-2 px-4 py-3 rounded-2xl border text-[13px] font-bold transition active:scale-[0.98] shadow-sm break-keep ${
+                    className={`min-w-0 flex-1 inline-flex items-center justify-between gap-2 px-3 text-left transition active:bg-cream-50 break-keep ${
                       isActive
-                        ? "bg-peach-50 border-peach-200 text-peach-700"
-                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                        ? "bg-peach-50 text-peach-700"
+                        : "text-ink-700 hover:bg-cream-50"
                     }`}
                   >
                     <span className="inline-flex items-center gap-2 min-w-0 truncate">
-                      <SlidersHorizontal className="w-4 h-4 flex-shrink-0" />
+                      <SlidersHorizontal className="w-3.5 h-3.5 flex-shrink-0" />
                       {pick("상세 필터", "详细筛选")}
                     </span>
                     {isActive && (
@@ -1096,10 +1102,10 @@ export default function HomePage() {
                   <button
                     type="button"
                     onClick={() => setShowSearch((v) => !v)}
-                    className={`flex-shrink-0 px-4 rounded-2xl border text-[13px] font-bold transition active:scale-95 shadow-sm ${
+                    className={`grid w-10 flex-shrink-0 place-items-center border-l transition active:bg-cream-50 ${
                       showSearch
-                        ? "bg-peach-50 border-peach-200 text-peach-700"
-                        : "bg-white border-cream-200/80 text-ink-700 hover:bg-cream-50"
+                        ? "border-peach-200 bg-peach-50 text-peach-700"
+                        : "border-cream-200/80 text-ink-700 hover:bg-cream-50"
                     }`}
                     aria-label="search"
                     title={pick("검색", "搜索")}
@@ -1113,7 +1119,7 @@ export default function HomePage() {
             {/* 3) Single-pick chip group: 또 갈래 / 평가 안 한 메뉴 /
                 나만 먹음 / 짝꿍만 먹음. 옛 라벨 그대로, mutually
                 exclusive 동작 유지. */}
-            <div className="flex gap-1.5 mb-3 px-1 overflow-x-auto hide-scrollbar">
+            <div className="flex gap-1.5 mb-2.5 px-1 overflow-x-auto hide-scrollbar">
               <button
                 type="button"
                 onClick={() => toggleListFilter("revisit")}
