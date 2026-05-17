@@ -121,6 +121,11 @@ Read the git log for full detail; this is just the map.
   like memo replies, direct memo activity, ratings, and revisit changes.
   Reaction labels should stay short (`이모지` / `表情`) and should link back
   to the specific place/food/memo context when available.
+- Place/food activity notifications should render as independent rows
+  (`새 장소` / `新地点`, `메뉴 추가` / `添加菜品`) rather than parent/child
+  bundle cards. Notification deep links should jump cleanly to the target
+  context, consume their hash once, and not keep snapping back after the user
+  scrolls elsewhere.
 - `MediaThumb` tracks already-painted image/video URLs and fades only first
   paint. This prevents photos from flashing white when scrolling down and
   back up. Do not replace it with raw `<img>` in list-heavy surfaces.
@@ -144,6 +149,17 @@ Read the git log for full detail; this is just the map.
 - SettingsPage profile card now shows each person's bio, pet-name context,
   and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
   move those facts back into detached compare-style cards.
+- SettingsPage Top 3 should stay inside the profile section and should not
+  show the raw sample size count (the old `208`-style number made the card
+  feel noisy without helping the user).
+- HomePage top controls should stay visually dense: the stats card should
+  lead into the feed title without a huge blank gap, and 상세 필터 / 详细筛选
+  plus search should be one connected compact control, not a detached large
+  search square floating on the right. The search input opens just below the
+  top tabs so it still works for both timeline and wishlist tabs.
+- FilterSheet chips and section headers are intentionally compact and
+  rectangular-ish. Avoid returning to oversized pill buttons or large cardy
+  dropdown blocks in this sheet.
 
 ### Forms / pickers
 - `PlaceCategoryPicker` (shared) — `GroupedMultiSelect` + freeform
