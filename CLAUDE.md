@@ -129,6 +129,10 @@ Read the git log for full detail; this is just the map.
 - `MediaThumb` tracks already-painted image/video URLs and fades only first
   paint. This prevents photos from flashing white when scrolling down and
   back up. Do not replace it with raw `<img>` in list-heavy surfaces.
+- `render-smooth-card` is the lightweight scroll-performance class for
+  repeated list/card surfaces. It uses paint/layout containment to keep
+  image/shadow repaint cost local. Do not apply it to panels that can host
+  fixed children or bottom sheets; containment can clip those descendants.
 - `SmoothLink` warms route chunks and nearby preview images on touch/hover.
   Keep page transitions light; avoid heavyweight shared transitions that
   delay clicks or break browser back scroll restoration.
@@ -145,7 +149,9 @@ Read the git log for full detail; this is just the map.
   refresh.
 - The custom app scrollbar is `AppScrollIndicator`, scoped visually below
   the header and above the bottom nav. Do not let the browser scrollbar run
-  through the PageHeader/발자취 area on desktop-width testing.
+  through the PageHeader/발자취 area on desktop-width testing. Its thumb
+  position is updated with DOM style variables, not React state, so it does
+  not re-render AppShell on every scroll frame.
 - SettingsPage profile card now shows each person's bio, pet-name context,
   and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
   move those facts back into detached compare-style cards.

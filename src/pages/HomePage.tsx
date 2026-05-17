@@ -1885,7 +1885,7 @@ function TimelineItemImpl({
       <SmoothLink
         to={`/places/${place.id}`}
         preloadImages={previewImagesForPlace(place)}
-        className={`block rounded-2xl p-4 ml-2 border shadow-soft active:scale-[0.98] transition ${theme.card} ${theme.cardBorder}`}
+        className={`render-smooth-card block rounded-2xl p-4 ml-2 border shadow-soft active:scale-[0.98] transition ${theme.card} ${theme.cardBorder}`}
       >
         <div className="flex gap-4">
           <div
