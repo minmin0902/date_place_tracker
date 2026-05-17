@@ -38,7 +38,7 @@ import {
 // re-launch) drops it cleanly. Manual scrollRestoration so the
 // browser doesn't fight us during the React re-render that follows
 // a POP — we own the restore timing via rAF.
-const SCROLL_KEY = "scroll-pos:v1";
+const SCROLL_KEY = "scroll-pos:v2";
 type ScrollMap = Record<string, number>;
 
 function readMap(): ScrollMap {
@@ -112,6 +112,7 @@ function ScrollManager() {
   const scrollMap = useRef<ScrollMap | null>(null);
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRaf = useRef<number | null>(null);
+  const restoringRef = useRef(false);
 
   const getScrollMap = useCallback(() => {
     if (!scrollMap.current) scrollMap.current = readMap();
@@ -151,12 +152,16 @@ function ScrollManager() {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
-    const saveCurrent = () =>
+    const saveCurrent = () => {
+      if (restoringRef.current) return;
       saveScroll(currentKey.current, window.scrollY, true);
+    };
     const onScroll = () => {
+      if (restoringRef.current) return;
       if (scrollRaf.current !== null) return;
       scrollRaf.current = requestAnimationFrame(() => {
         scrollRaf.current = null;
+        if (restoringRef.current) return;
         saveScroll(currentKey.current, window.scrollY);
       });
     };
@@ -224,8 +229,14 @@ function ScrollManager() {
       }
       let cancelled = false;
       const stopAt = Date.now() + 2500;
+      restoringRef.current = true;
+      const finishRestore = (persist = false) => {
+        restoringRef.current = false;
+        if (persist) saveScroll(routeKey, window.scrollY, true);
+      };
       const bail = () => {
         cancelled = true;
+        finishRestore(false);
       };
       // Any user gesture aborts our retry loop. Once-listener +
       // passive so we don't get in the way of native scroll.
@@ -239,14 +250,21 @@ function ScrollManager() {
         if (cancelled) return;
         window.scrollTo(0, target);
         // Within a few pixels of target → done.
-        if (Math.abs(window.scrollY - target) <= 3) return;
-        if (Date.now() > stopAt) return;
+        if (Math.abs(window.scrollY - target) <= 3) {
+          finishRestore(true);
+          return;
+        }
+        if (Date.now() > stopAt) {
+          finishRestore(false);
+          return;
+        }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(() => requestAnimationFrame(tick));
       // Cleanup if the route changes again before we finish.
       const cleanup = () => {
         cancelled = true;
+        finishRestore(false);
         window.removeEventListener("wheel", bail);
         window.removeEventListener("touchstart", bail);
         window.removeEventListener("keydown", bail);
