@@ -164,9 +164,9 @@ export default function SettingsPage() {
         {couple && (
           <div className="card overflow-hidden">
             <div className="p-4 pb-3">
-              <div className="rounded-2xl border border-cream-200/70 bg-gradient-to-br from-white to-cream-50/60 p-3">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3">
-                  <div className="min-w-0">
+              <div className="rounded-2xl border border-cream-200/70 bg-gradient-to-br from-white to-cream-50/60 p-3.5">
+                <div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-center gap-3">
+                  <div className="min-w-0 flex justify-center">
                     <ProfileAvatar
                       profile={meProfileQuery.data ?? null}
                       fallbackLabel={
@@ -188,27 +188,13 @@ export default function SettingsPage() {
                           : pick("나", "我")
                       }
                     />
-                    <ProfileFacts
-                      profile={meProfileQuery.data ?? null}
-                      partnerAlias={
-                        partnerProfileQuery.data?.partner_nickname ?? null
-                      }
-                      partnerAliasLabel={pick(
-                        "상대가 나를 부르는 이름",
-                        "TA给我的昵称"
-                      )}
-                      emptyText={pick("아직 적은 게 없어요", "还没填写")}
-                      pick={pick}
-                    />
                   </div>
 
-                  <div className="mt-8 flex flex-col items-center gap-1 text-rose-300">
-                    <span className="h-8 w-px bg-rose-100" />
-                    <Heart className="w-4 h-4 flex-shrink-0" />
-                    <span className="h-8 w-px bg-rose-100" />
+                  <div className="grid h-9 w-9 place-items-center rounded-full border border-rose-100 bg-white text-rose-300 shadow-sm">
+                    <Heart className="w-4 h-4" />
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex justify-center">
                     <ProfileAvatar
                       profile={partnerProfileQuery.data ?? null}
                       fallbackLabel="짝꿍"
@@ -232,17 +218,26 @@ export default function SettingsPage() {
                         meProfileQuery.data?.partner_nickname ?? null
                       }
                     />
-                    <ProfileFacts
-                      profile={partnerProfileQuery.data ?? null}
-                      partnerAlias={meProfileQuery.data?.partner_nickname ?? null}
-                      partnerAliasLabel={pick(
-                        "내가 상대를 부르는 이름",
-                        "我给TA的昵称"
-                      )}
-                      emptyText={pick("아직 적은 게 없어요", "还没填写")}
-                      pick={pick}
-                    />
                   </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2.5">
+                  <ProfileFacts
+                    profile={meProfileQuery.data ?? null}
+                    partnerAlias={
+                      partnerProfileQuery.data?.partner_nickname ?? null
+                    }
+                    partnerAliasLabel={pick("TA가 부르는 나", "TA叫我")}
+                    emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                    tone="peach"
+                  />
+                  <ProfileFacts
+                    profile={partnerProfileQuery.data ?? null}
+                    partnerAlias={meProfileQuery.data?.partner_nickname ?? null}
+                    partnerAliasLabel={pick("내가 부르는 TA", "我叫TA")}
+                    emptyText={pick("아직 적은 게 없어요", "还没填写")}
+                    tone="rose"
+                  />
                 </div>
               </div>
             </div>
@@ -526,55 +521,61 @@ function ProfileFacts({
   partnerAlias,
   partnerAliasLabel,
   emptyText,
-  pick,
+  tone,
 }: {
   profile: Profile | null;
   partnerAlias: string | null;
   partnerAliasLabel: string;
   emptyText: string;
-  pick: (ko: string, zh: string) => string;
+  tone: "peach" | "rose";
 }) {
   const bio = profile?.bio?.trim() || null;
   const hates = profile?.hate_ingredients?.filter(Boolean) ?? [];
   const alias = partnerAlias?.trim() || null;
   const hasContent = !!bio || hates.length > 0 || !!alias;
+  const toneCls =
+    tone === "peach"
+      ? "border-peach-100 bg-peach-50/35"
+      : "border-rose-100 bg-rose-50/30";
   return (
-    <div className="mt-2 w-full min-w-0 border-t border-cream-100/80 pt-2">
+    <div className={`min-w-0 rounded-xl border px-2.5 py-2 ${toneCls}`}>
       {!hasContent ? (
-        <p className="text-[11px] text-center text-ink-400">{emptyText}</p>
+        <p className="text-[11px] text-center text-ink-400 leading-snug">
+          {emptyText}
+        </p>
       ) : (
         <div className="space-y-1.5">
           {bio && (
-            <p className="text-[11px] text-ink-700 leading-snug break-words">
-              <span className="font-bold text-ink-400 mr-1">
-                {pick("한줄", "简介")}
-              </span>
+            <p className="text-[11px] text-ink-700 leading-snug break-words line-clamp-2">
               {bio}
             </p>
           )}
           {alias && (
-            <p className="text-[11px] text-ink-700 leading-snug break-words">
-              <span className="font-bold text-ink-400 mr-1">
+            <p className="text-[10px] text-ink-500 leading-snug break-words line-clamp-1">
+              <span className="font-bold text-ink-400">
                 {partnerAliasLabel}
-              </span>
-              {alias}
+              </span>{" "}
+              <span className="font-bold text-ink-700">{alias}</span>
             </p>
           )}
           {hates.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-ink-400 mb-1">
-                🚫 {pick("못 먹는 거", "不能吃")}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {hates.map((h) => (
-                  <span
-                    key={h}
-                    className="px-2 py-0.5 rounded-full bg-white text-rose-500 text-[10px] font-bold border border-rose-100"
-                  >
-                    {h}
-                  </span>
-                ))}
-              </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[10px] font-bold text-ink-400 leading-none">
+                🚫
+              </span>
+              {hates.slice(0, 3).map((h) => (
+                <span
+                  key={h}
+                  className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-rose-500 border border-rose-100 leading-none"
+                >
+                  {h}
+                </span>
+              ))}
+              {hates.length > 3 && (
+                <span className="text-[10px] font-number font-bold text-ink-400 leading-none">
+                  +{hates.length - 3}
+                </span>
+              )}
             </div>
           )}
         </div>

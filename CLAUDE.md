@@ -152,9 +152,10 @@ Read the git log for full detail; this is just the map.
   through the PageHeader/발자취 area on desktop-width testing. Its thumb
   position is updated with DOM style variables, not React state, so it does
   not re-render AppShell on every scroll frame.
-- SettingsPage profile card now shows each person's bio, pet-name context,
-  and "못 먹는 거 / 不能吃" chips directly under that person's profile. Do not
-  move those facts back into detached compare-style cards.
+- SettingsPage profile card uses a clean two-tier layout: avatars + heart on
+  top, compact per-person fact tiles below. Each tile can show bio, nickname
+  context, and up to three cannot-eat chips. Do not move those facts back into
+  detached compare-style cards or a noisy two-column text dump.
 - SettingsPage Top 3 should stay inside the profile section and should not
   show the raw sample size count (the old `208`-style number made the card
   feel noisy without helping the user).
