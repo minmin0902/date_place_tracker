@@ -46,8 +46,9 @@ import { useCouple } from "@/hooks/useCouple";
 import { usePlaces } from "@/hooks/usePlaces";
 import { supabase } from "@/lib/supabase";
 import { pickLanguage } from "@/lib/language";
-import { isVideoUrl } from "@/lib/utils";
+import { isVideoUrl, ratingsForViewer } from "@/lib/utils";
 import type {
+  Food,
   Memo as MemoRow,
   NotificationRow,
   Reaction,
@@ -66,6 +67,10 @@ type ContextResolver = {
   foodMemoOf: (foodId: string | null | undefined) => string | null;
   placePhotoOf: (placeId: string | null | undefined) => string | null;
   foodPhotoOf: (foodId: string | null | undefined) => string | null;
+  foodRatingOf: (
+    foodId: string | null | undefined,
+    actorId: string | null | undefined
+  ) => number | null;
   memoTextOf: (memoId: string | null | undefined) => string | null;
   parentMemoTextOf: (memoId: string | null | undefined) => string | null;
   memoPhotoOf: (memoId: string | null | undefined) => string | null;
@@ -85,6 +90,7 @@ const RowContext = createContext<ContextResolver>({
   foodMemoOf: () => null,
   placePhotoOf: () => null,
   foodPhotoOf: () => null,
+  foodRatingOf: () => null,
   memoTextOf: () => null,
   parentMemoTextOf: () => null,
   memoPhotoOf: () => null,
@@ -358,6 +364,18 @@ function quoteText(s: string, n = 64) {
   return `"${clipText(s, n)}"`;
 }
 
+function formatRatingScore(score: number) {
+  return Number.isInteger(score)
+    ? String(score)
+    : score.toFixed(1).replace(/\.0$/, "");
+}
+
+function ratingScoreFor(item: NotificationRow, ctx: ContextResolver) {
+  if (item.kind !== "rating" || !item.food_id) return null;
+  const score = ctx.foodRatingOf(item.food_id, item.actor_id);
+  return score == null ? null : formatRatingScore(score);
+}
+
 function NotificationThumb({
   src,
   label,
@@ -415,34 +433,30 @@ function KindBadge({ kind }: { kind: NotificationRow["kind"] }) {
   );
 }
 
-// Filter buckets — collapse the seven raw notification kinds into
-// four user-facing categories so the chip row stays scannable. The
-// "메모/이모지" bucket lumps every conversation-style event (memo
-// edits, threaded comments, nested replies) AND reactions on those
-// same targets — the user thinks of "짝꿍이 내 메모에 반응한 거"
-// as one surface regardless of whether it was a text reply or an
-// emoji tap.
-type FilterKey = "all" | "place" | "memo" | "rating" | "revisit";
+// Filter buckets — keep the chip row quiet: text conversations,
+// emoji reactions, and record changes are different scanning jobs.
+// Rating / revisit / place / menu changes live under "기록/记录";
+// reactions stay separate so the low-priority noise can be skimmed
+// without hiding replies.
+type FilterKey = "all" | "memo" | "reaction" | "record";
 type InboxMode = "all" | "unread";
 
 const FILTER_CHIPS: { key: FilterKey; ko: string; zh: string; icon: typeof Bell }[] = [
   { key: "all", ko: "전체", zh: "全部", icon: Bell },
-  { key: "place", ko: "새 기록", zh: "新记录", icon: Plus },
-  { key: "memo", ko: "메모/이모지", zh: "留言/表情", icon: MessageCircle },
-  { key: "rating", ko: "평점", zh: "打分", icon: Star },
-  { key: "revisit", ko: "또 갈래", zh: "想再去", icon: Heart },
+  { key: "memo", ko: "댓글", zh: "留言", icon: MessageCircle },
+  { key: "reaction", ko: "이모지", zh: "表情", icon: Smile },
+  { key: "record", ko: "기록", zh: "记录", icon: Plus },
 ];
 
-// ActivityBundle — the headline grouping: every notification that
-// targets the SAME place on the SAME day by the SAME actor collapses
-// into ONE card whose header is the place name and whose body lists
-// the sub-activities (menus, memos, replies, rating, revisit) as
-// indented sub-rows. The user's mental model is "what
-// did 짝꿍 do at THAT place today", so the place becomes the bucket
-// and everything else nests underneath.
-//
-// Single-event bundles get downgraded to a flat single row so a lone
-// memo doesn't look heavy inside a near-empty card.
+function isFilterKey(value: string): value is FilterKey {
+  return FILTER_CHIPS.some((c) => c.key === value);
+}
+
+// ActivityBundle — the headline grouping for record-style noise:
+// menu additions, rating fills, revisit toggles, and place creation
+// targeting the SAME place on the SAME day by the SAME actor collapse
+// into ONE compact card. Text comments/replies intentionally stay as
+// single rows because they are higher priority and easier to miss.
 type ActivityBundle = {
   kind: "activity-bundle";
   placeId: string;
@@ -509,11 +523,16 @@ function displayRowKey(row: DisplayRow) {
 function estimateDisplayRowSize(row: DisplayRow | undefined) {
   if (!row) return 92;
   if (row.kind === "date-header") return 28;
-  if (row.kind === "reaction-bundle") return 96;
+  if (row.kind === "reaction-bundle") return 92;
   if (row.kind === "single") {
     return row.item.kind === "memo_reply" ? 104 : 88;
   }
-  return 104 + row.allItems.length * 24;
+  const chipCount =
+    (row.foods.length > 0 ? 1 : 0) +
+    (row.memos.length + row.replies.length > 0 ? 1 : 0) +
+    (row.ratings.length > 0 ? 1 : 0) +
+    (row.revisit ? 1 : 0);
+  return 92 + Math.max(0, Math.ceil(chipCount / 2) - 1) * 24;
 }
 
 // Resolve a date into a friendly day label. "오늘"/"어제" for the
@@ -541,16 +560,18 @@ function dateLabelFor(iso: string): { key: string; ko: string; zh: string } {
 
 function matchesFilter(kind: NotificationRow["kind"], filter: FilterKey): boolean {
   if (filter === "all") return true;
-  if (filter === "place") return kind === "place" || kind === "food";
-  if (filter === "memo")
+  if (filter === "memo") {
+    return kind === "memo" || kind === "memo_thread" || kind === "memo_reply";
+  }
+  if (filter === "reaction") return kind === "reaction";
+  if (filter === "record") {
     return (
-      kind === "memo" ||
-      kind === "memo_thread" ||
-      kind === "memo_reply" ||
-      kind === "reaction"
+      kind === "place" ||
+      kind === "food" ||
+      kind === "rating" ||
+      kind === "revisit"
     );
-  if (filter === "rating") return kind === "rating";
-  if (filter === "revisit") return kind === "revisit";
+  }
   return true;
 }
 
@@ -692,6 +713,10 @@ export default function NotificationsPage() {
     "route-ui:notifications:mode:v1",
     "all"
   );
+  const activeFilter = isFilterKey(filter) ? filter : "all";
+  useEffect(() => {
+    if (activeFilter !== filter) setFilter(activeFilter);
+  }, [activeFilter, filter, setFilter]);
   // Filter chip taps re-bucket displayRows (Map-heavy useMemo) and
   // remount every row underneath. Marking the setFilter as a
   // transition lets React 18 yield to user input first, so the
@@ -715,6 +740,7 @@ export default function NotificationsPage() {
     const foodMemoById = new Map<string, string>();
     const placePhotoById = new Map<string, string>();
     const foodPhotoById = new Map<string, string>();
+    const foodById = new Map<string, Food>();
     // Food → parent place reverse index so we can recover place
     // context for food-scoped memos / reactions whose notification
     // row has NULL place_id.
@@ -725,6 +751,7 @@ export default function NotificationsPage() {
       const placePhoto = p.photo_urls?.[0];
       if (placePhoto) placePhotoById.set(p.id, placePhoto);
       for (const f of p.foods ?? []) {
+        foodById.set(f.id, f);
         foodNameById.set(f.id, f.name);
         foodPlaceIdByFoodId.set(f.id, p.id);
         if (f.memo && f.memo.trim())
@@ -740,6 +767,12 @@ export default function NotificationsPage() {
       foodMemoOf: (id) => (id ? (foodMemoById.get(id) ?? null) : null),
       placePhotoOf: (id) => (id ? (placePhotoById.get(id) ?? null) : null),
       foodPhotoOf: (id) => (id ? (foodPhotoById.get(id) ?? null) : null),
+      foodRatingOf: (foodId, actorId) => {
+        if (!foodId || !actorId) return null;
+        const food = foodById.get(foodId);
+        if (!food) return null;
+        return ratingsForViewer(food, actorId).myRating;
+      },
       memoTextOf: (id) => {
         if (!id) return null;
         return memoLookup?.get(id)?.body ?? null;
@@ -784,10 +817,9 @@ export default function NotificationsPage() {
   const filterCounts = useMemo(() => {
     const out: Record<FilterKey, number> = {
       all: 0,
-      place: 0,
       memo: 0,
-      rating: 0,
-      revisit: 0,
+      reaction: 0,
+      record: 0,
     };
     for (const n of sourceItems) {
       out.all += 1;
@@ -799,17 +831,16 @@ export default function NotificationsPage() {
   }, [sourceItems]);
 
   const visibleItems = useMemo(() => {
-    if (filter === "all") return sourceItems;
-    return sourceItems.filter((n) => matchesFilter(n.kind, filter));
-  }, [sourceItems, filter]);
+    if (activeFilter === "all") return sourceItems;
+    return sourceItems.filter((n) => matchesFilter(n.kind, activeFilter));
+  }, [sourceItems, activeFilter]);
 
   // Display rows = date headers interleaved with either:
-  //   - "전체" filter (all): one ActivityBundle card per
-  //     (place_id, day, actor) trio so a recording session
-  //     collapses into one navigable card.
-  //   - Any other filter (새기록 / 메모/이모지 / 평점 / 또갈래):
-  //     no bundling at all — when the user has filtered to a
-  //     specific surface they want to see every item in detail.
+  //   - "전체" filter (all): record-style events bundle by
+  //     (place_id, day, actor), reactions bundle by target, and
+  //     comments/replies remain detailed single rows.
+  //   - Any other filter (댓글 / 이모지 / 기록): no cross-kind
+  //     bundling, because the user has already asked for one surface.
   // Walking newest-first lets bundles emit in latest-first order
   // since each bundle's first-encountered member is its newest.
   const displayRows = useMemo<DisplayRow[]>(() => {
@@ -817,7 +848,7 @@ export default function NotificationsPage() {
     const bundles = new Map<string, ActivityBundle>();
     const reactionBundles = new Map<string, ReactionBundle>();
     let currentDateKey: string | null = null;
-    const shouldBundle = filter === "all";
+    const shouldBundle = activeFilter === "all";
 
     for (const n of visibleItems) {
       const label = dateLabelFor(n.created_at);
@@ -879,7 +910,7 @@ export default function NotificationsPage() {
         n.kind === "memo" ||
         n.kind === "memo_thread" ||
         n.kind === "memo_reply" ||
-        n.kind === "rating"
+        (!shouldBundle && n.kind === "rating")
       ) {
         out.push({ kind: "single", item: n });
         continue;
@@ -920,23 +951,23 @@ export default function NotificationsPage() {
         case "food":
           b.foods.push(n);
           break;
+        case "rating":
+          b.ratings.push(n);
+          break;
         case "revisit":
           b.revisit = n;
           break;
       }
     }
 
-    // Keep bundles even at N=1 in the 전체 tab — the user wants
-    // memo/reply notifications to ALWAYS show their parent place
-    // as a bold header line, not a truncated breadcrumb. The card
-    // layout enforces that "place at top, content underneath" shape
-    // regardless of how many sub-events landed.
+    // Keep record bundles even at N=1 in the 전체 tab so 메뉴/별점/또갈래
+    // read as one compact place activity instead of scattered rows.
     return out;
-  }, [visibleItems, filter, rowContext]);
+  }, [visibleItems, activeFilter, rowContext]);
 
   const rowLimitStorageKey = useMemo(
-    () => notificationRowLimitStorageKey(mode, filter),
-    [mode, filter]
+    () => notificationRowLimitStorageKey(mode, activeFilter),
+    [mode, activeFilter]
   );
   const progressiveRows = useProgressiveNotificationRows(
     displayRows,
@@ -954,7 +985,7 @@ export default function NotificationsPage() {
     measureTop();
     window.addEventListener("resize", measureTop);
     return () => window.removeEventListener("resize", measureTop);
-  }, [visibleDisplayRows.length, filter, mode]);
+  }, [visibleDisplayRows.length, activeFilter, mode]);
 
   const getVirtualKey = useCallback(
     (index: number) => {
@@ -1084,7 +1115,7 @@ export default function NotificationsPage() {
             current inbox mode, so "안 읽음" mode shows unread-by-kind. */}
         <div className="flex gap-1.5 overflow-x-auto hide-scrollbar -mx-1 px-1">
           {FILTER_CHIPS.map(({ key, ko, zh, icon: Icon }) => {
-            const active = filter === key;
+            const active = activeFilter === key;
             const count = filterCounts[key];
             return (
               <button
@@ -1331,7 +1362,7 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
       <button
         type="button"
         onClick={onTap}
-        className={`relative w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl border active:scale-[0.99] transition-colors ${
+        className={`relative w-full text-left grid grid-cols-[2.25rem_minmax(0,1fr)_3rem] items-start gap-2.5 p-2.5 rounded-2xl border active:scale-[0.99] transition-colors ${
           isUnread
             ? "bg-white border-rose-200/70 shadow-card"
             : "bg-white border-cream-200 hover:bg-cream-50"
@@ -1339,8 +1370,8 @@ function ReactionBundleItemImpl({ bundle }: { bundle: ReactionBundle }) {
       >
         {isUnread && (
           <span
-            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-rose-300"
-            aria-hidden
+            className="absolute right-2.5 top-2.5 w-2 h-2 rounded-full bg-peach-500 ring-2 ring-white"
+            aria-label="unread"
           />
         )}
         <div className="relative flex-shrink-0">
@@ -1537,14 +1568,15 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
     const target = bundle.ratings[0]?.food_id
       ? `${placeBase}#food-${bundle.ratings[0].food_id}`
       : placeBase;
+    const ratingScore =
+      bundle.ratings.length === 1 ? ratingScoreFor(bundle.ratings[0], rowCtx) : null;
     subRows.push({
       key: "rating",
       Icon: Star,
       color: "text-yellow-600",
-      label: pick(
-        `별점 ${bundle.ratings.length}개`,
-        `打分 ${bundle.ratings.length}`
-      ),
+      label: ratingScore
+        ? pick(`별점 ${ratingScore}/5`, `打分 ${ratingScore}分`)
+        : pick(`별점 ${bundle.ratings.length}개`, `打分 ${bundle.ratings.length}`),
       preview: null,
       onTap: () => navigateScoped(target, bundle.ratings),
     });
@@ -1578,8 +1610,8 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
       >
         {isUnread && (
           <span
-            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-peach-400"
-            aria-hidden
+            className="absolute right-2.5 top-2.5 w-2 h-2 rounded-full bg-peach-500 ring-2 ring-white"
+            aria-label="unread"
           />
         )}
         {/* 헤더 button 이 avatar + verb 전체 폭을 덮을 때, avatar 가
@@ -1588,7 +1620,7 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
             "verb 와 sub-row 사이에 큰 빈공간" 으로 보였음. 구조를
             바꿔서 avatar 를 왼쪽 컬럼으로 두고 verb + sub-row + stamp
             를 오른쪽 컬럼 안에 sibling 으로 흐르게 함. dead space 사라짐. */}
-        <div className="flex items-start gap-2.5 p-2.5 pr-6">
+        <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_3rem] items-start gap-2.5 p-2.5">
           <button
             type="button"
             onClick={onHeaderTap}
@@ -1633,30 +1665,25 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
             </button>
 
             {subRows.length > 0 && (
-              <ul className="mt-1 space-y-0.5 border-l-2 border-cream-200 pl-2">
+              <ul className="mt-1.5 flex flex-wrap gap-1">
                 {subRows.map((s) => {
                   const Icon = s.Icon;
                   return (
-                    <li key={s.key}>
+                    <li key={s.key} className="min-w-0 max-w-full">
                       <button
                         type="button"
                         onClick={s.onTap}
-                        className="w-full text-left flex items-start gap-1.5 text-[11px] leading-snug py-0.5 px-1 -mx-1 rounded-md active:scale-[0.99] transition-colors hover:bg-cream-100/60"
+                        className="max-w-full inline-flex items-center gap-1 rounded-full border border-cream-200 bg-white/80 px-2 py-1 text-[11px] leading-none active:scale-[0.98] transition-colors hover:bg-cream-50"
                       >
-                        <Icon
-                          className={`w-3 h-3 mt-0.5 flex-shrink-0 ${s.color}`}
-                        />
-                        <span className="min-w-0 flex-1 truncate">
-                          <span className={`font-bold ${s.color}`}>
-                            {s.label}
-                          </span>
-                          {s.preview && (
-                            <>
-                              <span className="text-ink-400"> · </span>
-                              <span className="text-ink-700">{s.preview}</span>
-                            </>
-                          )}
+                        <Icon className={`w-3 h-3 flex-shrink-0 ${s.color}`} />
+                        <span className={`min-w-0 truncate font-bold ${s.color}`}>
+                          {s.label}
                         </span>
+                        {s.preview && (
+                          <span className="min-w-0 truncate text-ink-700">
+                            · {s.preview}
+                          </span>
+                        )}
                       </button>
                     </li>
                   );
@@ -1671,12 +1698,6 @@ function ActivityBundleItemImpl({ bundle }: { bundle: ActivityBundle }) {
           <NotificationThumb src={thumbSrc} label={placeName} />
         </div>
 
-        {isUnread && (
-          <span
-            className="absolute top-3 right-3 w-2 h-2 rounded-full bg-rose-400"
-            aria-label="unread"
-          />
-        )}
       </article>
     </div>
   );
@@ -1761,6 +1782,7 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
   const isUnread = !item.read_at;
   const stamp = relativeTime(item.created_at, i18n.language);
   const thumbSrc = thumbnailFor(item, rowCtx);
+  const ratingScore = ratingScoreFor(item, rowCtx);
   const parentMemoText =
     item.kind === "memo_reply" ? rowCtx.parentMemoTextOf(item.memo_id) : null;
   const memoText = item.preview ?? rowCtx.memoTextOf(item.memo_id);
@@ -1793,7 +1815,9 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
         };
       case "rating":
         return {
-          label: pick("별점", "打分"),
+          label: ratingScore
+            ? pick(`별점 ${ratingScore}/5`, `打分 ${ratingScore}分`)
+            : pick("별점", "打分"),
           color: "text-yellow-600",
         };
       case "revisit":
@@ -1818,6 +1842,10 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
     }
     if (item.kind === "food") return item.preview ? clipText(item.preview) : null;
     if (item.kind === "reaction") return item.preview ?? null;
+    if (item.kind === "rating") {
+      const foodName = rowCtx.foodNameOf(item.food_id);
+      return foodName ? clipText(foodName) : null;
+    }
     // 새 장소만 장소 이름을 본문으로 노출 — 다른 종류는 이전에 사용자가
     // 일부러 뺀 거라 그대로 두고 새 장소 케이스만 부활.
     if (item.kind === "place") return item.preview ?? null;
@@ -1834,7 +1862,7 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
       <button
         type="button"
         onClick={onTap}
-        className={`relative w-full text-left flex items-start gap-2.5 p-2.5 rounded-2xl transition-colors active:scale-[0.99] border ${
+        className={`relative w-full text-left grid grid-cols-[2.25rem_minmax(0,1fr)_3rem] items-start gap-2.5 p-2.5 rounded-2xl transition-colors active:scale-[0.99] border ${
           isUnread
             ? "bg-peach-50/60 border-peach-200/60 shadow-card"
             : "bg-white border-cream-200 hover:bg-cream-50"
@@ -1842,8 +1870,8 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
       >
         {isUnread && (
           <span
-            className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-peach-400"
-            aria-hidden
+            className="absolute right-2.5 top-2.5 w-2 h-2 rounded-full bg-peach-500 ring-2 ring-white"
+            aria-label="unread"
           />
         )}
         <div className="relative flex-shrink-0">
@@ -1885,12 +1913,6 @@ function NotificationItemImpl({ item }: { item: NotificationRow }) {
           </p>
         </div>
         <NotificationThumb src={thumbSrc} label={bodyLine} />
-        {isUnread && (
-          <span
-            className="w-2 h-2 rounded-full bg-rose-400 mt-1.5 flex-shrink-0"
-            aria-label="unread"
-          />
-        )}
       </button>
     </div>
   );

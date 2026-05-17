@@ -1614,41 +1614,43 @@ function StatsDashboard({
   const pick = (ko: string, zh: string) =>
     pickLanguage(i18n.language, ko, zh);
   return (
-    <div className="bg-gradient-to-br from-peach-100 to-rose-100 rounded-[1.75rem] p-5 sm:p-6 border border-rose-200/60 shadow-airy flex items-center justify-between gap-3">
-      <div className="flex flex-col gap-1 min-w-0">
-        <span className="text-[10px] sm:text-[11px] font-bold text-rose-500 tracking-[0.15em] uppercase truncate">
+    <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-center gap-3 rounded-2xl border border-rose-200/60 bg-gradient-to-br from-peach-100 to-rose-100 px-4 py-3 shadow-sm sm:px-4 sm:py-3.5">
+      <div className="min-w-0">
+        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.13em] text-rose-500">
           {pick("기록", "干饭成就")}
         </span>
-        <div className="mt-1">
-          <span className="text-3xl font-number font-bold text-ink-900 tracking-tight">
+        <div className="mt-1 flex h-8 items-baseline min-w-0">
+          <span className="font-number text-2xl font-bold tracking-tight text-ink-900">
             {stats.total}
           </span>
-          <span className="text-sm font-bold text-ink-700 ml-1">
+          <span className="ml-1 text-sm font-bold text-ink-700">
             {pick("곳", "处")}
           </span>
         </div>
       </div>
-      <div className="h-12 w-px bg-rose-200/50 flex-shrink-0" />
-      <div className="flex flex-col gap-1 items-end min-w-0">
-        <span className="text-[10px] sm:text-[11px] font-bold text-peach-500 tracking-[0.15em] uppercase truncate">
+      <div className="h-10 w-px bg-rose-200/60" />
+      <div className="min-w-0 text-right">
+        <span className="block truncate text-[10px] font-bold uppercase tracking-[0.13em] text-peach-500">
           {pick("자주 찾은 메뉴", "最常翻牌")}
         </span>
         {stats.topCategory ? (
-          <div className="mt-1 flex items-center gap-1.5 min-w-0">
-            <span className="text-lg sm:text-xl flex-shrink-0">
+          <div className="mt-1 flex h-8 min-w-0 items-center justify-end gap-1.5">
+            <span className="flex-shrink-0 text-lg leading-none">
               {categoryIcon(stats.topCategory)}
             </span>
-            <span className="text-sm sm:text-base font-bold text-ink-900 truncate">
+            <span className="min-w-0 truncate text-sm font-bold text-ink-900">
               {isKnownPlaceCategory(stats.topCategory)
                 ? t(`category.${stats.topCategory}`)
                 : stats.topCategory}
             </span>
-            <span className="text-xs sm:text-sm font-number font-bold text-ink-400 ml-1 flex-shrink-0">
+            <span className="flex-shrink-0 font-number text-xs font-bold text-ink-400">
               ({stats.topCount})
             </span>
           </div>
         ) : (
-          <span className="text-base font-bold text-ink-400 mt-1">-</span>
+          <span className="mt-1 flex h-8 items-center justify-end text-sm font-bold text-ink-400">
+            -
+          </span>
         )}
       </div>
     </div>
