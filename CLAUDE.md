@@ -346,6 +346,13 @@ React Router stamps on the first entry) and falls back to
 If you add a new back button outside `PageHeader`, mirror this
 fallback.
 
+PlaceDetailPage consumes hash anchors once per navigation. The effect
+polls for the target, jumps with `behavior: "auto"` (not smooth, to avoid
+visibly sliding down the whole page), highlights it, then removes the
+hash via `history.replaceState`. Do not leave the hash active after the
+first scroll — later memo/reply mutations will re-render the page and
+pull the user back to the old notification target.
+
 ### Wishlist row preservation on form abandonment
 
 `/places/new?fromWishlist=<id>` deletes the wishlist row INSIDE
@@ -678,71 +685,36 @@ The inbox is dense — restructure history was painful. Current shape:
   rows (and their parent memos for replies) in two batched IN-clauses.
   Feeds memoTextOf / parentMemoTextOf.
 
-### Grouping
-Three tiers, all rebuilt on the (visibleItems, filter, rowContext)
-useMemo:
-
-1. **DateHeader** rows emitted whenever the calendar day changes
-   walking the newest-first feed. Labels: "오늘 / 어제 / M월 D일".
-
-2. **ActivityBundle** cards collapse record-style events for the same
-   `(place_id, day, actor_id)` in the 전체 filter: place creation, menu
-   additions, rating fills, and revisit toggles. Place becomes the
-   header, sub-rows are compact pills (`메뉴 N`, `별점 4.5/5`, etc.).
-   Text comments/replies intentionally stay as detailed single rows;
-   they are higher-signal and easier to miss. Reactions are extracted
-   into a separate ReactionBundle. `effectivePlaceId = n.place_id ??
-   rowContext.foodPlaceIdOf(n.food_id)` keeps food-scoped notifications
-   inside their parent place's card.
-
-3. **ReactionBundle** rows group emoji reactions by
-   `(actor, target signature)` Instagram-style ("❤️😘 3"). Lives
-   alongside ActivityBundles within the date section.
+### Row Shape
+- **DateHeader** rows emit whenever the calendar day changes walking
+  the newest-first feed. Labels: `오늘 / 어제 / M월 D일`.
+- **NotificationItem** is the default for place, food, memo, reply,
+  rating, and revisit notifications. Keep records as separate rows;
+  do not put menu/rating/revisit under a place parent card. The user
+  found that parent/child shape confusing (`新地点` with `菜品 1`).
+- **ReactionBundle** rows are the only grouped row. Emoji taps against
+  the same place / food / memo collapse Instagram-style because those
+  are low-priority repeated events.
 
 ### Filter behavior
-- "전체" filter: record bundling + reaction bundling enabled (above),
-  while comments/replies stay detailed.
 - User-facing chips are intentionally short: `전체 / 댓글 / 이모지 / 기록`
   (`全部 / 留言 / 表情 / 记录`). `기록/记录` contains place, food,
   rating, and revisit notifications.
-- Narrow filters disable cross-kind bundling because the user has
-  already asked for one surface.
+- Filtering never introduces a parent/child card shape. Narrow filters
+  simply show the matching detailed rows, except reactions which stay
+  grouped by target.
 - Filter chip clicks go through `startTransition(() => setFilter(k))`
   so the chip highlight flips instantly while the heavy list rebuild
   runs in a transition. Session-stored legacy filter keys are sanitized
   back to `all`.
 
-### Sub-row clickability
-Each sub-row in an ActivityBundle is its own button with its own
-scoped deep-link (memo → `#memo-<id>`, food → `#food-<id>`, etc.) and
-its own mark-read scope. Implemented as `<article>` container with
-SIBLING `<button>` elements — nested buttons are invalid HTML.
-
-### Header verb
-- Single-kind bundle: use `kindSpec(primaryKind).verb` ("별점 · 打分",
-  "메뉴 추가 · 添加菜品", etc.).
-- Multi-kind bundle: catch-all "새 기록 · 新记录".
-- placeEvent present: always "새 장소 · 新地点".
-
-Don't simplify to a binary placeEvent / else — single-kind bundles
-will read "새 기록" misleadingly.
-
-### Place name display rule
-- ActivityBundleItem header: show `placeName` ONLY when
-  `bundle.placeEvent` is set. Other bundles intentionally hide it —
-  user fed back that always-showing-place was visually noisy.
-- NotificationItem bodyLine: kind === "place" shows `item.preview`
-  (= place name). Other kinds derive from memo / food / emoji.
-
-### Don't downgrade N=1 record bundles
-The bundle layout is preserved even at 1 record-style event in `전체`
-so menu/rating/revisit noise reads as compact place activity instead
-of scattered rows. Comments/replies are not part of this rule anymore;
-they stay detailed single rows.
-
-### Reaction notifications get the actor's actual emoji
-The trigger puts `preview = new.emoji`, so the inbox preview reads the
-emoji directly without re-fetching the reaction row.
+### Place and rating display
+- `NotificationItem` bodyLine: kind === `place` shows `item.preview`
+  (= place name). `food` shows the menu name, `rating` shows the menu
+  name while the headline includes the score (`별점 4.5/5`, `打分 4.5分`),
+  and memo/reply rows show the memo text.
+- Reactions should still show the reacted target context via the
+  quoted memo/food/place text when available.
 
 ### KindBadge corner badge / unread dot
 Each row's avatar carries a `<KindBadge kind>` in the bottom-right
@@ -793,8 +765,9 @@ the techniques that stuck:
 - `React.memo` on every heavy leaf that renders inside a long list:
   `MemoComment`, `ReactionRow` (custom comparator on target identity),
   `FoodMemoBlock`, `TimelineItem` / `MenuRow` / `TimelineGridItem` on
-  HomePage, `ActivityBundleItem` / `NotificationItem` on
-  NotificationsPage (custom comparator: id + unread bit + length).
+  HomePage, `ReactionBundleItem` / `NotificationItem` on
+  NotificationsPage (custom comparators for id/read/preview or bundle
+  size + unread bit).
 - Custom comparator pattern when props are rebuilt every parent
   render but the rendered output only depends on a stable shape.
 
